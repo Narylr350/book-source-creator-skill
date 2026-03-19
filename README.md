@@ -2,7 +2,7 @@
 
 ## 中文
 
-一个用于为 Legado 阅读器创建、调试和验证书源的skill，核心工作流基于 Browser MCP 的真实网站分析，而不是只靠静态 HTML 猜规则。
+一个用于为 Legado 阅读器创建、调试和验证书源的AI Agent skill，核心工作流基于 Browser MCP 的真实网站分析，而不是只靠静态 HTML 猜规则。
 
 - 仓库地址：`https://github.com/Narylr350/book-source-creator-skill`
 - Legado 仓库地址：`https://github.com/gedoor/legado`
@@ -11,7 +11,7 @@
 
 ### 项目简介
 
-`book-source-creator-skill` 用来帮助 Codex 为 Legado 阅读器创建、调试和验证书源。
+`book-source-creator-skill` 用来帮助 AI Agent 为 Legado 阅读器创建、调试和验证书源。
 
 这个 skill 的核心思路是：
 
@@ -32,7 +32,7 @@
 
 ### 环境要求
 
-- 支持技能机制的 Codex 环境
+- 支持技能机制的 AI Agent 环境
 - 可用的 Browser MCP
 - 目标小说网站 URL
 - 如需运行辅助脚本，建议安装 Node.js
