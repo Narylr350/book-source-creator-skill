@@ -1,0 +1,44 @@
+[
+  {
+    "bookSourceName": "163中文网",
+    "bookSourceUrl": "https://www.163zw.com",
+    "bookSourceType": 0,
+    "bookSourceGroup": "国内小说",
+    "bookUrlPattern": "https?://www\\.163zw\\.com/\\d+/\\d+/?",
+    "customOrder": 0,
+    "enabled": true,
+    "enabledExplore": false,
+    "header": "",
+    "loginUrl": "",
+    "bookSourceComment": "基于 Browser MCP 实测制作。已验证搜索、详情、目录和正文链路；正文支持单章多页拼接，目录支持多页翻页。",
+    "lastUpdateTime": 1773492000,
+    "weight": 0,
+    "exploreUrl": "",
+    "searchUrl": "https://www.163zw.com/search.php?q={{key}}&p={{page}}",
+    "ruleSearch": {
+      "bookList": "@css:div.box.hot > div.row > div.col-12.col-md-6",
+      "name": "@css:dd h3 a@text##^\\[[^\\]]+\\]##",
+      "author": "@css:dd.book_other span@text",
+      "coverUrl": "@css:dt a img@src@js:result.indexOf('http') === 0 ? result : 'https://www.163zw.com' + result",
+      "bookUrl": "@css:dt a@href@js:result.indexOf('http') === 0 ? result : 'https://www.163zw.com' + result"
+    },
+    "ruleExplore": {},
+    "ruleBookInfo": {
+      "name": "@css:div.row.book_info h1@text",
+      "author": "@css:div.row.book_info div.info li:nth-child(1) a@text",
+      "coverUrl": "@css:div.row.book_info img@src@js:result.indexOf('http') === 0 ? result : 'https://www.163zw.com' + result",
+      "intro": "@css:#intro_pc@text##^简介：\\s*## ##您要是觉得《[\\s\\S]*$##",
+      "tocUrl": ""
+    },
+    "ruleToc": {
+      "chapterList": "@css:div.book_list.book_list2 ul.row li",
+      "chapterName": "@css:a@text",
+      "chapterUrl": "@css:a@href@js:result.indexOf('http') === 0 ? result : 'https://www.163zw.com' + result",
+      "nextTocUrl": "@css:ul.pagination li.active + li a.page-link@href@js:result && /index_\\d+\\.html$/.test(result) ? ['https://www.163zw.com' + result] : []"
+    },
+    "ruleContent": {
+      "content": "<js>\nvar html = result || '';\nvar match = html.match(/<article[^>]*class=[\"'][^\"']*font_max[^\"']*[\"'][^>]*>([\\s\\S]*?)<\\/article>/i);\nvar body = match ? match[1] : html;\nresult = body\n  .replace(/第\\(\\d+\\/\\d+\\)页/g, '')\n  .replace(/&nbsp;/gi, ' ')\n  .replace(/<br\\s*\\/?>/gi, '\\n')\n  .replace(/<[^>]+>/g, '')\n  .replace(/\\r/g, '')\n  .replace(/\\n{3,}/g, '\\n\\n')\n  .trim();\nresult;\n</js>",
+      "nextContentUrl": "@css:a#next1@href@js:if(!result){[]}else{var cur=String(baseUrl||'');var next=result.indexOf('http')===0?result:'https://www.163zw.com'+result;var c=cur.match(/\\/(\\d+)(?:_(\\d+))?\\.html(?:$|[?#])/);var n=next.match(/\\/(\\d+)(?:_(\\d+))?\\.html(?:$|[?#])/);c&&n&&c[1]===n[1]?[next]:[];}"
+    }
+  }
+]

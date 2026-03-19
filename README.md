@@ -1,10 +1,11 @@
 # book-source-creator-skill
 
-仓库地址：`https://github.com/Narylr350/book-source-creator-skill`
+这是一个用于为 Legado 阅读器创建、调试和验证书源的技能仓库。
 
-这是一个用于为 Legado 阅读器创建、调试和验证书源的技能仓库。仓库根目录用于说明如何使用，真正的技能包放在 [`book-source-creator/`](./book-source-creator/) 目录里，这样不会和技能本身的 `README.md` 冲突。
+- 本仓库地址：`https://github.com/Narylr350/book-source-creator-skill`
+- Legado 仓库地址：`https://github.com/gedoor/legado`
 
-这个 skill 已在 Codex 环境中测试成功。其他 AI 工具目前没有系统测试过，所以不承诺在其他工具里能直接得到同样结果。
+这个 skill 已在 Codex 环境中测试成功。其他 AI 工具目前没有系统测试过。
 
 ## 需要什么
 
@@ -20,6 +21,7 @@
 ```text
 book-source-creator-skill/
   README.md                     # 仓库级使用说明
+  examples/                     # 示例书源
   book-source-creator/          # 技能本体
     SKILL.md
     README.md
@@ -104,16 +106,28 @@ book-source-creator-skill/
 9. 导入 Legado 实测
 ```
 
-### 示例 3：163中文网实测结论
+### 示例 3：163中文网书源
 
-这个仓库对应的 skill 已经实际用于 `163中文网` 书源生成与验证：
+- 示例书源文件：[`examples/163zw-legado.json`](./examples/163zw-legado.json)
+- 测试站点：`https://www.163zw.com/`
 
-- 搜索、详情、目录、正文链路都已通过 Browser MCP 实测
-- 目录存在分页，已纳入规则设计
-- 正文存在单章多页，已纳入规则设计
-- 在当前测试样本下，`163中文网` 书源未发现明显问题
+这个仓库对应的 skill 已经实际用于 `163中文网` 书源生成与验证。当前这一版书源在实际检查中没有发现明显问题，但不代表站点未来不会改版。
 
-这里的“未发现问题”是指在 Codex + Browser MCP + Legado 导入验证这一轮里没有发现明显故障，不代表站点未来不会改版。
+## 163中文网书源创建过程
+
+这份 `163中文网` 书源是按下面的流程做出来的：
+
+1. 先确认站点是否需要登录。`163中文网` 当前公开搜索、详情、目录、正文都可直接访问，所以不需要先走登录流程。
+2. 输出网站可生成性评估。结论是可生成，但正文存在单章多页、目录存在多页分页，所以应明确记录风险点。
+3. 用 Browser MCP 验证搜索链路。搜索 `凡人修仙` 后，确认结果列表、书名、作者、封面和详情链接都能稳定拿到。
+4. 进入详情页，确认书名、作者、简介、封面和章节列表入口。
+5. 检查目录页，确认目录首屏只有部分章节，且存在分页，因此规则中需要 `nextTocUrl`。
+6. 进入正文页，确认正文是真实文本而不是图片，但单章被拆成多页，因此规则中需要 `nextContentUrl` 来拼接同一章。
+7. 生成书源 JSON，并把目录分页和正文分页都写进规则。
+8. 用辅助脚本做结构校验和规则审计。
+9. 最后在 Legado 中实际导入检查，当前未发现明显问题。
+
+这套流程的核心不是“先写规则”，而是“先用 Browser MCP 把站点行为看清楚，再决定规则怎么写”。
 
 ## 脚本说明
 
