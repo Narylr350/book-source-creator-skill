@@ -2,7 +2,7 @@
 
 ## 中文
 
-一个用于为 Legado 阅读器创建、调试和验证书源的 Codex skill，核心工作流基于 Browser MCP 的真实网站分析，而不是只靠静态 HTML 猜规则。
+一个用于为 Legado 阅读器创建、调试和验证书源的skill，核心工作流基于 Browser MCP 的真实网站分析，而不是只靠静态 HTML 猜规则。
 
 - 仓库地址：`https://github.com/Narylr350/book-source-creator-skill`
 - Legado 仓库地址：`https://github.com/gedoor/legado`
