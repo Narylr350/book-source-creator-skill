@@ -1,0 +1,4 @@
+interface:
+  display_name: "Legado 书源生成"
+  short_description: "Assess novel sites and generate Legado sources"
+  default_prompt: "Use $legado-book-source-generator to assess a fiction site and generate a Legado book source JSON."

@@ -1,389 +1,276 @@
-# book-source-creator-skill
+# Legado 书源生成 Skill
 
-## 中文
+面向 `Legado / 阅读` 书源编写场景的 AI Skill。
 
-一个用于为 Legado 阅读器创建、调试和验证书源的AI Agent skill，核心工作流基于 Browser MCP 的真实网站分析，而不是只靠静态 HTML 猜规则。
+这个仓库的目标不是“批量收集书源”，而是为 AI 提供一套可复用的工作流，让它在分析目标站点后，生成结构正确、可调试、可人工验证的 Legado 书源，并在书源失效时能和人类高效协作定位问题。
 
-- 仓库地址：`https://github.com/Narylr350/book-source-creator-skill`
-- Legado 仓库地址：`https://github.com/gedoor/legado`
-- 技能包目录：[`book-source-creator/`](./book-source-creator/)
-- 示例书源：[`examples/163zw-legado.json`](./examples/163zw-legado.json)
+## 这个仓库解决什么问题
 
-### 项目简介
+常见问题不是“不会写 JSON”，而是：
 
-`book-source-creator-skill` 用来帮助 AI Agent 为 Legado 阅读器创建、调试和验证书源。
+- 不知道目标站点是否适合生成书源
+- 登录站点分析顺序混乱
+- AI 过度依赖示例源，忽略目标站点真实行为
+- 书源出问题后，AI 只会泛泛地说“发日志”“发源码”，不会告诉用户去哪里点
+- 生成和调试过程缺少统一约束，导致不同 AI 输出不稳定
 
-这个 skill 的核心思路是：
+这个 Skill 的核心就是把这些问题固化成一套可执行规范。
 
-- 优先用 Browser MCP 查看真实页面
-- 优先分析搜索、详情、目录、正文四段链路
-- 能登录的网站优先在登录态分析
-- 在正式写规则前先做网站可生成性评估
-- 脚本只作为辅助验证工具，不作为最终判断依据
+## 核心原则
 
-### 特性
+- AI 对页面结构、接口链路、规则语义的分析是主判断依据。
+- Browser MCP 和辅助脚本只用于验证，不替代主分析。
+- 正式生成 `book-source.json` 之前，必须先做网站可生成性评估。
+- 网站可登录时，优先在登录态下分析。
+- 如果登录需要扫码、验证码、短信或人工确认，必须立即请求人类协助。
+- 默认只做 `搜索 / 详情 / 目录 / 正文`，不默认启用发现页。
+- 正常生成时，不在 `bookSourceComment` 中塞调试说明。
+- 只有用户反馈失效、导入失败、链路异常或 App 崩溃时，才进入调试模式。
 
-- Browser MCP 优先，而不是脚本优先
-- 支持登录态分析和人工协助登录流程
-- 强制要求先做网站可生成性评估
-- 支持搜索、详情、目录、正文、多页目录、多页正文等场景
-- 提供 Node 版辅助脚本用于校验、审计和模板生成
-- 保留 Python 兼容入口，兼容旧调用方式
+## 功能概览
 
-### 环境要求
+- 登录判定
+- 网站可生成性评估
+- 搜索 / 详情 / 目录 / 正文 四段链路分析
+- Legado 书源 JSON 生成
+- 静态审计脚本
+- 输出物脚手架与结构校验
+- 面向 Legado 用户的中文调试协作模板
+- 真实闭环样例 bundle
 
-- 支持技能机制的 AI Agent 环境
-- 可用的 Browser MCP
-- 目标小说网站 URL
-- 如需运行辅助脚本，建议安装 Node.js
-- 用于最终导入验证的 Legado 阅读器
-- 如果目标站需要扫码、短信、验证码或二次验证，需要人类协助完成登录
-
-### 安装
-
-把 [`book-source-creator/`](./book-source-creator/) 整个目录放到本地技能目录即可。
-
-常见目录示例：
+## 仓库结构
 
 ```text
-~/.cc-switch/skills/book-source-creator/
-~/.codex/skills/book-source-creator/
+.
+├─ README.md
+├─ legado-book-source-generator/
+│  ├─ SKILL.md
+│  ├─ agents/
+│  │  └─ openai.yaml
+│  ├─ examples/
+│  │  ├─ README.md
+│  │  └─ 163zw/
+│  ├─ references/
+│  │  ├─ assessment-template.md
+│  │  ├─ analysis-workflow.md
+│  │  ├─ debugging-collaboration.md
+│  │  ├─ legado-json-structure.md
+│  │  ├─ reference-source-patterns.md
+│  │  └─ validation-checklist.md
+│  └─ scripts/
+│     ├─ audit-source.mjs
+│     ├─ project-helper.mjs
+│     └─ lib/
+│        └─ source-audit.mjs
+└─ tests/
+   ├─ audit-source.test.mjs
+   └─ project-helper.test.mjs
 ```
 
-技能详细说明：
+## 运行环境
 
-- [`book-source-creator/SKILL.md`](./book-source-creator/SKILL.md)
-- [`book-source-creator/README.md`](./book-source-creator/README.md)
+### 必需环境
 
-### 快速开始
+- Node.js 18 或更高版本
+- 能访问目标网站的网络环境
+- Browser MCP 或等价的浏览器自动化 / 页面检查能力
+- 可导入书源并进行实机验证的 Legado App
 
-推荐执行顺序：
+### 推荐环境
 
-1. 先判断目标站点是否需要登录
-2. 如果需要登录，优先在登录态下分析
-3. 在写规则前先输出网站可生成性评估
-4. 使用 Browser MCP 验证搜索、详情、目录、正文行为
-5. 生成 Legado 书源 JSON
-6. 用辅助脚本做结构校验和规则审计
-7. 导入 Legado 做实际可用性验证
+- Codex / Codex Desktop
+- 支持 Skill / Tool 调用的 AI Agent
+- Git
 
-推荐评估模板：
+### 非必需环境
 
-```markdown
-## 网站可生成性评估
-- 目标站点：
-- 登录状态：
-- 搜索可用性：
-- 详情可用性：
-- 目录可用性：
-- 正文可用性：
-- 特殊风险：
-- 可生成性评级：
-- 是否继续生成：
-- 继续生成理由 / 停止理由：
+- Python 不是主流程必需环境
+- 本仓库主流程、静态审计、结构校验都走 Node.js
+- 只有当你自己想运行某些外部 Skill 校验工具时，才可能额外需要 Python
+
+## 安装说明
+
+### 方式 1：作为 Codex Skill 安装
+
+把 [`legado-book-source-generator`](./legado-book-source-generator) 整个目录复制到你的 Skill 目录中，安装后目录应类似：
+
+```text
+$CODEX_HOME/skills/legado-book-source-generator/
+├─ SKILL.md
+├─ agents/
+├─ references/
+├─ scripts/
+└─ examples/
 ```
 
-允许使用的评级：
+如果你的 Codex 环境使用的是其他 Skill 搜索目录，也保持同样的目录结构即可，关键是 `SKILL.md` 必须位于 `legado-book-source-generator/` 根目录。
+
+### 方式 2：作为 Claude Code / 其他支持 Skill 的 AI 安装
+
+把 [`legado-book-source-generator`](./legado-book-source-generator) 目录复制到该 AI 所使用的 Skill 目录下，并确保：
+
+- Skill 系统会读取 `SKILL.md`
+- AI 运行时可以调用浏览器工具或等价网页分析工具
+- AI 运行时可以执行 Node.js 脚本
+
+如果该 AI 没有标准 Skill 安装机制，也可以直接把 [`SKILL.md`](./legado-book-source-generator/SKILL.md) 作为系统提示或任务参考入口，并同时提供 `references/` 与 `scripts/` 目录。
+
+### 方式 3：不安装，仅作为仓库引用
+
+如果你只是想让其他 AI 参考这套流程：
+
+1. 把仓库 clone 到本地
+2. 让 AI 先阅读 [`SKILL.md`](./legado-book-source-generator/SKILL.md)
+3. 再按需读取 `references/` 中的对应文档
+4. 运行 `scripts/` 下的 Node.js 辅助脚本做结构校验或静态审计
+
+## 使用流程
+
+标准流程固定如下：
+
+1. 判断目标站点是否需要登录
+2. 正式生成前先输出网站可生成性评估
+3. 用 Browser MCP 分析搜索、详情、目录、正文四条链路
+4. 生成 Legado 书源 JSON
+5. 导入 Legado 做人工验证
+6. 如果失败，再进入调试模式
+
+### 可生成性评级
+
+固定只允许四种评级：
 
 - `可直接生成`
 - `可生成但高风险`
 - `需登录后再评估`
 - `不建议生成`
 
-其中 `需登录后再评估` 和 `不建议生成` 不是硬阻断，但如果继续推进，必须明确标成 `高风险` 并说明理由。
+若评级为 `需登录后再评估` 或 `不建议生成`，仍可继续，但必须明确标为 `高风险`，并写明继续生成的理由与预期失效点。
 
-### 辅助脚本
+## 调试协作
 
-辅助脚本位于 [`book-source-creator/scripts/`](./book-source-creator/scripts/)：
+本仓库特别强调“AI 如何和人类协作调试”。
 
-- `analyze_with_playwright.mjs`
-- `validate_source.mjs`
-- `test_rules.mjs`
-- `generate_template.mjs`
+调试模式下，AI 不应直接说：
 
-同名 `.py` 文件是兼容入口，会自动转调到对应的 `.mjs` 脚本。
+- “把 search_src 发我”
+- “发日志”
+- “发源码”
 
-示例命令：
+而应写成用户能直接照着点的路径，例如：
 
-```bash
-# 分析网站，支持人工登录后继续
-node book-source-creator/scripts/analyze_with_playwright.mjs https://novel-site.com --manual-login --save analysis.json
+- `书源管理 -> 对应书源 -> 编辑页 -> 右上角三点 -> 调试源`
+- `调试页 -> 右上角三点 -> 搜索源码 / 书籍源码 / 目录源码 / 正文源码`
+- `我的 -> 关于 -> 崩溃日志`
+- `我的 -> 关于 -> 保存日志`
 
-# 基于分析结果生成模板
-node book-source-creator/scripts/generate_template.mjs --analysis analysis.json
+详细模板见：
 
-# 校验书源结构
-node book-source-creator/scripts/validate_source.mjs my_source.json
+- [`references/debugging-collaboration.md`](./legado-book-source-generator/references/debugging-collaboration.md)
 
-# 审计规则并预览搜索 URL 替换结果
-node book-source-creator/scripts/test_rules.mjs my_source.json --keyword 凡人修仙
+## 辅助脚本
+
+### 1. 输出目录脚手架 / 结构校验
+
+```powershell
+node .\legado-book-source-generator\scripts\project-helper.mjs scaffold-output .\outputs https://example.com
+node .\legado-book-source-generator\scripts\project-helper.mjs validate-source .\outputs\example-com\book-source.json
 ```
 
-### 示例资源
+### 2. 静态审计
 
-仓库当前包含一个实际书源示例：
-
-- 文件：[`examples/163zw-legado.json`](./examples/163zw-legado.json)
-- 目标站点：`https://www.163zw.com/`
-
-#### 163中文网书源创建过程
-
-这份 `163中文网` 书源是按下面的流程做出来的：
-
-1. 确认站点当前不需要登录就能访问搜索、详情、目录和正文
-2. 先输出网站可生成性评估
-3. 用 Browser MCP 搜索 `凡人修仙`，验证结果列表、书名、作者、封面和详情链接
-4. 进入详情页，确认书名、作者、封面、简介和目录入口
-5. 检查目录页，确认目录存在分页，因此规则中加入 `nextTocUrl`
-6. 检查正文页，确认正文是真实文本但单章多页，因此规则中加入 `nextContentUrl`
-7. 生成书源 JSON
-8. 用辅助脚本做结构校验和规则审计
-9. 最后导入 Legado 做实际检查
-
-当前这份样例书源在测试流程里没有发现明显问题，但不代表目标站未来不会改版。
-
-### 验证状态
-
-已验证：
-
-- 这个 skill 已在 Codex 环境中测试成功
-- 基于 Browser MCP 的分析流程可正常跑通
-- Node 版辅助脚本可运行
-- `163中文网` 样例书源已经过一轮实际验证，当前未见明显问题
-
-未验证：
-
-- 其他 AI 工具中的兼容性
-- 所有小说站点上的长期稳定性
-- 所有登录站点上的一致性表现
-
-### 风险声明
-
-请自行承担使用风险。
-
-- 本项目目前只在 Codex 环境中验证过
-- 其他 AI 工具没有系统测试过
-- 生成出来的书源依赖第三方网站的实时结构
-- 目标站点可能随时修改 HTML、请求链路、反爬策略、分页逻辑或登录流程
-- 一个书源某次可用，不代表未来仍然可用
-- 仓库中的示例书源只代表某个测试时点的结果，不构成长期可用性保证
-- 最终实际表现仍然受 Legado 版本、目标站状态和你自己的验证过程影响
-- 你需要自行负责验证、调试和维护实际使用的书源
-
-### 仓库结构
-
-```text
-book-source-creator-skill/
-  README.md
-  examples/
-    163zw-legado.json
-  book-source-creator/
-    SKILL.md
-    README.md
-    references/
-    scripts/
-    tests/
+```powershell
+node .\legado-book-source-generator\scripts\audit-source.mjs .\outputs\example-com\book-source.json --keyword 凡人修仙 --page 1
 ```
 
-### 相关链接
+说明：
 
-- 技能目录：[`book-source-creator/`](./book-source-creator/)
-- 技能入口：[`book-source-creator/SKILL.md`](./book-source-creator/SKILL.md)
-- 技能说明：[`book-source-creator/README.md`](./book-source-creator/README.md)
-- 示例书源：[`examples/163zw-legado.json`](./examples/163zw-legado.json)
-- Legado：`https://github.com/gedoor/legado`
+- `audit-source.mjs` 只做静态审计、占位检测和搜索 URL 预览
+- 它不会模拟 Legado 的完整运行逻辑
+- 不能把静态审计结果当成真实可用性的最终依据
 
----
+## 测试
 
-## English
-
-A Codex skill for creating, debugging, and verifying Legado book sources, with a workflow centered on real website analysis through Browser MCP instead of guessing rules from static HTML alone.
-
-- Repository: `https://github.com/Narylr350/book-source-creator-skill`
-- Legado repository: `https://github.com/gedoor/legado`
-- Skill package: [`book-source-creator/`](./book-source-creator/)
-- Example source: [`examples/163zw-legado.json`](./examples/163zw-legado.json)
-
-### Overview
-
-`book-source-creator-skill` helps Codex create, debug, and verify book sources for Legado.
-
-Its core approach is:
-
-- inspect real pages with Browser MCP
-- analyze the full chain of search, detail, TOC, and content pages
-- analyze login-state pages first when login is required
-- perform a generatability assessment before writing rules
-- treat scripts as auxiliary tools rather than the final authority
-
-### Features
-
-- Browser MCP first, not script first
-- login-aware workflow with explicit human-assisted login handoff
-- mandatory generatability assessment before rule generation
-- support for search, detail, TOC, content, paginated TOC, and paginated chapter flows
-- Node-based helper scripts for validation, auditing, and template generation
-- Python compatibility wrappers for existing entrypoints
-
-### Requirements
-
-- a Codex environment with skill support
-- Browser MCP access
-- a target novel site URL
-- Node.js if you want to run helper scripts locally
-- Legado for final import and runtime verification
-- human assistance when target sites require QR login, SMS verification, captcha, or secondary authentication
-
-### Installation
-
-Copy the entire [`book-source-creator/`](./book-source-creator/) directory into your local skills directory.
-
-Common locations:
-
-```text
-~/.cc-switch/skills/book-source-creator/
-~/.codex/skills/book-source-creator/
+```powershell
+node --test .\tests\project-helper.test.mjs .\tests\audit-source.test.mjs
 ```
 
-Detailed skill docs:
+## 真实样例
 
-- [`book-source-creator/SKILL.md`](./book-source-creator/SKILL.md)
-- [`book-source-creator/README.md`](./book-source-creator/README.md)
+当前仓库包含一个真实闭环样例：
 
-### Quick Start
+- [`examples/163zw`](./legado-book-source-generator/examples/163zw)
 
-Recommended execution order:
+样例只用于展示：
 
-1. determine whether the target site requires login
-2. if login is required, analyze in login state first
-3. output a generatability assessment before writing any rule
-4. use Browser MCP to verify search, detail, TOC, and content behavior
-5. generate the Legado source JSON
-6. run validation and rule-audit helpers
-7. import the result into Legado and verify actual runtime behavior
+- 输出物结构
+- 规则组织方式
+- 人工验证流程
 
-Recommended assessment template:
+样例不能替代目标站点的实时分析。
 
-```markdown
-## 网站可生成性评估
-- 目标站点：
-- 登录状态：
-- 搜索可用性：
-- 详情可用性：
-- 目录可用性：
-- 正文可用性：
-- 特殊风险：
-- 可生成性评级：
-- 是否继续生成：
-- 继续生成理由 / 停止理由：
-```
+## 风险与限制
 
-Allowed ratings:
+### 技术风险
 
-- `可直接生成`
-- `可生成但高风险`
-- `需登录后再评估`
-- `不建议生成`
+- 目标站点结构、接口、域名、参数、登录机制可能随时变化，生成出来的书源可能失效
+- 某些站点存在验证码、反爬、动态签名、会员限制、加密正文或支付章节，可能无法稳定支持
+- AI 生成的规则可能“结构正确但运行错误”，仍然需要 Legado 实机验证
+- 登录态书源可能涉及过期 Token、Cookie 失效、设备绑定或账户风控
 
-`需登录后再评估` and `不建议生成` do not hard-block work, but continuing under either rating must be explicitly marked as `高风险` with a clear explanation.
+### 使用风险
 
-### Helper Scripts
+- 不当分享调试截图、日志、Cookie、Token、登录头，可能泄露个人账号信息
+- 直接分发未验证的书源，可能导致他人导入后异常、抓错内容或误判站点状态
+- 对高风险站点继续生成书源，可能造成错误调试结论和重复劳动
 
-Helper scripts are located in [`book-source-creator/scripts/`](./book-source-creator/scripts/):
+### 限制
 
-- `analyze_with_playwright.mjs`
-- `validate_source.mjs`
-- `test_rules.mjs`
-- `generate_template.mjs`
+- 默认不生成发现页
+- 默认不做 adb 自动化回归
+- 默认不处理验证码自动化
+- 默认不处理付费章节绕过
+- 默认不保证所有登录站都能稳定生成
 
-Files with the same names and `.py` extensions are compatibility wrappers that forward to the `.mjs` scripts.
+## 法律与合规说明
 
-Example commands:
+本仓库不提供法律意见，使用前请自行评估所在地区法律、目标站点条款与内容授权情况。
 
-```bash
-# analyze a site with optional human-assisted login
-node book-source-creator/scripts/analyze_with_playwright.mjs https://novel-site.com --manual-login --save analysis.json
+请特别注意：
 
-# generate a template from analysis output
-node book-source-creator/scripts/generate_template.mjs --analysis analysis.json
+- 遵守目标网站的使用条款、robots 规则、接口限制和登录限制
+- 不要将本 Skill 用于绕过付费、会员、权限控制或其他访问限制
+- 不要在未经授权的情况下分享他人的账号、Cookie、Token、登录头或日志
+- 生成和分发书源前，请确认目标内容的版权、转载、抓取和再分发是否被允许
+- 某些网站或内容可能受版权、数据库权利、服务条款或地区性法规保护
 
-# validate source structure
-node book-source-creator/scripts/validate_source.mjs my_source.json
+如果你打算公开分享基于特定站点生成的书源，请先自行确认：
 
-# audit rules and preview search URL substitution
-node book-source-creator/scripts/test_rules.mjs my_source.json --keyword 凡人修仙
-```
+- 该站点是否允许此类访问与再分发
+- 书源中是否含有敏感登录信息
+- 书源是否可能访问受限、付费或授权内容
 
-### Example Resource
+## 适合谁
 
-This repository currently includes one real source example:
+- 维护 Legado 书源的人
+- 想让 AI 协助分析目标站点的人
+- 想把“生成书源 + 人工调试”流程标准化的人
+- 想给多个 AI 提供统一书源工作流的人
 
-- file: [`examples/163zw-legado.json`](./examples/163zw-legado.json)
-- target site: `https://www.163zw.com/`
+## 不适合谁
 
-#### 163zw Source Creation Flow
+- 只想拿现成大合集、完全不做验证的人
+- 想用 AI 自动绕过登录、验证码、付费限制的人
+- 不愿意在 Legado 里做人工验证与调试的人
 
-This `163中文网` source was created with the following process:
+## 相关入口
 
-1. confirm that search, detail, TOC, and content are accessible without login
-2. write a generatability assessment before rule design
-3. use Browser MCP to search `凡人修仙` and verify result list, title, author, cover, and detail links
-4. enter the detail page and confirm title, author, cover, intro, and TOC entry points
-5. inspect the TOC and confirm pagination, then add `nextTocUrl`
-6. inspect chapter pages and confirm real text with multi-page chapters, then add `nextContentUrl`
-7. generate the source JSON
-8. run validation and rule audit helpers
-9. import and verify the result in Legado
+- Skill 主入口：[`legado-book-source-generator/SKILL.md`](./legado-book-source-generator/SKILL.md)
+- 调试协作文档：[`references/debugging-collaboration.md`](./legado-book-source-generator/references/debugging-collaboration.md)
+- 规则模式矩阵：[`references/reference-source-patterns.md`](./legado-book-source-generator/references/reference-source-patterns.md)
+- JSON 结构说明：[`references/legado-json-structure.md`](./legado-book-source-generator/references/legado-json-structure.md)
 
-This sample source did not show obvious issues in the tested flow, but that is not a guarantee against future site changes.
+## 声明
 
-### Verification Status
+本仓库提供的是一种 AI 工作流与工程化约束，不保证任何具体站点长期可用，也不保证所有生成结果都可直接投入分发。
 
-Verified:
-
-- this skill has been tested successfully in Codex
-- the Browser MCP based analysis workflow runs successfully
-- the Node helper scripts run successfully
-- the `163中文网` sample source has passed one round of practical verification and did not show obvious issues in that round
-
-Not verified:
-
-- compatibility with other AI tools
-- long-term stability across all novel sites
-- behavior consistency across all login-protected sites
-
-### Risk Notice
-
-Use this repository at your own risk.
-
-- This project has only been validated in Codex so far.
-- Other AI tools have not been systematically tested.
-- Generated book sources depend on the live structure of third-party sites.
-- Target sites may change HTML, request chains, anti-bot rules, pagination logic, or login flows at any time.
-- A source that works once may stop working later.
-- Example sources in this repository represent tested point-in-time results only and are not long-term compatibility guarantees.
-- Final runtime behavior still depends on your Legado version, target site state, and your own verification process.
-- You are responsible for validating, debugging, and maintaining any source you actually use.
-
-### Repository Layout
-
-```text
-book-source-creator-skill/
-  README.md
-  examples/
-    163zw-legado.json
-  book-source-creator/
-    SKILL.md
-    README.md
-    references/
-    scripts/
-    tests/
-```
-
-### Related Links
-
-- Skill package: [`book-source-creator/`](./book-source-creator/)
-- Skill entry: [`book-source-creator/SKILL.md`](./book-source-creator/SKILL.md)
-- Skill docs: [`book-source-creator/README.md`](./book-source-creator/README.md)
-- Example source: [`examples/163zw-legado.json`](./examples/163zw-legado.json)
-- Legado: `https://github.com/gedoor/legado`
+最终是否可用，以目标站点实时行为、Legado 实机验证结果和使用者自行承担的合规判断为准。
