@@ -107,7 +107,7 @@ export function initializeOutputBundle(rootDir, siteUrl) {
       "- Legado 规则建议: ",
       "",
     ].join("\n"),
-    "book-source.json": "{}\n",
+    "book-source.json": "[]\n",
     "validation-checklist.md": [
       "# Legado 验收清单",
       "",
@@ -171,10 +171,16 @@ function readSource(jsonPath) {
     ? fs.readFileSync(jsonPath, "utf8")
     : fs.readFileSync(0, "utf8");
   const data = JSON.parse(payload);
-  if (!data || typeof data !== "object" || Array.isArray(data)) {
-    throw new Error("Book source payload must be a JSON object.");
+  if (Array.isArray(data)) {
+    if (data.length === 0) {
+      throw new Error("Book source payload must contain at least one source.");
+    }
+    return data;
   }
-  return data;
+  if (!data || typeof data !== "object") {
+    throw new Error("Book source payload must be a JSON object or a non-empty JSON array.");
+  }
+  return [data];
 }
 
 
@@ -207,8 +213,14 @@ function main(argv) {
       return 2;
     }
     try {
-      const source = readSource(rest[0]);
-      const errors = validateBookSource(source);
+      const sources = readSource(rest[0]);
+      const errors = [];
+      for (const [index, source] of sources.entries()) {
+        const sourceErrors = validateBookSource(source);
+        for (const error of sourceErrors) {
+          errors.push(sources.length > 1 ? `[${index}] ${error}` : error);
+        }
+      }
       if (errors.length > 0) {
         for (const error of errors) {
           console.error(error);

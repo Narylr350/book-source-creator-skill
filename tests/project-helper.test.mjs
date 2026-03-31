@@ -63,8 +63,47 @@ test("initializeOutputBundle creates the standard output files", () => {
     assert.ok(fs.existsSync(path.join(bundleDir, "validation-checklist.md")));
     assert.deepEqual(
       JSON.parse(fs.readFileSync(path.join(bundleDir, "book-source.json"), "utf8")),
-      {},
+      [],
     );
+  } finally {
+    fs.rmSync(tempRoot, { recursive: true, force: true });
+  }
+});
+
+test("CLI validate-source accepts a top-level array payload for Legado import compatibility", () => {
+  const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "legado-validate-array-"));
+
+  try {
+    const sourcePath = path.join(tempRoot, "book-source.json");
+    fs.writeFileSync(
+      sourcePath,
+      JSON.stringify(
+        [
+          {
+            bookSourceUrl: "https://example.com",
+            bookSourceName: "Example",
+            searchUrl: "https://example.com/search?q={{key}}",
+            ruleSearch: { bookList: "$.items[*]", name: "$.title", bookUrl: "$.url" },
+            ruleBookInfo: { name: "$.title", tocUrl: "$.toc" },
+            ruleToc: { chapterList: "$.chapters[*]", chapterName: "$.title", chapterUrl: "$.url" },
+            ruleContent: { content: "$.content" },
+          },
+        ],
+        null,
+        2,
+      ),
+      "utf8",
+    );
+
+    const scriptPath = path.resolve("legado-book-source-generator/scripts/project-helper.mjs");
+    const result = spawnSync(
+      process.execPath,
+      [scriptPath, "validate-source", sourcePath],
+      { encoding: "utf8" },
+    );
+
+    assert.equal(result.status, 0);
+    assert.match(result.stdout, /Book source JSON is valid/);
   } finally {
     fs.rmSync(tempRoot, { recursive: true, force: true });
   }

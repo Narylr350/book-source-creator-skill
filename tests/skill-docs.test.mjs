@@ -27,6 +27,12 @@ const officialNotesPath = path.join(
   "references",
   "legado-official-rule-notes.md",
 );
+const jsonStructurePath = path.join(
+  repoRoot,
+  "legado-book-source-generator",
+  "references",
+  "legado-json-structure.md",
+);
 
 test("SKILL requires checking WebView and reference examples before a final negative rating", () => {
   const skill = fs.readFileSync(skillPath, "utf8");
@@ -88,4 +94,13 @@ test("official Legado notes capture the core rule details needed during generati
   assert.match(notes, /JSON\.stringify\(\)/);
   assert.match(notes, /nextTocUrl/);
   assert.match(notes, /@put|@get/);
+});
+
+test("JSON structure docs require array-wrapped import payloads for Legado", () => {
+  const jsonStructure = fs.readFileSync(jsonStructurePath, "utf8");
+  const skill = fs.readFileSync(skillPath, "utf8");
+
+  assert.match(jsonStructure, /顶层必须是 JSON 数组/);
+  assert.match(jsonStructure, /\[\s*\{/);
+  assert.match(skill, /JSON 数组/);
 });

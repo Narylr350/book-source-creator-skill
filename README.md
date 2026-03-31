@@ -186,7 +186,8 @@ node .\legado-book-source-generator\scripts\audit-source.mjs .\outputs\example-c
 
 注意：
 
-- `audit-source.mjs` 只做静态审计、占位检测和搜索 URL 预览
+- `book-source.json` 提供给阅读导入时，顶层必须是 JSON 数组，即使只有一个书源
+- `audit-source.mjs` 只做静态审计、占位检测、嵌入式 JS 语法检查和搜索 URL 预览
 - 它不会模拟阅读 App 的完整规则执行
 - 静态审计通过，不代表书源运行一定可用
 

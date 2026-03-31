@@ -1,5 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+import vm from "node:vm";
 
 const PLACEHOLDER_TEXT = new Set([
   "书籍列表规则",
@@ -28,6 +29,49 @@ const RULE_GROUPS = [
   "ruleToc",
   "ruleContent",
 ];
+
+function collectExecutableJsSnippets(value) {
+  if (typeof value !== "string") {
+    return [];
+  }
+
+  const snippets = [];
+  const jsBlockMatch = value.match(/<js>\s*([\s\S]*?)\s*<\/js>/i);
+  if (jsBlockMatch) {
+    snippets.push(jsBlockMatch[1]);
+  }
+
+  const jsRuleIndex = value.indexOf("@js:");
+  if (jsRuleIndex !== -1) {
+    snippets.push(value.slice(jsRuleIndex + 4));
+  }
+
+  return snippets;
+}
+
+export function collectEmbeddedJsSyntaxErrors(source) {
+  const errors = [];
+
+  for (const groupName of RULE_GROUPS) {
+    const group = source[groupName];
+    if (!group || typeof group !== "object" || Array.isArray(group)) {
+      continue;
+    }
+
+    for (const [fieldName, fieldValue] of Object.entries(group)) {
+      for (const snippet of collectExecutableJsSnippets(fieldValue)) {
+        try {
+          new vm.Script(String(snippet));
+        } catch (error) {
+          errors.push(`${groupName}.${fieldName}: ${error.message}`);
+          break;
+        }
+      }
+    }
+  }
+
+  return errors;
+}
 
 function isRiskyRuleValue(value) {
   return (
@@ -65,6 +109,7 @@ export function buildSearchPreview(searchUrl, keyword = "测试", page = "1") {
 
 export function auditSourceRules(source) {
   const sections = {};
+  const jsSyntaxErrors = collectEmbeddedJsSyntaxErrors(source);
 
   for (const groupName of RULE_GROUPS) {
     const group = source[groupName];
@@ -119,6 +164,7 @@ export function auditSourceRules(source) {
     loginConfigured: Boolean(source.loginUrl),
     exploreConfigured: Boolean(source.enabledExplore || source.exploreUrl),
     searchPreview: buildSearchPreview(source.searchUrl),
+    jsSyntaxErrors,
     sections,
   };
 }
@@ -133,6 +179,10 @@ export function formatAuditReport(source, audit) {
   if (audit.searchPreview) {
     lines.push(`搜索预览: ${audit.searchPreview}`);
   }
+
+  lines.push(
+    `JS 语法检查: ${audit.jsSyntaxErrors.length > 0 ? audit.jsSyntaxErrors.join(" | ") : "未发现语法错误"}`,
+  );
 
   for (const [groupName, section] of Object.entries(audit.sections)) {
     lines.push("");
@@ -151,7 +201,7 @@ export function formatAuditReport(source, audit) {
   }
 
   lines.push("");
-  lines.push("提示: 本脚本只做静态审计、占位检测和搜索 URL 预览。");
+  lines.push("提示: 本脚本只做静态审计、占位检测、嵌入式 JS 语法检查和搜索 URL 预览。");
   lines.push("提示: 本脚本不模拟 Legado 的完整规则执行，不据此判断书源最终可用性。");
   return lines.join("\n");
 }

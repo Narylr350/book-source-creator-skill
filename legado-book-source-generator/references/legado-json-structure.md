@@ -12,6 +12,12 @@
 - `ruleToc`
 - `ruleContent`
 
+## 导入文件格式
+
+- 提供给阅读导入的 `book-source.json` 顶层必须是 JSON 数组。
+- 即使当前只生成一个书源，也要写成 `[ { ... } ]`，不要直接输出单个对象。
+- 辅助脚本可以校验单对象结构，但最终交付给阅读导入时必须是数组包装格式。
+
 ## 常见可选字段
 
 - `bookSourceGroup`
@@ -59,26 +65,28 @@
 ## 最小示例
 
 ```json
-{
-  "bookSourceUrl": "https://example.com",
-  "bookSourceName": "Example",
-  "searchUrl": "https://example.com/search?q={{key}}",
-  "ruleSearch": {
-    "bookList": "$.items[*]",
-    "name": "$.title",
-    "bookUrl": "$.url"
-  },
-  "ruleBookInfo": {
-    "name": "$.title",
-    "tocUrl": "$.tocUrl"
-  },
-  "ruleToc": {
-    "chapterList": "$.chapters[*]",
-    "chapterName": "$.title",
-    "chapterUrl": "$.url"
-  },
-  "ruleContent": {
-    "content": "$.content"
+[
+  {
+    "bookSourceUrl": "https://example.com",
+    "bookSourceName": "Example",
+    "searchUrl": "https://example.com/search?q={{key}}",
+    "ruleSearch": {
+      "bookList": "$.items[*]",
+      "name": "$.title",
+      "bookUrl": "$.url"
+    },
+    "ruleBookInfo": {
+      "name": "$.title",
+      "tocUrl": "$.tocUrl"
+    },
+    "ruleToc": {
+      "chapterList": "$.chapters[*]",
+      "chapterName": "$.title",
+      "chapterUrl": "$.url"
+    },
+    "ruleContent": {
+      "content": "$.content"
+    }
   }
-}
+]
 ```
