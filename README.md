@@ -63,10 +63,6 @@
 │     ├─ project-helper.mjs
 │     └─ lib/
 │        └─ source-audit.mjs
-└─ tests/
-   ├─ audit-source.test.mjs
-   ├─ project-helper.test.mjs
-   └─ skill-docs.test.mjs
 ```
 
 ## 核心文档怎么用
@@ -190,21 +186,6 @@ node .\legado-book-source-generator\scripts\audit-source.mjs .\outputs\example-c
 - `audit-source.mjs` 只做静态审计、占位检测、嵌入式 JS 语法检查和搜索 URL 预览
 - 它不会模拟阅读 App 的完整规则执行
 - 静态审计通过，不代表书源运行一定可用
-
-## 测试
-
-运行全量测试：
-
-```powershell
-node --test .\tests\project-helper.test.mjs .\tests\audit-source.test.mjs .\tests\skill-docs.test.mjs
-```
-
-测试覆盖：
-
-- 输出目录脚手架
-- 书源 JSON 基础校验
-- 静态审计行为
-- skill 文档中的关键约束是否真的写进仓库
 
 ## 样例
 
