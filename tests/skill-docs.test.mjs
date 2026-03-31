@@ -54,12 +54,31 @@ test("SKILL hard-blocks on login-capable sites and points generation back to off
   assert.match(skill, /legado-official-rule-notes\.md/);
 });
 
-test("reference source patterns stays distilled and removes noisy user-provided sample chatter", () => {
+test("reference source patterns keeps a clean sample appendix without noisy user-provided urls", () => {
   const patterns = fs.readFileSync(patternPath, "utf8");
+  const localSamples = [
+    "legado-book-source-generator/references/reference-sources/jiwangyihao-source-j-legado/masiro.json",
+    "legado-book-source-generator/references/reference-sources/jiwangyihao-source-j-legado/bilinovel.json",
+    "legado-book-source-generator/references/reference-sources/jiwangyihao-source-j-legado/wenku.json",
+    "legado-book-source-generator/references/reference-sources/ZWolken-Light-Novel-Yuedu-Source/ACGZC.json",
+    "legado-book-source-generator/references/reference-sources/ZWolken-Light-Novel-Yuedu-Source/Lofter.json",
+    "legado-book-source-generator/references/reference-sources/ZWolken-Light-Novel-Yuedu-Source/刺猬猫.json",
+  ];
 
+  assert.match(patterns, /参考书源速查/);
+  assert.match(patterns, /masiro\.json/);
+  assert.match(patterns, /bilinovel\.json/);
+  assert.match(patterns, /wenku\.json/);
+  assert.match(patterns, /ACGZC\.json/);
+  assert.match(patterns, /Lofter\.json/);
+  assert.match(patterns, /刺猬猫\.json/);
   assert.doesNotMatch(patterns, /用户提供/);
   assert.doesNotMatch(patterns, /n\.novelia\.cc/);
   assert.doesNotMatch(patterns, /esjzone/i);
+
+  for (const sample of localSamples) {
+    assert.ok(fs.existsSync(path.join(repoRoot, sample)), sample);
+  }
 });
 
 test("official Legado notes capture the core rule details needed during generation", () => {

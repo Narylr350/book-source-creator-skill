@@ -134,3 +134,23 @@
 | 目录失败 | `P11`, `P12`, `P13`, `P14` | 把正文页问题误判为目录问题 |
 | 正文失败 | `P15`, `P16`, `P17`, `P18`, `P19`, `P20` | 未分层检查就直接上脚本解密 |
 | 登录失败 | `P04`, `P05` | 用参考源参数替代目标站登录参数 |
+
+## 参考书源速查
+
+这部分只做“方便回查”的样本索引，不替代上面的模式矩阵，也不构成对目标站点的直接结论。
+
+| 书源文件 | 主要参考点 | 常见对应模式 |
+| --- | --- | --- |
+| `masiro.json` | `reference-sources/jiwangyihao-source-j-legado/masiro.json` | 详情初始化校验、嵌入 JSON 目录、卷/付费信息、付费章节占位 | `P03`, `P11`, `P13`, `P16` |
+| `bilinovel.json` | `reference-sources/jiwangyihao-source-j-legado/bilinovel.json` | 表单登录、网络层收敛、搜索分流、伪链接目录、正文分页、脚本解密 | `P04`, `P06`, `P07`, `P12`, `P19`, `P20` |
+| `wenku.json` | `reference-sources/jiwangyihao-source-j-legado/wenku.json` | 多请求合并搜索、旧站编码、网页正文回退 App 接口 | `P08`, `P10`, `P17` |
+| `ACGZC.json` | `reference-sources/ZWolken-Light-Novel-Yuedu-Source/ACGZC.json` | 轻量 HTML 选择器、封面兜底 | `P01`, `P22` |
+| `Lofter.json` | `reference-sources/ZWolken-Light-Novel-Yuedu-Source/Lofter.json` | 前缀路由搜索、发现页默认关闭 | `P09`, `P24` |
+| `刺猬猫.json` | `reference-sources/ZWolken-Light-Novel-Yuedu-Source/刺猬猫.json` | 目录层附加字段、章节页 `WebView`、列表结构复用 | `P13`, `P15`, `P23` |
+
+使用建议：
+
+- 先按模式矩阵选思路，再回到这张表里找最接近的书源文件。
+- 这里列的是已经下载到仓库里的本地参考文件，后续可以直接打开对应路径查看。
+- 这里只列本地已整理过的典型样本，不再夹带用户临时提供的站点 URL。
+- 如果目标站只在某一个链路上相似，只参考那一段模式，不要整份照抄。
