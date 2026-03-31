@@ -1,166 +1,189 @@
 ---
 name: legado-book-source-generator
-description: Analyze a fiction or novel website and generate a Legado book source JSON. Use when Codex needs to assess whether a site can become a Legado source, inspect login requirements, analyze search/detail/toc/content chains with Browser MCP, map site behavior to Legado rules, or prepare manual Legado import validation artifacts.
+description: Use when 需要分析小说站点并生成 Legado 书源，且要先判断登录、评估可生成性、对照官方规则与辅助文档，再输出可验证的书源结果
 ---
 
-# Legado Book Source Generator
+# Legado 书源生成
 
-## Overview
+## 概述
 
-Use this skill to turn a single fiction site into a single Legado book source.
+这个 skill 用来把单个小说站点分析成单个 Legado 书源。
 
-Treat model analysis as the primary judgement for page structure, request chains, and rule semantics. Use Browser MCP and helper scripts only to verify observations, catch contradictions, and structure outputs.
+目标站点的 Browser MCP 实测行为和阅读官方规则是事实基线。辅助文档不是“可选附件”，而是生产阶段必须同时对照的参考面板，用来约束输出结构、回退路径和风险判断。
 
-Do not generate `book-source.json` before completing a website feasibility assessment.
+在完成可生成性评估之前，禁止生成 `book-source.json`。
 
-Treat the actual target site's Browser MCP observations and Legado's official rule documentation as the source of truth. Reference sources are only supplementary learning material for the AI and must never override live analysis.
+## 生产时必须同时对照的文档
 
-## Core Rules
+生成阶段至少同时对照以下文档：
 
-1. Assess login requirements first.
-2. If the site supports login, prefer analysis in an authenticated session.
-3. If login needs QR scan, CAPTCHA, SMS, or any human confirmation, stop and ask the human to complete it.
-4. Complete a website feasibility assessment before generating JSON.
-5. If Browser MCP conflicts with the model's inference, trust observed behavior and explain the correction.
-6. If the rating is `需登录后再评估` or `不建议生成`, continue only with explicit `高风险` labeling, reasons, and known failure points.
-7. When Legado-side debugging is needed, guide the human through the smallest possible repro and ask for stage-specific screenshots or logs instead of asking for everything at once.
-8. When the human provides known-good sources, treat them only as supplementary learning material for writing style or rule organization, never as the basis for final rule decisions.
-9. Default to search, detail, toc, and content only. Do not enable explore or generate discover-page rules unless the human explicitly asks for them.
-10. Do not add debugging guidance to `bookSourceComment` during normal generation. Enter debugging mode only after the human reports that the source no longer works or a specific chain fails in Legado.
-11. Repository-level lessons from `jiwangyihao/source-j-legado` and `ZWolken/Light-Novel-Yuedu-Source` have already been distilled into `references/reference-source-patterns.md`; future executions should use the distilled notes there instead of reopening those upstream examples by default.
+- `references/assessment-template.md`
+- `references/analysis-workflow.md`
+- `references/reference-source-patterns.md`
+- `references/legado-json-structure.md`
+- `references/legado-official-rule-notes.md`
 
-## Workflow
+如果正文链路出现签名、密文、CSR 空壳、浏览器渲染等特殊情况，再补看：
 
-### 1. Check Login State
+- `examples/README.md`
+- 最相关的本地样例 bundle
 
-- Inspect the site for login entry points, gated content, degraded anonymous pages, member-only chapters, or capability changes across search/detail/toc/content.
-- If login is possible, ask the human to complete login in Browser MCP and continue analysis in that session.
-- If login requires human intervention, request it immediately instead of guessing.
-- If login cannot be completed, keep going only for assessment or exploratory output and mark all downstream results as high risk.
+这些文档在生产时必须同时匹配，不能等到出问题了才回头看。
 
-### 2. Write Feasibility Assessment
+## 核心规则
 
-- Create `assessment.md` before any rule generation.
-- Use exactly one rating:
+1. 先判断站点是否支持登录。
+2. 只要站点支持登录，就先硬阻断，明确让用户选择登录还是不登录分析。
+3. 在用户做出“登录分析 / 不登录分析”选择之前，不要写 `assessment.md`、`analysis.md`、`book-source.json`。
+4. 不能因为站点可匿名访问就默认走匿名分析；若用户选择不登录分析，必须整体按更高风险处理。
+5. 如果登录需要扫码、验证码、短信或其他人工确认，立即请求用户协助，不要猜。
+6. 先完成网站可生成性评估，再进入规则生成。
+7. 如果 Browser MCP 与模型推断冲突，以实测为准，并写明修正原因。
+8. 如果结论是 `需登录后再评估` 或 `不建议生成`，继续产出时必须显式标注 `高风险`、继续原因和预期失效链路。
+9. 如果正文接口带签名、返回密文，或阅读页只有 CSR 空壳，但 Browser MCP 已能稳定看到渲染后的正文，先按 `可生成但高风险` 处理，并优先评估 `P15` (`WebView`)；不能直接判 `不建议生成`。
+10. 如果准备给出 `不建议生成`，必须先明确排除 `references/reference-source-patterns.md` 中更低复杂度的回退路径，尤其是 `P15` (`WebView`) 和直接提取方案。
+11. 生成规则时，优先服从 `references/legado-official-rule-notes.md` 中提炼的阅读官方规则，再参考模式矩阵和样例组织方式。
+12. 默认只覆盖 `search / detail / toc / content`，除非用户明确要求，否则不要启用发现页。
+13. 正常生成时，不要把调试说明塞进 `bookSourceComment`；只有用户反馈失败后才进入调试协作模式。
+
+## 工作流
+
+### 1. 登录判定
+
+- 检查登录入口、会员限制、匿名降级、登录后能力变化，以及搜索 / 详情 / 目录 / 正文是否因登录状态不同而改变。
+- 如果站点支持登录，先停下来，让用户选择登录还是不登录分析。
+- 如果用户选择登录分析，引导其在 Browser MCP 中完成登录，再继续。
+- 如果用户选择不登录分析，后续所有评估和生成都要提高风险等级。
+- 如果登录无法完成，只允许继续做评估或探索性结果，并明确写出高风险原因。
+
+### 2. 可生成性评估
+
+- 先输出 `assessment.md`。
+- 评级只能是以下四种之一：
   - `可直接生成`
   - `可生成但高风险`
   - `需登录后再评估`
   - `不建议生成`
-- Cover at least:
-  - login dependence
-  - search reachability
-  - detail stability
-  - toc stability
-  - content stability
-  - anti-bot, CAPTCHA, membership, signatures, encryption, payment limits
-- If the rating is high risk or blocked, state why work is continuing and which chain is expected to fail.
+- 评估至少覆盖：
+  - 登录依赖
+  - 搜索链路
+  - 详情链路
+  - 目录链路
+  - 正文链路
+  - 反爬、验证码、会员、签名、加密、付费限制
+- 若准备写 `不建议生成`，必须同时写出：
+  - 为什么 `P15` (`WebView`) 不适用
+  - 为什么更简单的直接提取不适用
+  - 哪条链路已经被实测证伪
+- 如果正文直连失败，但 Browser MCP 已能看到稳定渲染正文，在完成 `WebView` 判定前，默认保持为 `可生成但高风险`。
 
-Use [references/assessment-template.md](references/assessment-template.md) as the output template.
+使用 `references/assessment-template.md` 作为输出模板。
 
-### 3. Analyze the Site
+### 3. 网站分析
 
-Perform four-chain analysis in this fixed order:
+固定按以下顺序分析：
 
-1. search
-2. detail
-3. toc
-4. content
+1. 搜索
+2. 详情
+3. 目录
+4. 正文
 
-For each chain, record:
+每条链路都要记录：
 
-- page entry or trigger
-- request chain or interface source
-- stable extraction evidence
-- risk points
-- Legado rule recommendation
+- 页面入口或触发方式
+- 请求链路或接口来源
+- 稳定抓取依据
+- 风险点
+- Legado 规则建议
 
-Use double-sample verification:
+双样本要求：
 
-- test at least two search keywords or two sample books
-- verify at least two content chapters
+- 搜索至少验证两个关键词或两本样书
+- 正文至少验证两个章节
 
-Use [references/analysis-workflow.md](references/analysis-workflow.md) for the exact structure.
+若正文链路出现签名、密文、CSR 空壳、浏览器渲染正文等情况，必须同时对照：
 
-If the human has provided confirmed working sources for similar sites, use only the distilled notes in [references/reference-source-patterns.md](references/reference-source-patterns.md). Do not fetch or inspect those example sources, upstream READMEs, or release JSONs again during normal execution unless the human explicitly asks for that.
+- `references/analysis-workflow.md`
+- `references/reference-source-patterns.md`
+- `examples/README.md`
 
-### 4. Generate Legado JSON
+使用 `references/analysis-workflow.md` 作为固定结构。
 
-- Prefer stable JSON or API responses over DOM scraping.
-- Prefer stable DOM extraction over JS compensation.
-- Add JS only when a simpler rule cannot represent the observed behavior.
-- Base all rule decisions on the live target site's Browser MCP observations plus Legado's official rule documentation.
-- Keep the JSON aligned with Legado `BookSource`, `SearchRule`, `BookInfoRule`, `TocRule`, and `ContentRule`.
-- Include at least:
-  - `bookSourceUrl`
-  - `bookSourceName`
-  - `searchUrl`
-  - `ruleSearch`
-  - `ruleBookInfo`
-  - `ruleToc`
-  - `ruleContent`
-- Include `loginUrl` and `header` when the site needs them.
-- Default `enabledExplore` to `false` and omit discover-page work unless the human explicitly asks for discovery support.
+### 4. 生成 Legado JSON
 
-Read [references/legado-json-structure.md](references/legado-json-structure.md) before finalizing the JSON.
+- 优先稳定 API / JSON。
+- 其次稳定 HTML。
+- 若 Browser MCP 已证明章节页本身可稳定渲染正文，而不稳定点只在直连接口，优先考虑 `WebView`，不要先上重型签名复刻或解密实现。
+- 只有更简单的规则无法表达站点行为时，才加 JS。
+- 顶层字段和子规则字段必须与 Legado 的 `BookSource`、`SearchRule`、`BookInfoRule`、`TocRule`、`ContentRule` 对齐。
+- 生成时保持以下文档同步打开：
+  - `references/legado-official-rule-notes.md`
+  - `references/reference-source-patterns.md`
+  - `references/legado-json-structure.md`
 
-### 5. Guide Human-Assisted Debugging
+至少包含：
 
-Legado source creation is usually not blocked by JSON generation. It is blocked by missing reproduction evidence from the app.
+- `bookSourceUrl`
+- `bookSourceName`
+- `searchUrl`
+- `ruleSearch`
+- `ruleBookInfo`
+- `ruleToc`
+- `ruleContent`
 
-When debugging with the human:
+使用 `references/legado-json-structure.md` 检查最终 JSON。
 
-- Enter this mode only after the human reports a broken source, failed import, failed chain, or app-side failure.
-- Send them to the source edit screen first.
-- If `loginUrl` exists, ask them to use the built-in login entry before debugging rules.
-- Ask for only the evidence needed for the failing stage.
-- Prefer raw source dumps over paraphrased descriptions whenever the app can show them.
-- If the app crashes or the source editor cannot reach the failing stage, switch to crash/log export instructions.
-- Prefer the ready-to-send templates in the debug collaboration guide instead of improvising vague requests.
+### 5. 人工调试协作
 
-Use [references/debugging-collaboration.md](references/debugging-collaboration.md) to decide what to request.
+只有用户反馈导入失败、链路失败、调试失败或 App 崩溃时，才进入这个模式。
 
-### 6. Prepare Manual Legado Validation
+调试时：
 
-- Output `validation-checklist.md`.
-- Tell the human to import `book-source.json` into Legado and verify:
-  - search returns the target book
-  - detail metadata renders
-  - toc loads
-  - at least two content chapters open
-- If validation fails, trace the failure back to the affected chain and revise the rules.
+- 先把用户带到正确的书源编辑或调试入口
+- 只索取当前失败链路所需的最小证据
+- 优先要源码、阶段性截图或日志，不要一次性索要全部信息
+- 如果有 `loginUrl`，先让用户完成内置登录再调试
 
-Use [references/validation-checklist.md](references/validation-checklist.md) as the checklist body.
+使用 `references/debugging-collaboration.md`。
 
-## Output Bundle
+### 6. 手工验证
 
-Write deliverables under `outputs/<site-slug>/`:
+- 输出 `validation-checklist.md`
+- 指导用户导入 `book-source.json` 后至少验证：
+  - 搜索能找到目标书
+  - 详情能显示元数据
+  - 目录能加载
+  - 至少两个正文章节能打开
+- 若验证失败，回溯到对应链路修规则
+
+使用 `references/validation-checklist.md`。
+
+## 输出物
+
+统一写到 `outputs/<site-slug>/`：
 
 - `assessment.md`
 - `analysis.md`
 - `book-source.json`
 - `validation-checklist.md`
 
-Use the helper script to scaffold or validate artifacts:
+可用脚本：
 
 ```powershell
 node .\legado-book-source-generator\scripts\project-helper.mjs scaffold-output .\outputs https://example.com
 node .\legado-book-source-generator\scripts\project-helper.mjs validate-source .\outputs\example-com\book-source.json
-```
-
-You can also run the static audit helper:
-
-```powershell
 node .\legado-book-source-generator\scripts\audit-source.mjs .\outputs\example-com\book-source.json --keyword 凡人修仙 --page 1
 ```
 
-`audit-source.mjs` only performs static auditing, placeholder detection, and search URL preview. It does not simulate Legado's full rule execution and must not be treated as the authority on runtime availability.
+`audit-source.mjs` 只做静态审计、占位检测和搜索 URL 预览，不能据此判断最终运行可用性。
 
-## References
+## 参考入口
 
-- Assessment template: [references/assessment-template.md](references/assessment-template.md)
-- Analysis workflow: [references/analysis-workflow.md](references/analysis-workflow.md)
-- Debug collaboration: [references/debugging-collaboration.md](references/debugging-collaboration.md)
-- JSON structure: [references/legado-json-structure.md](references/legado-json-structure.md)
-- Reference source patterns: [references/reference-source-patterns.md](references/reference-source-patterns.md)
-- Manual validation: [references/validation-checklist.md](references/validation-checklist.md)
-- Real sample bundles: [examples/README.md](examples/README.md)
+- 评估模板: [references/assessment-template.md](references/assessment-template.md)
+- 分析流程: [references/analysis-workflow.md](references/analysis-workflow.md)
+- 官方规则摘录: [references/legado-official-rule-notes.md](references/legado-official-rule-notes.md)
+- JSON 结构: [references/legado-json-structure.md](references/legado-json-structure.md)
+- 模式矩阵: [references/reference-source-patterns.md](references/reference-source-patterns.md)
+- 调试协作: [references/debugging-collaboration.md](references/debugging-collaboration.md)
+- 验证清单: [references/validation-checklist.md](references/validation-checklist.md)
+- 样例说明: [examples/README.md](examples/README.md)

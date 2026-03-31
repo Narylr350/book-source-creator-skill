@@ -10,25 +10,17 @@
 | 参考源权限 | 不得直接复制整份规则，不得替代目标站点实测 |
 | 默认功能范围 | `search` / `detail` / `toc` / `content` |
 | 发现页默认值 | 默认关闭，不因参考源存在 `exploreUrl` 而默认启用 |
-| 后续 AI 行为 | 默认只读取本文件，不重新打开示例源、README 或发行 JSON，除非用户明确要求 |
-
-## 已分析样本
-
-| 来源 | 已检查文件 |
-| --- | --- |
-| `jiwangyihao/source-j-legado` | `masiro.json`, `bilinovel.json`, `wenku.json` |
-| `ZWolken/Light-Novel-Yuedu-Source` | `ACGZC.json`, `Lofter.json`, `刺猬猫.json` |
-| 用户提供 | `https://n.novelia.cc/`, `https://www.esjzone.one` |
+| 生产时要求 | 生成阶段必须同时对照本文件、官方规则摘录和实时站点实测，不能把本文件降级成“有空再看”的附录 |
 
 ## 规则模式矩阵
 
 | 模式编号 | 模式名称 | 来源样本 | 触发条件 | 推荐实现 | 适用边界 |
 | --- | --- | --- | --- | --- | --- |
-| P01 | 轻量 HTML 选择器 | `ACGZC.json`, `ESJ Zone` | 搜索、详情、目录、正文均可由稳定 HTML 结构直接提取 | 直接使用 `searchUrl + ruleSearch + ruleBookInfo + ruleToc + ruleContent`；尽量不用 JS | 仅适用于无明显反爬、无复杂脚本、目录与正文直达的站点 |
-| P02 | API 主导统一数据源 | `n.novelia.cc` | 搜索、详情、目录、正文均可稳定落到 API | 在 `ruleBookInfo.init` 中完成 URL 归一化；后续规则统一基于 JSON 字段 | 不适用于接口不稳定或接口仅覆盖部分链路的站点 |
-| P03 | 详情初始化校验 | `masiro.json`, `n.novelia.cc` | 详情访问前需要先判断等级、登录、URL 类型或字段补全 | 在 `ruleBookInfo.init` 中做访问校验、接口转换、失败显式化 | 不应把与详情无关的重网络逻辑塞入 `init` |
+| P01 | 轻量 HTML 选择器 | `ACGZC.json` | 搜索、详情、目录、正文均可由稳定 HTML 结构直接提取 | 直接使用 `searchUrl + ruleSearch + ruleBookInfo + ruleToc + ruleContent`；尽量不用 JS | 仅适用于无明显反爬、无复杂脚本、目录与正文直达的站点 |
+| P02 | API 主导统一数据源 | `API直连类样本` | 搜索、详情、目录、正文均可稳定落到 API | 在 `ruleBookInfo.init` 中完成 URL 归一化；后续规则统一基于 JSON 字段 | 不适用于接口不稳定或接口仅覆盖部分链路的站点 |
+| P03 | 详情初始化校验 | `masiro.json`, `API直连类样本` | 详情访问前需要先判断等级、登录、URL 类型或字段补全 | 在 `ruleBookInfo.init` 中做访问校验、接口转换、失败显式化 | 不应把与详情无关的重网络逻辑塞入 `init` |
 | P04 | 表单登录写入登录头 | `bilinovel.json` | 登录为账号密码表单，成功后核心依赖 cookie 或 header | `loginUi + loginUrl` 完成登录；将 cookie 写入 `loginHeader` | 仅适用于站点实际存在稳定表单登录 |
-| P05 | 登录续期与请求重放 | `n.novelia.cc` | 登录后 token 会过期，且接口可返回可识别的失效信号 | `loginCheckJs` 检测失效响应，触发重新登录并重放请求 | 仅适用于失效信号稳定、重放语义清晰的站点 |
+| P05 | 登录续期与请求重放 | `登录续期类样本` | 登录后 token 会过期，且接口可返回可识别的失效信号 | `loginCheckJs` 检测失效响应，触发重新登录并重放请求 | 仅适用于失效信号稳定、重放语义清晰的站点 |
 | P06 | 统一网络层收敛 | `bilinovel.json` | 存在重试、反爬、cookie 更新、WebView 兜底等跨字段共用逻辑 | 将公共能力集中到 `jsLib` | 低复杂站点不应引入该模式 |
 | P07 | 首屏与翻页分流搜索 | `bilinovel.json` | 搜索第一页和后续页使用不同路由或不同方法 | `searchUrl` 根据页码分流；首屏可 POST，翻页可 GET | 需由实测确认站点存在这种分流 |
 | P08 | 多请求合并搜索 | `wenku.json` | 单次搜索不足以覆盖书名、作者或多个来源 | 在 `searchUrl` 或 `ruleSearch.bookList` 中执行多次请求并合并结果 | 仅在站点搜索链路明确分裂时采用 |
@@ -36,31 +28,18 @@
 | P10 | 旧站编码声明 | `wenku.json` | 页面或接口使用 `gbk` 等非 UTF-8 编码 | 在 URL 末尾显式声明 `charset` | 仅在编码问题已被实测确认时采用 |
 | P11 | 目录来自嵌入 JSON | `masiro.json` | 页面内存在卷列表 JSON、章节列表 JSON 或等价结构化数据 | `ruleToc.chapterList` 读取嵌入数据并重组扁平目录 | 不适用于仅有普通 HTML 列表的站点 |
 | P12 | 目录伪链接修补 | `bilinovel.json` | 目录项为 `javascript:cid(...)`、占位链接或脚本生成链接 | 在 `ruleToc.chapterList` 中主动加载相邻页或章节页，反推真实链接 | 仅在目录链接无法直接使用时采用 |
-| P13 | 目录层输出卷/付费/时间 | `masiro.json`, `刺猬猫.json`, `ESJ Zone` | 目录节点可稳定识别卷、付费状态、更新时间 | 在 `ruleToc` 中直接输出 `isVolume`、`isVip`、`updateTime` | 若节点结构不稳定，不应强行补齐所有字段 |
-| P14 | 详情与目录同源 | `ESJ Zone` | 目录直接嵌在详情页中 | `ruleBookInfo.tocUrl` 留空；目录规则直接读取详情页 HTML | 仅适用于目录确实与详情同源 |
+| P13 | 目录层输出卷/付费/时间 | `masiro.json`, `刺猬猫.json` | 目录节点可稳定识别卷、付费状态、更新时间 | 在 `ruleToc` 中直接输出 `isVolume`、`isVip`、`updateTime` | 若节点结构不稳定，不应强行补齐所有字段 |
+| P14 | 详情与目录同源 | `详情目录同页类样本` | 目录直接嵌在详情页中 | `ruleBookInfo.tocUrl` 留空；目录规则直接读取详情页 HTML | 仅适用于目录确实与详情同源 |
 | P15 | 章节页强制 WebView | `刺猬猫.json` | 章节页直接请求不稳定，但 WebView 中可稳定加载 | 在 `chapterUrl` 后追加 `{'webView': true}` | 仅在 Browser MCP 或 Legado 实测已证明必要时采用 |
 | P16 | 付费章节占位 + 支付动作 | `masiro.json` | 付费章节可识别，且站点存在明确支付动作 | 正文返回占位文本；支付逻辑放入 `payAction` | 不适用于无独立支付动作或不允许自动支付的站点 |
 | P17 | 网页正文回退 App 接口 | `wenku.json` | 网页正文失效，但移动端接口仍可稳定返回正文 | `ruleContent.content` 检测网页失败后转调 App 接口 | 仅在接口稳定且字段语义清楚时采用 |
-| P18 | 正文轻处理 | `ESJ Zone`, `刺猬猫.json` | 正文主体稳定，问题仅在文本净化、繁简转换、图片地址 | 在 `ruleContent` 中做轻量文本后处理，如 `java.t2s` | 不应为轻问题引入脚本解密方案 |
+| P18 | 正文轻处理 | `刺猬猫.json`, `HTML直连类样本` | 正文主体稳定，问题仅在文本净化、繁简转换、图片地址 | 在 `ruleContent` 中做轻量文本后处理，如 `java.t2s` | 不应为轻问题引入脚本解密方案 |
 | P19 | 正文分页与跳章显式区分 | `bilinovel.json` | 正文存在同章分页，且下一章 URL 同样可见 | `nextContentUrl` 只返回同章下一页；跳章由目录负责 | 若不区分，将导致章节错乱 |
 | P20 | 脚本解密与字体替换 | `bilinovel.json` | 正文存在脚本解密、字体混淆、样式展开依赖 | 先抓正文页，再拉脚本与样式资源，最后生成正文 | 最高复杂度方案；只能在实测证明无更简单方案时采用 |
-| P21 | 相对 URL 生成 | `n.novelia.cc`, `ESJ Zone` | 书籍 URL、章节 URL 可由对象字段拼接得到 | 在 `ruleSearch.bookUrl` 或 `ruleToc.chapterUrl` 中用小段 JS 生成相对 URL | 仅适用于根域稳定的站点 |
-| P22 | 封面留空兜底 | `ACGZC.json`, `ESJ Zone` | 封面地址不稳定、空值常见或站点本身无封面 | `coverUrl` 返回空字符串 | 不应伪造封面地址 |
+| P21 | 相对 URL 生成 | `相对链接类样本` | 书籍 URL、章节 URL 可由对象字段拼接得到 | 在 `ruleSearch.bookUrl` 或 `ruleToc.chapterUrl` 中用小段 JS 生成相对 URL | 仅适用于根域稳定的站点 |
+| P22 | 封面留空兜底 | `ACGZC.json`, `HTML直连类样本` | 封面地址不稳定、空值常见或站点本身无封面 | `coverUrl` 返回空字符串 | 不应伪造封面地址 |
 | P23 | 列表结构复用 | `刺猬猫.json` | 搜索列表与发现列表结构相同，仅入口不同 | 复用 `bookList/bookUrl/coverUrl/name` 抽取规则 | 默认不因可复用而启用发现页 |
-| P24 | 发现规则保留但默认关闭 | `Lofter.json`, `ESJ Zone` | 发现规则已存在，但主流程不依赖发现页 | 保留 `exploreUrl` 实现，设置 `enabledExplore=false` | 仅在用户明确需要发现页时启用 |
-
-## 样本到模式映射
-
-| 样本 | 对应模式 |
-| --- | --- |
-| `masiro.json` | `P03`, `P11`, `P13`, `P16` |
-| `bilinovel.json` | `P04`, `P06`, `P07`, `P12`, `P19`, `P20` |
-| `wenku.json` | `P08`, `P10`, `P17` |
-| `ACGZC.json` | `P01`, `P22` |
-| `Lofter.json` | `P09`, `P24` |
-| `刺猬猫.json` | `P13`, `P15`, `P23` |
-| `n.novelia.cc` | `P02`, `P05`, `P21` |
-| `ESJ Zone` | `P01`, `P14`, `P18`, `P21`, `P22`, `P24` |
+| P24 | 发现规则保留但默认关闭 | `Lofter.json` | 发现规则已存在，但主流程不依赖发现页 | 保留 `exploreUrl` 实现，设置 `enabledExplore=false` | 仅在用户明确需要发现页时启用 |
 
 ## 禁用项
 
