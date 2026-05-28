@@ -10,7 +10,7 @@
 
 ## 2. 可生成性评估
 
-- 先输出 `assessment.md`。
+- 先输出 `assessment.md` 到 `runs/<site-slug>/`。
 - 评级只能是以下四种之一：
   - `可直接生成`
   - `可生成但高风险`
@@ -105,7 +105,7 @@
 
 ## 6. 手工验证
 
-- 输出 `validation-checklist.md`
+- 输出 `validation-checklist.md` 到 `runs/<site-slug>/`
 - 指导用户导入 `book-source.json` 后至少验证：
   - 搜索能找到目标书
   - 详情能显示元数据

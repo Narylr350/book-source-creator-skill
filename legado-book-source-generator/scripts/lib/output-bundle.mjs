@@ -2,14 +2,19 @@ import fs from "node:fs";
 import path from "node:path";
 import { deriveSiteSlug } from "./slug.mjs";
 
-const OUTPUT_FILENAMES = [
-  "assessment.md",
-  "analysis.md",
-  "book-source.json",
-  "validation-checklist.md",
-];
-
 export function initializeOutputBundle(rootDir, siteUrl) {
+  const bundleDir = path.join(rootDir, deriveSiteSlug(siteUrl));
+  fs.mkdirSync(bundleDir, { recursive: true });
+
+  const filePath = path.join(bundleDir, "book-source.json");
+  if (!fs.existsSync(filePath)) {
+    fs.writeFileSync(filePath, "[]\n", "utf8");
+  }
+
+  return bundleDir;
+}
+
+export function initializeRunBundle(rootDir, siteUrl) {
   const bundleDir = path.join(rootDir, deriveSiteSlug(siteUrl));
   fs.mkdirSync(bundleDir, { recursive: true });
 
@@ -91,7 +96,6 @@ export function initializeOutputBundle(rootDir, siteUrl) {
       "- Legado 规则建议: ",
       "",
     ].join("\n"),
-    "book-source.json": "[]\n",
     "validation-checklist.md": [
       "# Legado 验收清单",
       "",
@@ -105,10 +109,10 @@ export function initializeOutputBundle(rootDir, siteUrl) {
     ].join("\n"),
   };
 
-  for (const filename of OUTPUT_FILENAMES) {
+  for (const [filename, content] of Object.entries(templates)) {
     const filePath = path.join(bundleDir, filename);
     if (!fs.existsSync(filePath)) {
-      fs.writeFileSync(filePath, templates[filename], "utf8");
+      fs.writeFileSync(filePath, content, "utf8");
     }
   }
 

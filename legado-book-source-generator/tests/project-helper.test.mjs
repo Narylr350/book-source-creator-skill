@@ -1,7 +1,11 @@
 import { describe, it } from "node:test";
 import assert from "node:assert";
+import fs from "node:fs";
+import path from "node:path";
+import os from "node:os";
 import { deriveSiteSlug } from "../scripts/lib/slug.mjs";
 import { validateBookSource } from "../scripts/lib/source-validate.mjs";
+import { initializeOutputBundle, initializeRunBundle } from "../scripts/lib/output-bundle.mjs";
 
 describe("deriveSiteSlug", () => {
   it("extracts slug from full URL", () => {
@@ -64,5 +68,35 @@ describe("validateBookSource", () => {
     };
     const errors = validateBookSource(source);
     assert.ok(errors.some((e) => e.includes("ruleBookInfo.name")));
+  });
+});
+
+describe("initializeOutputBundle", () => {
+  it("creates only book-source.json in outputs", () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "test-output-"));
+    try {
+      initializeOutputBundle(tmpDir, "https://example.com");
+      const slugDir = path.join(tmpDir, "example-com");
+      const files = fs.readdirSync(slugDir);
+      assert.deepStrictEqual(files, ["book-source.json"]);
+      const content = JSON.parse(fs.readFileSync(path.join(slugDir, "book-source.json"), "utf8"));
+      assert.deepStrictEqual(content, []);
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true });
+    }
+  });
+});
+
+describe("initializeRunBundle", () => {
+  it("creates process documents in runs", () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "test-run-"));
+    try {
+      initializeRunBundle(tmpDir, "https://example.com");
+      const slugDir = path.join(tmpDir, "example-com");
+      const files = fs.readdirSync(slugDir).sort();
+      assert.deepStrictEqual(files, ["analysis.md", "assessment.md", "validation-checklist.md"]);
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true });
+    }
   });
 });

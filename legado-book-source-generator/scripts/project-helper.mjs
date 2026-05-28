@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
-import { initializeOutputBundle } from "./lib/output-bundle.mjs";
+import { initializeOutputBundle, initializeRunBundle } from "./lib/output-bundle.mjs";
 import { validateBookSource } from "./lib/source-validate.mjs";
 
 function readSource(jsonPath) {
@@ -26,6 +26,7 @@ function printUsage() {
   console.error(
     "Usage:\n" +
       "  node project-helper.mjs scaffold-output <outputs-root> <site-url>\n" +
+      "  node project-helper.mjs scaffold-run <runs-root> <site-url>\n" +
       "  node project-helper.mjs validate-source [book-source.json]",
   );
 }
@@ -41,6 +42,17 @@ function main(argv) {
     }
     const [rootDir, siteUrl] = rest;
     const bundleDir = initializeOutputBundle(rootDir, siteUrl);
+    console.log(bundleDir);
+    return 0;
+  }
+
+  if (command === "scaffold-run") {
+    if (rest.length !== 2) {
+      printUsage();
+      return 2;
+    }
+    const [rootDir, siteUrl] = rest;
+    const bundleDir = initializeRunBundle(rootDir, siteUrl);
     console.log(bundleDir);
     return 0;
   }

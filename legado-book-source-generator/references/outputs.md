@@ -1,13 +1,19 @@
 # 交付物格式
 
-## 输出目录
+## 目录结构
 
-统一写到 `outputs/<site-slug>/`：
+```
+outputs/<site-slug>/
+  book-source.json          # 唯一默认用户交付物
 
-- `assessment.md`
-- `analysis.md`
-- `book-source.json`
-- `validation-checklist.md`
+runs/<site-slug>/
+  assessment.md             # 可生成性评估（过程记录）
+  analysis.md               # 网站分析（过程记录）
+  validation-checklist.md   # 验收清单（过程记录）
+```
+
+- `outputs/` 只放可交付内容，即 `book-source.json`。
+- `runs/` 放 AI 生成过程、自检、分析记录，用于 AI 接力、故障回溯，不作为默认交付给用户的文件。
 
 ## book-source.json 要求
 
@@ -18,8 +24,11 @@
 ## 可用脚本
 
 ```powershell
-# 脚手架生成
+# 创建 outputs/<site-slug>/book-source.json
 npm run scaffold -- .\outputs https://example.com
+
+# 创建 runs/<site-slug>/ 过程文档
+npm run scaffold-run -- .\runs https://example.com
 
 # 校验 JSON
 npm run validate -- .\outputs\example-com\book-source.json
