@@ -1,0 +1,28 @@
+[
+  {
+    "bookSourceUrl": "https://login-example.com",
+    "bookSourceName": "示例需登录站点",
+    "loginUrl": "https://login-example.com/login",
+    "searchUrl": "https://login-example.com/search?q={{key}}",
+    "ruleSearch": {
+      "bookList": ".search-list .book-item",
+      "name": ".book-title",
+      "bookUrl": "a@href"
+    },
+    "ruleBookInfo": {
+      "name": ".book-title",
+      "author": ".book-author",
+      "coverUrl": ".book-cover img@src",
+      "intro": ".book-desc",
+      "tocUrl": ".toc-link@href"
+    },
+    "ruleToc": {
+      "chapterList": ".chapter-list a",
+      "chapterName": "text",
+      "chapterUrl": "@href"
+    },
+    "ruleContent": {
+      "content": ".chapter-content"
+    }
+  }
+]

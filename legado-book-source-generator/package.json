@@ -1,0 +1,14 @@
+{
+  "name": "legado-book-source-generator",
+  "version": "1.0.0",
+  "description": "Legado book source generation skill - assesses novel sites and generates Legado book source JSON",
+  "type": "module",
+  "scripts": {
+    "scaffold": "node scripts/project-helper.mjs scaffold-output",
+    "validate": "node scripts/project-helper.mjs validate-source",
+    "audit": "node scripts/audit-source.mjs",
+    "test": "node --test tests/*.test.mjs"
+  },
+  "keywords": ["legado", "book-source", "yuedu", "novel"],
+  "license": "MIT"
+}

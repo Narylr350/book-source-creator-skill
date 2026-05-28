@@ -1,0 +1,14 @@
+interface:
+  display_name: "Legado 书源生成"
+  short_description: "Assess novel sites and generate Legado sources"
+  default_prompt: |
+    Use $legado-book-source-generator to assess a fiction site and generate a Legado book source JSON.
+
+    Before starting, read these files in order:
+    1. SKILL.md - entry point and mandatory sequence
+    2. references/assessment-template.md - output template for site assessment
+    3. references/analysis-workflow.md - fixed analysis structure
+    4. references/policies.md - hard blocking rules and risk judgment
+
+    Follow the mandatory sequence: login check → assessment → analysis → JSON generation → validation.
+    Do not skip steps. Do not generate book-source.json before completing the assessment.

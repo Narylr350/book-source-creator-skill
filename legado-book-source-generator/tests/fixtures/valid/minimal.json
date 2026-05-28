@@ -1,0 +1,24 @@
+[
+  {
+    "bookSourceUrl": "https://example.com",
+    "bookSourceName": "Example",
+    "searchUrl": "https://example.com/search?q={{key}}",
+    "ruleSearch": {
+      "bookList": "$.items[*]",
+      "name": "$.title",
+      "bookUrl": "$.url"
+    },
+    "ruleBookInfo": {
+      "name": "$.title",
+      "tocUrl": "$.tocUrl"
+    },
+    "ruleToc": {
+      "chapterList": "$.chapters[*]",
+      "chapterName": "$.title",
+      "chapterUrl": "$.url"
+    },
+    "ruleContent": {
+      "content": "$.content"
+    }
+  }
+]

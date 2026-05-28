@@ -1,0 +1,27 @@
+[
+  {
+    "bookSourceUrl": "https://static-example.com",
+    "bookSourceName": "示例静态HTML站点",
+    "searchUrl": "https://static-example.com/search?q={{key}}",
+    "ruleSearch": {
+      "bookList": ".book-list .book-item",
+      "name": ".book-title",
+      "bookUrl": "a@href"
+    },
+    "ruleBookInfo": {
+      "name": ".book-title",
+      "author": ".book-author",
+      "coverUrl": ".book-cover img@src",
+      "intro": ".book-intro",
+      "tocUrl": ".toc-link@href"
+    },
+    "ruleToc": {
+      "chapterList": ".chapter-list li a",
+      "chapterName": "text",
+      "chapterUrl": "@href"
+    },
+    "ruleContent": {
+      "content": ".content"
+    }
+  }
+]
