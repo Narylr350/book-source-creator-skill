@@ -1,3 +1,6 @@
 outputs/
+runs/
 tests/__pycache__/
 *.pyc
+.playwright-mcp/
+release/book-source-creator-skill/

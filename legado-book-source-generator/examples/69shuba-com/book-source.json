@@ -1,0 +1,31 @@
+[
+  {
+    "bookSourceUrl": "https://www.69shuba.com",
+    "bookSourceName": "69书吧",
+    "searchUrl": "https://www.69shuba.com/modules/article/search.php;post=searchkey={{key}}",
+    "ruleSearch": {
+      "bookList": "div.newbox ul li",
+      "name": "h3 a[href*='/book/']",
+      "bookUrl": "h3 a[href*='/book/']@href",
+      "coverUrl": "img@src",
+      "author": "div.labelbox label:nth-child(1)",
+      "kind": "div.labelbox label:nth-child(2)",
+      "lastChapter": "div.labelbox label:nth-child(3)"
+    },
+    "ruleBookInfo": {
+      "name": "h1",
+      "author": ".booknav2 a[href*='author']",
+      "coverUrl": ".bookimg2 img@src",
+      "intro": ".navtxt p",
+      "tocUrl": ""
+    },
+    "ruleToc": {
+      "chapterList": "a[href*='/txt/']",
+      "chapterName": "text",
+      "chapterUrl": "@href"
+    },
+    "ruleContent": {
+      "content": ".txtnav"
+    }
+  }
+]

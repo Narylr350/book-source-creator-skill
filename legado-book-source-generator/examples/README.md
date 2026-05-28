@@ -5,6 +5,7 @@
 ## 当前样例
 
 - `163zw/`: 163中文网闭环样例 bundle
+- `69shuba-com/`: 69书吧真实站点冒烟测试样例（POST搜索、目录嵌详情页、纯静态HTML）
 - `static-html-site/`: 静态HTML站点样例（纯CSS选择器提取）
 - `json-api-site/`: JSON API站点样例（REST接口）
 - `webview-fallback-site/`: WebView回退样例（正文有签名，使用P15模式）
@@ -21,6 +22,7 @@
 
 | 类型 | 场景 | 复杂度 | 关键特征 |
 |------|------|--------|----------|
+| 69shuba-com | 真实站点冒烟测试 | 低 | POST搜索、目录嵌详情页、纯静态HTML |
 | static-html-site | 纯静态HTML | 低 | CSS选择器直接提取 |
 | json-api-site | JSON API | 低 | REST接口，JSONPath提取 |
 | webview-fallback-site | WebView回退 | 中 | 正文有签名，使用WebView模式 |
