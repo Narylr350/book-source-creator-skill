@@ -1,6 +1,49 @@
 outputs/
 runs/
+legado-book-source-generator/.outputs/
+legado-book-source-generator/.runs/
 tests/__pycache__/
 *.pyc
 .playwright-mcp/
 release/book-source-creator-skill/
+.idea/
+
+# External legado source (reference only, not part of deliverable)
+external/
+
+# Validator build artifacts
+validator/build/
+validator/.gradle/
+validator/bin/
+
+# JAR files (except gradle wrapper)
+*.jar
+!**/gradle/wrapper/gradle-wrapper.jar
+
+# Release packages
+release/*.zip
+
+# Temporary files
+tmp-*
+pw-*.txt
+server*.log
+shot-*.png
+screenshot-*.png
+capture.py
+test-*.py
+check*.py
+
+# AI / Compose agent docs
+docs/compose/
+docs/ai/
+docs/tasks/
+docs/plans/
+docs/superpowers/
+*_PLAN.md
+*_NOTES.md
+*_SCRATCH.md
+ai-*.md
+agent-*.md
+CLAUDE.md
+.claude/
+.codex/

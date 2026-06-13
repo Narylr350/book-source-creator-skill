@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Legado 书源验证器</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&family=Noto+Sans+SC:wght@300;400;500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <div class="app">
+    <!-- Sidebar -->
+    <aside class="sidebar">
+      <div class="sidebar-header">
+        <div class="logo">
+          <span class="logo-icon">◈</span>
+          <span class="logo-text">书源验证器</span>
+        </div>
+        <span class="logo-ver">v1.0</span>
+      </div>
+
+      <div class="sidebar-section">
+        <div class="section-label">导入书源</div>
+        <textarea id="source-json" placeholder='粘贴 book-source.json ...' spellcheck="false"></textarea>
+        <button id="btn-import" class="btn-primary">
+          <span class="btn-icon">+</span> 导入
+        </button>
+      </div>
+
+      <div class="sidebar-section">
+        <div class="section-label">已导入 <span id="source-count" class="badge">0</span></div>
+        <div id="source-list" class="source-list"></div>
+      </div>
+
+      <div class="sidebar-footer">
+        <div class="status-dot" id="ws-status"></div>
+        <span id="ws-label">未连接</span>
+      </div>
+    </aside>
+
+    <!-- Main -->
+    <main class="main">
+      <!-- Search bar -->
+      <div class="search-bar">
+        <div class="search-input-wrap">
+          <input id="keyword" type="text" placeholder="搜索关键词..." autocomplete="off" />
+        </div>
+        <select id="source-select"></select>
+        <button id="btn-debug" class="btn-run">
+          <span class="run-icon">▶</span> 运行
+        </button>
+      </div>
+
+      <!-- Pipeline -->
+      <div class="pipeline">
+        <div class="pipeline-track"></div>
+        <div class="pipeline-step" data-phase="search">
+          <div class="pipe-node"><span class="pipe-num">1</span></div>
+          <div class="pipe-label">搜索</div>
+          <div class="pipe-status">等待</div>
+        </div>
+        <div class="pipeline-connector"></div>
+        <div class="pipeline-step" data-phase="detail">
+          <div class="pipe-node"><span class="pipe-num">2</span></div>
+          <div class="pipe-label">详情</div>
+          <div class="pipe-status">等待</div>
+        </div>
+        <div class="pipeline-connector"></div>
+        <div class="pipeline-step" data-phase="toc">
+          <div class="pipe-node"><span class="pipe-num">3</span></div>
+          <div class="pipe-label">目录</div>
+          <div class="pipe-status">等待</div>
+        </div>
+        <div class="pipeline-connector"></div>
+        <div class="pipeline-step" data-phase="content">
+          <div class="pipe-node"><span class="pipe-num">4</span></div>
+          <div class="pipe-label">正文</div>
+          <div class="pipe-status">等待</div>
+        </div>
+      </div>
+
+      <!-- Detail area -->
+      <div class="detail-area">
+        <div class="detail-header">
+          <div class="detail-tabs">
+            <button class="dtab active" data-tab="extracted">抽取结果</button>
+            <button class="dtab" data-tab="request">请求</button>
+            <button class="dtab" data-tab="response">响应</button>
+            <button class="dtab" data-tab="rules">规则命中</button>
+            <button class="dtab" data-tab="preview">正文预览</button>
+          </div>
+          <div class="detail-meta" id="detail-meta"></div>
+        </div>
+        <div class="detail-body">
+          <div class="dpanel" id="panel-extracted"><div class="panel-empty">点击左侧管道步骤查看详情</div></div>
+          <div class="dpanel hidden" id="panel-request"></div>
+          <div class="dpanel hidden" id="panel-response"></div>
+          <div class="dpanel hidden" id="panel-rules"></div>
+          <div class="dpanel hidden" id="panel-preview"></div>
+        </div>
+      </div>
+    </main>
+  </div>
+  <script src="/static/app.js"></script>
+</body>
+</html>
