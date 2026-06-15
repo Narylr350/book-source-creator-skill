@@ -75,6 +75,7 @@ validator 失败且证据不足 → 用 Browser MCP 补实测
 11. **候选池不代表可用** — `candidates/` 只是候选素材，不能当正式样例引用。
 12. **评估可被推翻但必须同步修正** — 后续证据推翻 assessment 时，必须先更新 `assessment.md` 再交付。
 13. **输出目录 = 用户任务工作目录** — 禁止写入 skill 安装目录（`~/.claude/skills`、`~/.codex/skills` 或 skill 自身目录）。
+14. **validator 生命周期管理** — 见下方规则。
 
 ## 输出结构
 
@@ -98,6 +99,25 @@ validator 失败且证据不足 → 用 Browser MCP 补实测
 - `~/.codex/skills/legado-book-source-generator/outputs/`
 
 如果当前目录是 skill 安装目录，必须先切到用户项目目录；无法判断时询问用户输出目录。
+
+## Validator 生命周期管理
+
+**禁止无提示隐藏启动 validator。**
+
+### 启动规则
+
+- **每次验证前先探测** `http://localhost:1111`，已有服务则复用，不重复启动。
+- **用户手动启动**：双击 `run.bat`，可见窗口，标题显示地址，Ctrl+C 或关窗口停止。
+- **AI 启动**：前台运行或后台启动但必须：
+  - 在回复中说明服务地址、启动方式、停止方式
+  - 若后台启动，记录 PID 到 `runs/<site-slug>/validator.pid`
+  - 提供停止命令
+
+### 停止规则
+
+- **AI 本次启动的** → 验证结束后负责关闭
+- **用户原本开的** → 不要关
+- 停止方式：`stop.bat`（按端口停止）或 `taskkill /PID <pid> /F`
 
 最终回复用户时，根据 validator 结果给一句：
 - passed: "已生成 book-source.json，validator 验证通过（全链路成功）。"

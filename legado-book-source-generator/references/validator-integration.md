@@ -115,12 +115,40 @@ else:
 
 回修 3 次后仍未通过 → `failed_unresolved`
 
-## 前置检查
+## 前置检查与生命周期管理
+
+### 探测
 
 调用 validator 前，先检查是否运行：
 
 ```bash
-curl -s http://localhost:1111/api/sources | head -1
+curl -s http://localhost:1111/api/sources >nul 2>&1 && echo Running || echo Not running
 ```
 
-如果无响应，提示用户启动内置 validator：`legado-book-source-generator/validator/run.bat` 或 `java -jar legado-book-source-generator/validator/app/legado-source-validator.jar`
+已有服务则复用，不重复启动。
+
+### 启动
+
+**禁止无提示隐藏启动。**
+
+- **用户手动启动**：双击 `validator/run.bat`
+  - 可见窗口，标题显示 `Legado Source Validator - http://localhost:1111`
+  - Ctrl+C 或关窗口停止
+- **AI 启动**：
+  - 前台运行：`java -jar validator/app/legado-source-validator.jar`
+  - 后台启动：记录 PID 到 `runs/<site-slug>/validator.pid`
+  - 必须在回复中说明：服务地址、启动方式、停止方式、PID
+
+### 停止
+
+- **AI 本次启动的** → 验证结束后负责关闭
+- **用户原本开的** → 不要关
+- 停止方式：
+  - `validator/stop.bat`（按端口停止，给人/AI 用）
+  - `taskkill /PID <pid> /F`（按 PID 停止）
+
+### 获取 PID
+
+```powershell
+for /f "tokens=5" %a in ('netstat -aon ^| findstr :1111 ^| findstr LISTENING') do echo PID: %a
+```

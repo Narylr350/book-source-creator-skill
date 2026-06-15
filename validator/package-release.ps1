@@ -41,13 +41,16 @@ if (Test-Path $jar) {
     exit 1
 }
 
-# 复制 run.bat 和 README.txt
+# 复制 run.bat、stop.bat 和 README.txt
 Copy-Item "$root\run.bat" $validatorStaging
+Copy-Item "$root\stop.bat" $validatorStaging
 Copy-Item "$root\README.txt" $validatorStaging
 
 # 复制验证样例
-Copy-Item "$root\examples\biquges-com-book-source.json" "$validatorStaging\examples\"
-Copy-Item "$root\examples\TEST-PLAN.md" "$validatorStaging\examples\"
+Copy-Item "$root\examples\sources" "$validatorStaging\examples\sources" -Recurse -ErrorAction SilentlyContinue
+Copy-Item "$root\examples\cases" "$validatorStaging\examples\cases" -Recurse -ErrorAction SilentlyContinue
+Copy-Item "$root\examples\candidates" "$validatorStaging\examples\candidates" -Recurse -ErrorAction SilentlyContinue
+Copy-Item "$root\examples\TEST-PLAN.md" "$validatorStaging\examples\" -ErrorAction SilentlyContinue
 
 # 打包: Compress-Archive 会保留 legado-book-source-generator/ 顶层目录
 if (Test-Path $zipFile) { Remove-Item $zipFile -Force }
