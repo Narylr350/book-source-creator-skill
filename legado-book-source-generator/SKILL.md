@@ -42,6 +42,7 @@ validator 失败且证据不足 → 用 Browser MCP 补实测
 - `references/validator-integration.md`
 - `references/validation-policy.md`
 - `references/failure-diagnosis.md`
+- `references/validation-checklist.md`
 
 如果正文链路出现签名、密文、CSR 空壳、浏览器渲染等特殊情况，再补看：
 
@@ -56,7 +57,7 @@ validator 失败且证据不足 → 用 Browser MCP 补实测
 4. 如果 Browser MCP 与模型推断冲突，以实测为准。
 5. 优先服从 `references/legado-official-rule-notes.md` 中的官方规则。
 6. 默认只覆盖 `search / detail / toc / content`，除非用户明确要求，否则不要启用发现页。
-7. 只要用户反馈导入失败、链路失败、调试失败、报错截图、异常日志，必须立即进入调试协作模式。
+7. 只要用户反馈导入失败、链路失败、调试失败、报错截图、异常日志，先用 validator 诊断；只有 validator 标记硬边界时才进入人工调试协作。
 8. **validator 验证是必经步骤** — 生成 JSON 后必须跑 validator，不能跳过。
 9. **validator 失败不是结束** — AI 必须根据证据自动回修，最多循环 3 次。
 10. **needsAppReview 才是硬边界** — 只有命中 App/人工边界时才停止自动修。

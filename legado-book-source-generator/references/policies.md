@@ -29,6 +29,8 @@
 
 ## 调试模式触发
 
-- 只要用户反馈导入失败、链路失败、调试失败、报错截图、异常日志或任何明确的运行错误，必须立即进入调试协作模式。
+- 用户反馈导入失败、链路失败、调试失败、报错截图、异常日志时，先用 validator 诊断。
+- validator 失败时，AI 先根据证据自动回修（见 `references/validation-policy.md`）。
+- 只有 validator 标记 `needs_app_review`、`validator_limitation` 或 `failed_unresolved` 时，才进入人工调试协作模式。
 - 一旦进入调试协作模式，必须先按 `references/debugging-collaboration.md` 选择对应故障模板，先索取该阶段最小证据包。
 - 在拿到当前阶段最小证据包之前，禁止把本地文件、历史输出或模型推断优先于用户当前 Legado App 内实际使用的规则与源码。
