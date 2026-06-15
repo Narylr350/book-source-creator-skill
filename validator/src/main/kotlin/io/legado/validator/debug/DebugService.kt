@@ -127,6 +127,7 @@ class DebugService {
     private suspend fun runSearch(source: BookSource, keyword: String): DebugStep {
         return withContext(Dispatchers.IO) {
             try {
+                WebBook.clearState()
                 val books = WebBook.searchBookAwait(source, keyword)
                 val res = WebBook.lastResponse
                 val first = books.firstOrNull()
@@ -176,6 +177,7 @@ class DebugService {
 
     private suspend fun runSearchBrowser(source: BookSource, keyword: String): DebugStep {
         return withContext(Dispatchers.IO) {
+            WebBook.clearState()
             val ruleData = RuleData()
             val searchUrlTemplate = source.searchUrl ?: ""
             val analyzeUrl = AnalyzeUrl(
@@ -293,6 +295,7 @@ class DebugService {
     private suspend fun runDetail(source: BookSource, book: Book, mode: String = "http"): DebugStep {
         return withContext(Dispatchers.IO) {
             try {
+                WebBook.clearState()
                 val result = WebBook.getBookInfoAwait(source, book)
                 val res = WebBook.lastResponse
                 DebugStep(
@@ -322,6 +325,7 @@ class DebugService {
     private suspend fun runToc(source: BookSource, book: Book, mode: String = "http"): DebugStep {
         return withContext(Dispatchers.IO) {
             try {
+                WebBook.clearState()
                 val chapters = WebBook.getChapterListAwait(source, book)
                 val res = WebBook.lastResponse
                 DebugStep(
@@ -349,6 +353,7 @@ class DebugService {
     private suspend fun runContent(source: BookSource, book: Book, chapter: BookChapter, mode: String = "http"): DebugStep {
         return withContext(Dispatchers.IO) {
             try {
+                WebBook.clearState()
                 val content = WebBook.getContentAwait(source, book, chapter)
                 val res = WebBook.lastResponse
                 DebugStep(

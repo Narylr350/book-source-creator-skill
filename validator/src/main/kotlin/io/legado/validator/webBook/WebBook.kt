@@ -20,6 +20,12 @@ object WebBook {
     var lastRuleHits: List<AnalyzeRule.RuleHitEntry> = emptyList()
         private set
 
+    fun clearState() {
+        lastResponse = null
+        lastAnalyzeUrl = null
+        lastRuleHits = emptyList()
+    }
+
     suspend fun searchBookAwait(
         bookSource: BookSource,
         key: String,
