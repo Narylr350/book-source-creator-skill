@@ -1,5 +1,19 @@
 # 交付物格式
 
+## 输出目录规则
+
+**输出目录必须是用户任务工作目录，不写入 skill 安装目录。**
+
+- 默认输出根目录：当前工作目录的 `outputs/` 和 `runs/`
+- 如果用户明确指定输出目录：写到用户指定目录
+- 如果当前目录是 skill 安装目录、`~/.claude/skills`、`~/.codex/skills`：禁止写入，必须切到用户工作目录或询问输出目录
+
+**禁止出现：**
+- `legado-book-source-generator/outputs/`
+- `legado-book-source-generator/runs/`
+- `~/.claude/skills/legado-book-source-generator/outputs/`
+- `~/.codex/skills/legado-book-source-generator/outputs/`
+
 ## 目录结构
 
 ```

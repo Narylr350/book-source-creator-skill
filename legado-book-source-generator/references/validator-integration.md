@@ -4,6 +4,26 @@
 
 Validator 是本地书源预验证工具，运行在 `http://localhost:1111`。Skill 生成书源后，先跑 validator 验证，再决定交付或回修。
 
+## 内置运行包
+
+本 skill 自带 validator 前后端运行包：
+
+```text
+validator/
+  run.bat
+  app/legado-source-validator.jar
+  examples/
+```
+
+启动方式：
+
+```powershell
+cd legado-book-source-generator/validator
+.\run.bat
+```
+
+启动后打开 `http://localhost:1111` 可使用浏览器调试台；脚本和 Skill 验证流程调用同一个后端 API。
+
 ## API 接口
 
 ### POST /api/debug/run
@@ -70,7 +90,7 @@ curl -X POST http://localhost:1111/api/debug/smoke \
 | `passed` | 全链路 success，所有字段有值 | 交付书源 |
 | `failed` | 某阶段 error，有可修证据 | AI 自动回修 |
 | `needs_app_review` | needsAppReview=true 或命中 App-only 行为 | 停止自动修，标记需复核 |
-| `validator_limitation` | validator 不支持的规则能力（如 @js 动态 URL） | 标记工具缺口，不误判站点不可用 |
+| `validator_limitation` | validator 不支持的规则能力（如 @js 动态 URL） | validator 无法验证该能力；预期需要 App/WebView 复核。当前不是 full pass，不能标可用。 |
 | `failed_unresolved` | AI 回修 3 次后仍未通过 | 标记未解决，需人工检查 |
 | `blocked` | validator 未运行 | 阻塞，要求启动 validator，除非用户明确选择"仅生成未验证草稿" |
 
@@ -103,4 +123,4 @@ else:
 curl -s http://localhost:1111/api/sources | head -1
 ```
 
-如果无响应，提示用户启动 validator：`run.bat` 或 `java -jar legado-source-validator.jar`
+如果无响应，提示用户启动内置 validator：`legado-book-source-generator/validator/run.bat` 或 `java -jar legado-book-source-generator/validator/app/legado-source-validator.jar`
