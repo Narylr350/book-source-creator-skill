@@ -38,6 +38,7 @@ runs/<site-slug>/
 - 交付前必须完成以下验证：
   1. `npm run validate` — JSON 结构校验
   2. `node scripts/validate-with-validator.mjs` — 真实链路验证（search→detail→toc→content）
+  3. **必须保存 `validator-report.json`**（含 phases/error/ruleHits/bodyPreview），不能只写 summary
 - 只有 validator 报告 `status=passed` 才能标"可用"
 
 ## 可用脚本

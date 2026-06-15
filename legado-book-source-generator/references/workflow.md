@@ -102,6 +102,10 @@
 node scripts/validate-with-validator.mjs outputs/<site-slug>/book-source.json <关键词> http --output runs/<site-slug>
 ```
 
+**必须保存 `validator-report.json`**（含 phases/error/ruleHits/bodyPreview），不能只写 summary。
+
+**CSR/WebView 边界**：遇到正文可能是 CSR/WebView 时，先跑 `mode=auto` 或 `mode=browser`，失败后再标 `validator_limitation`。不能只跑 `http` 就下结论。
+
 验证分流：
 
 - **passed** → 进入交付
