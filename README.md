@@ -2,7 +2,7 @@
 
 面向 `Legado / 阅读` 书源编写场景的 AI Skill 仓库。
 
-它的目标不是收集现成书源，而是把"站点评估 -> 规则生成 -> 人工验证 -> 故障协作"整理成一套可复用、可约束、可测试的工作流，供 AI 在真实站点上稳定执行。
+它的目标不是收集现成书源，而是把"站点评估 -> 规则生成 -> validator 自动验证 -> AI 自动回修 -> 故障协作"整理成一套可复用、可约束、可测试的工作流，供 AI 在真实站点上稳定执行。
 
 ## 相关官方入口
 
@@ -26,9 +26,8 @@
 ├─ README.md
 ├─ legado-book-source-generator/
 │  ├─ SKILL.md                    # 主入口：强制顺序、核心规则、输出结构
+│  ├─ README.txt                  # Release 包使用说明
 │  ├─ package.json                # npm scripts
-│  ├─ agents/
-│  │  └─ openai.yaml
 │  ├─ examples/
 │  │  ├─ README.md
 │  │  ├─ 163zw/                   # 真实闭环样例
@@ -39,8 +38,11 @@
 │  │  └─ login-required-site/     # 需登录样例
 │  ├─ references/
 │  │  ├─ policies.md              # 硬阻断规则与风险判断
-│  │  ├─ workflow.md              # 完整工作流
+│  │  ├─ workflow.md              # 完整工作流（含 validator 验证）
 │  │  ├─ outputs.md               # 交付物格式
+│  │  ├─ validator-integration.md # validator API 与状态判定
+│  │  ├─ validation-policy.md     # 验证策略与自动回修闭环
+│  │  ├─ failure-diagnosis.md     # 故障诊断
 │  │  ├─ assessment-template.md   # 可生成性评估模板
 │  │  ├─ analysis-workflow.md     # 四链路分析结构
 │  │  ├─ legado-json-structure.md # JSON字段要求
@@ -51,19 +53,27 @@
 │  ├─ scripts/
 │  │  ├─ project-helper.mjs       # CLI入口（scaffold / validate）
 │  │  ├─ audit-source.mjs         # 静态审计
+│  │  ├─ validate-with-validator.mjs  # validator 验证脚本
 │  │  └─ lib/
 │  │     ├─ slug.mjs              # URL转slug
 │  │     ├─ output-bundle.mjs     # 脚手架生成
 │  │     ├─ source-validate.mjs   # JSON校验
 │  │     └─ source-audit.mjs      # 审计逻辑
-│  └─ tests/
-│     ├─ project-helper.test.mjs  # 单元测试
-│     ├─ source-audit.test.mjs    # 审计测试
-│     └─ blackbox.test.mjs        # 黑盒测试（CLI + 文档契约）
-└─ tests/                         # 根目录测试（skill文档契约）
-   ├─ audit-source.test.mjs
-   ├─ project-helper.test.mjs
-   └─ skill-docs.test.mjs
+│  ├─ tests/
+│  │  ├─ project-helper.test.mjs  # 单元测试
+│  │  ├─ source-audit.test.mjs    # 审计测试
+│  │  └─ blackbox.test.mjs        # 黑盒测试（CLI + 文档契约）
+│  └─ validator/                  # 内置 validator（运行包）
+│     ├─ run.bat                  # 启动服务
+│     ├─ stop.bat                 # 停止服务
+│     ├─ README.txt               # validator 使用说明
+│     ├─ app/
+│     │  └─ legado-source-validator.jar
+│     └─ examples/               # 测试样例（sources/cases/candidates）
+└─ validator/                     # validator 源码（开发用）
+   ├─ src/
+   ├─ build.gradle.kts
+   └─ examples/
 ```
 
 ## 输出结构
@@ -76,6 +86,8 @@ runs/<site-slug>/
   assessment.md             # 可生成性评估（过程记录）
   analysis.md               # 网站分析（过程记录）
   validation-checklist.md   # 验收清单（过程记录）
+  validator-report.json     # validator 验证报告
+  validator-summary.md      # validator 验证摘要
 ```
 
 - `outputs/` 只放可交付内容
@@ -94,13 +106,13 @@ runs/<site-slug>/
 
 ## 推荐使用流程
 
-1. 先判断目标站点是否支持登录
-2. 如果支持登录，先让用户选择"登录分析 / 不登录分析"
-3. 输出 `assessment.md` 到 `runs/`
-4. 用 Browser MCP 分析搜索、详情、目录、正文
-5. 结合官方规则和模式矩阵生成 `book-source.json` 到 `outputs/`
-6. 用阅读 App 手工导入验证
-7. 若失败，再进入调试协作模式
+1. 匿名初探 search/detail/toc/content 四条链路
+2. 输出 `assessment.md` 到 `runs/`，立即展示评估摘要
+3. 用 Browser MCP 分析搜索、详情、目录、正文
+4. 结合官方规则和模式矩阵生成 `book-source.json` 到 `outputs/`
+5. 用 validator 跑真实链路验证（`node scripts/validate-with-validator.mjs`）
+6. validator 失败时 AI 自动回修规则（最多 3 次）
+7. 只有硬边界（验证码/登录/Cloudflare/WebView/付费）才需人工/App 复核
 
 固定评级只有四种：`可直接生成` / `可生成但高风险` / `需登录后再评估` / `不建议生成`
 
@@ -135,14 +147,15 @@ runs/<site-slug>/
 必需：
 
 - Node.js 18+
+- Java 17+（用于 validator）
 - 可访问目标网站的网络环境
 - Browser MCP 或等价浏览器分析能力
-- 可导入书源并验证的阅读 App
 
 推荐：
 
 - Claude Code / Codex
 - Git
+- 可导入书源并验证的阅读 App（最终 App 复核用）
 
 ## 辅助脚本
 

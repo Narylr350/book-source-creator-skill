@@ -21,6 +21,7 @@ New-Item -ItemType Directory -Path $stagingDir -Force | Out-Null
 # 复制 skill 文件
 $skillDir = "$projectRoot\legado-book-source-generator"
 Copy-Item "$skillDir\SKILL.md" $stagingDir -ErrorAction SilentlyContinue
+Copy-Item "$skillDir\README.txt" $stagingDir -ErrorAction SilentlyContinue
 Copy-Item "$skillDir\references" "$stagingDir\references" -Recurse -ErrorAction SilentlyContinue
 Copy-Item "$skillDir\examples" "$stagingDir\examples" -Recurse -ErrorAction SilentlyContinue
 Copy-Item "$skillDir\scripts" "$stagingDir\scripts" -Recurse -ErrorAction SilentlyContinue
