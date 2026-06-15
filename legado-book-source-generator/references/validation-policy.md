@@ -46,13 +46,21 @@
 2. **登录/验证码** — 需要登录态或验证码
 3. **WebView/App-only** — 需要 Android WebView 执行 JS
 4. **付费墙** — 内容需要付费
-5. **validator 工具限制** — error 含 "已知限制" / "需 App 复核"
+
+以下情况标记 `validator_limitation`（不是 `needs_app_review`）：
+
+5. **validator 工具限制** — @js 动态 URL、相对路径未拼接、validator 不支持的规则能力
+
+以下情况标记 `failed_unresolved`：
+
+6. **3 次回修后仍未通过** — 未命中上述任何硬边界，但 AI 无法修复
 
 ## 循环次数限制
 
 - 最多循环 3 次
 - 每次循环必须有明确的回修动作（不能瞎改）
-- 3 次后仍未通过 → 标记 `needs_app_review`，附带所有失败证据
+- 3 次后仍未通过 → 标记 `failed_unresolved`，附带所有失败证据
+- 如果 3 次内命中硬边界（needs_app_review/validator_limitation）→ 立即停止，不继续循环
 
 ## 验收标准
 

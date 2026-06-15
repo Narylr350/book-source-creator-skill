@@ -88,31 +88,38 @@
 
 使用 `references/legado-json-structure.md` 检查最终 JSON。
 
-## 5. 人工调试协作
+## 5. Validator 验证
 
-只有用户反馈导入失败、链路失败、调试失败或 App 崩溃时，才进入这个模式。
+生成 `book-source.json` 后，必须用 validator 跑真实链路验证。
 
-一旦收到上述反馈，必须立即进入调试协作模式。
-在给出调试入口、输入值和最小证据包之前，不得继续分析，不得继续改规则。
+```powershell
+node scripts/validate-with-validator.mjs outputs/<site-slug>/book-source.json <关键词> http --output runs/<site-slug>
+```
 
-调试时：
+验证分流：
 
-- 先把用户带到正确的书源编辑或调试入口
-- 只索取当前失败链路所需的最小证据
-- 优先要源码、阶段性截图或日志，不要一次性索要全部信息
-- 如果有 `loginUrl`，先让用户完成内置登录再调试
-- 若用户当前 App 内规则、调试截图或源码与本地文件不一致，以用户当前 App 内实际内容为准
+- **passed** → 进入交付
+- **failed** → 读 `validator-report.json` 中的 `error`、`ruleHits`、`phases`，AI 自动回修规则，再跑 validator（最多 3 次）
+- **needs_app_review** → 停止自动修，标记需 App/浏览器复核
+- **validator_limitation** → 标记工具缺口，不误判站点不可用
+- **failed_unresolved** → 3 次回修后仍未通过，标记未解决
+
+回修依据：
+
+- URL 没拼对 → 修 searchUrl/bookUrl/chapterUrl
+- 字段没命中 → 修对应规则字段（CSS/JSONPath/Regex）
+- 编码问题 → 补 charset
+- POST/body 错 → 修请求格式
+- JSONPath/CSS 错 → 局部改规则
+
+使用 `references/validator-integration.md`、`references/validation-policy.md`、`references/failure-diagnosis.md`。
+
+## 6. 人工/App 复核（仅硬边界）
+
+只有以下情况才进入人工/App 复核：
+
+- validator 标记 `needs_app_review`（Cloudflare、验证码、登录、WebView、付费墙）
+- validator 标记 `validator_limitation`（工具不支持的规则能力）
+- validator 标记 `failed_unresolved`（3 次回修后仍未通过）
 
 使用 `references/debugging-collaboration.md`。
-
-## 6. 手工验证
-
-- 输出 `validation-checklist.md` 到 `runs/<site-slug>/`
-- 指导用户导入 `book-source.json` 后至少验证：
-  - 搜索能找到目标书
-  - 详情能显示元数据
-  - 目录能加载
-  - 至少两个正文章节能打开
-- 若验证失败，回溯到对应链路修规则
-
-使用 `references/validation-checklist.md`。

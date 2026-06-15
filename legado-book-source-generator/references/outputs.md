@@ -10,6 +10,8 @@ runs/<site-slug>/
   assessment.md             # 可生成性评估（过程记录）
   analysis.md               # 网站分析（过程记录）
   validation-checklist.md   # 验收清单（过程记录）
+  validator-report.json     # validator 验证报告
+  validator-summary.md      # validator 验证摘要
 ```
 
 - `outputs/` 只放可交付内容，即 `book-source.json`。
@@ -19,7 +21,10 @@ runs/<site-slug>/
 
 - 顶层使用 JSON 数组
 - 单个书源也要用数组包裹：`[ { ... } ]`
-- 交付前至少运行一次 `validate-source`
+- 交付前必须完成以下验证：
+  1. `npm run validate` — JSON 结构校验
+  2. `node scripts/validate-with-validator.mjs` — 真实链路验证（search→detail→toc→content）
+- 只有 validator 报告 `status=passed` 才能标"可用"
 
 ## 可用脚本
 
@@ -30,11 +35,15 @@ npm run scaffold -- .\outputs https://example.com
 # 创建 runs/<site-slug>/ 过程文档
 npm run scaffold-run -- .\runs https://example.com
 
-# 校验 JSON
+# JSON 结构校验
 npm run validate -- .\outputs\example-com\book-source.json
 
-# 静态审计
+# 静态审计（不等于真实验证）
 npm run audit -- .\outputs\example-com\book-source.json --keyword 凡人修仙 --page 1
+
+# 真实链路验证（需 validator 运行中）
+node scripts/validate-with-validator.mjs .\outputs\example-com\book-source.json 凡人修仙 http --output .\runs\example-com
 ```
 
 `audit-source.mjs` 只做静态审计、占位检测、嵌入式 JS 语法检查和搜索 URL 预览，不能据此判断最终运行可用性。
+`validate-with-validator.mjs` 调用 validator API 跑真实链路，输出 `validator-report.json`。

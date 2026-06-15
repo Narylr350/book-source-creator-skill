@@ -70,7 +70,9 @@ curl -X POST http://localhost:1111/api/debug/smoke \
 | `passed` | 全链路 success，所有字段有值 | 交付书源 |
 | `failed` | 某阶段 error，有可修证据 | AI 自动回修 |
 | `needs_app_review` | needsAppReview=true 或命中 App-only 行为 | 停止自动修，标记需复核 |
-| `skipped` | validator 未运行或源文件缺失 | 跳过验证，标记未验证 |
+| `validator_limitation` | validator 不支持的规则能力（如 @js 动态 URL） | 标记工具缺口，不误判站点不可用 |
+| `failed_unresolved` | AI 回修 3 次后仍未通过 | 标记未解决，需人工检查 |
+| `blocked` | validator 未运行 | 阻塞，要求启动 validator，除非用户明确选择"仅生成未验证草稿" |
 
 ## 判定逻辑
 
@@ -81,6 +83,8 @@ elif step.needsAppReview == true:
     status = "needs_app_review"
 elif step.error 含 "Cloudflare|Turnstile|验证码|登录|WebView":
     status = "needs_app_review"
+elif step.error 含 "已知限制|不支持|@js 动态 URL":
+    status = "validator_limitation"
 elif step.ruleHits 有字段失败:
     status = "failed"  // AI 可修
 elif step.error 含 URL/编码/规则错误:
@@ -88,6 +92,8 @@ elif step.error 含 URL/编码/规则错误:
 else:
     status = "needs_app_review"  // 保守判定
 ```
+
+回修 3 次后仍未通过 → `failed_unresolved`
 
 ## 前置检查
 

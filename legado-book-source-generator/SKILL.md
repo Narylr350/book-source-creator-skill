@@ -72,7 +72,11 @@ validator 失败且证据不足 → 用 Browser MCP 补实测
   - `validator-report.json` — validator 验证报告（Phase 6 新增）
   - `validator-summary.md` — validator 验证摘要（Phase 6 新增）
 
-最终回复用户时，直接给一句："已生成 book-source.json，评估结果是可生成/高风险，导入后验证搜索、目录、正文两章。"
+最终回复用户时，根据 validator 结果给一句：
+- passed: "已生成 book-source.json，validator 验证通过（全链路成功）。"
+- needs_app_review: "已生成 book-source.json，validator 检测到需 App 复核（原因：xxx）。报告见 validator-report.json。"
+- failed_unresolved: "已生成 book-source.json，validator 回修 3 次后仍未通过。报告见 validator-report.json，需人工检查。"
+- validator_limitation: "已生成 book-source.json，validator 不支持 xxx 规则能力，需 App 复核。"
 
 ## 详细文档
 
