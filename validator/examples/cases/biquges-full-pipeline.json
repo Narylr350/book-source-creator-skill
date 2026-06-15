@@ -1,0 +1,28 @@
+{
+  "name": "biquges (蚂蚁文学) — 静态 HTML 全链路",
+  "category": "static-html",
+  "sourceFile": "sources/biquges-com.json",
+  "sourceUrl": "https://www.biquges.com",
+  "keyword": "凡人修仙传",
+  "mode": "http",
+  "expected": {
+    "search": {
+      "status": "success",
+      "resultCount": { "min": 1 },
+      "firstBookName": { "contains": "凡人修仙" }
+    },
+    "detail": {
+      "status": "success",
+      "fields": ["name", "author"]
+    },
+    "toc": {
+      "status": "success",
+      "chapterCount": { "min": 100 }
+    },
+    "content": {
+      "status": "success",
+      "contentLength": { "min": 100 }
+    }
+  },
+  "note": "301 重定向到 mayiwsk.com，OkHttp 自动跟随"
+}

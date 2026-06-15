@@ -1,0 +1,31 @@
+[
+  {
+    "bookSourceUrl": "https://www.biquges.com",
+    "bookSourceName": "蚂蚁文学(biquges)",
+    "searchUrl": "https://www.biquges.com/modules/article/search.php?searchkey={{key}}&searchtype=articlename",
+    "ruleSearch": {
+      "bookList": "tr#nr",
+      "name": "td.odd a",
+      "bookUrl": "td.odd a@href",
+      "coverUrl": "",
+      "author": "",
+      "kind": "",
+      "lastChapter": "td.even a"
+    },
+    "ruleBookInfo": {
+      "name": "#info h1",
+      "author": "#info p:nth-child(2)",
+      "coverUrl": "#fmimg img@src",
+      "intro": "#intro",
+      "tocUrl": ""
+    },
+    "ruleToc": {
+      "chapterList": "#list dl dd a",
+      "chapterName": "text",
+      "chapterUrl": "@href"
+    },
+    "ruleContent": {
+      "content": "#content"
+    }
+  }
+]

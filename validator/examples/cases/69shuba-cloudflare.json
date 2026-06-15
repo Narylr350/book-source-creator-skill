@@ -1,0 +1,15 @@
+{
+  "name": "69shuba (69书吧) — Cloudflare 反爬",
+  "category": "cloudflare",
+  "sourceFile": "sources/69shuba-com.json",
+  "sourceUrl": "https://www.69shuba.com",
+  "keyword": "凡人修仙传",
+  "mode": "http",
+  "expected": {
+    "search": {
+      "status": "error",
+      "errorContains": ["Cloudflare", "Turnstile", "验证", "challenge"]
+    }
+  },
+  "note": "POST 搜索 + Cloudflare Turnstile，HTTP 模式必定失败"
+}

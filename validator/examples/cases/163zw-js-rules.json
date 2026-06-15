@@ -1,0 +1,26 @@
+{
+  "name": "163zw (163中文网) — 相对 URL + @js: 规则",
+  "category": "js-rules",
+  "sourceFile": "sources/163zw-com.json",
+  "sourceUrl": "https://www.163zw.com",
+  "keyword": "凡人修仙传",
+  "mode": "http",
+  "expected": {
+    "search": {
+      "status": "success",
+      "resultCount": { "min": 1 }
+    },
+    "detail": {
+      "status": "success"
+    },
+    "toc": {
+      "status": "success",
+      "chapterCount": { "min": 50 }
+    },
+    "content": {
+      "status": "success",
+      "contentLength": { "min": 50 }
+    }
+  },
+  "note": "大量 @js: 规则用于 URL 拼接和内容提取，验证 Rhino JS 引擎"
+}

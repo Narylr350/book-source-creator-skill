@@ -1,0 +1,15 @@
+{
+  "name": "JSON API 站 — JSONPath 规则",
+  "category": "json-api",
+  "sourceFile": "sources/json-api-site.json",
+  "sourceUrl": "https://api-example.com",
+  "keyword": "测试",
+  "mode": "http",
+  "expected": {
+    "search": {
+      "status": "error",
+      "note": "占位站点，需替换为真实 JSON API 书源"
+    }
+  },
+  "note": "占位样例 — 需要替换为真实可访问的 JSON API 站点"
+}

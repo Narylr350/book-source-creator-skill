@@ -28,6 +28,7 @@ class WebServer(port: Int) : NanoWSD(port) {
             uri == "/api/debug/start" && session.method == Method.POST -> handleStartDebug(session)
             uri == "/api/debug/steps" && session.method == Method.GET -> handleGetSteps()
             uri == "/api/debug/run" && session.method == Method.POST -> handleRunDebug(session)
+            uri == "/api/debug/smoke" && session.method == Method.POST -> handleSmoke(session)
             uri.startsWith("/api/source/") && session.method == Method.DELETE -> {
                 val encoded = uri.removePrefix("/api/source/")
                 val sourceUrl = String(Base64.getUrlDecoder().decode(encoded))
@@ -182,6 +183,120 @@ class WebServer(port: Int) : NanoWSD(port) {
                 append("}")
             }
             newFixedLengthResponse(Response.Status.OK, "application/json", result)
+        } catch (e: Exception) {
+            newFixedLengthResponse(Response.Status.INTERNAL_ERROR, "application/json",
+                """{"ok":false,"error":"${e.message?.replace("\"", "\\\"")}"}""")
+        }
+    }
+
+    private fun handleSmoke(session: IHTTPSession): Response {
+        val contentLength = session.headers["content-length"]?.toIntOrNull() ?: 0
+        val rawBytes = readBody(session.inputStream, contentLength)
+        val json = String(rawBytes, Charsets.UTF_8)
+        return try {
+            val req = com.google.gson.JsonParser.parseString(json).asJsonObject
+            val casesDir = req.get("casesDir")?.asString
+                ?: javaClass.getResource("/examples/cases")?.path
+                ?: return newFixedLengthResponse(Response.Status.INTERNAL_ERROR, "application/json",
+                    """{"ok":false,"error":"Cases directory not found"}""")
+            val caseFilter = req.get("cases")?.asJsonArray?.map { it.asString }?.toSet()
+            val casesDirFile = java.io.File(casesDir)
+            if (!casesDirFile.exists()) {
+                return newFixedLengthResponse(Response.Status.NOT_FOUND, "application/json",
+                    """{"ok":false,"error":"Cases directory not found: $casesDir"}""")
+            }
+            val caseFiles = casesDirFile.listFiles { f -> f.extension == "json" }?.sorted()
+                ?: return newFixedLengthResponse(Response.Status.INTERNAL_ERROR, "application/json",
+                    """{"ok":false,"error":"No case files found"}""")
+            val results = mutableListOf<Map<String, Any?>>()
+            for (caseFile in caseFiles) {
+                if (caseFilter != null && !caseFilter.contains(caseFile.nameWithoutExtension)) continue
+                try {
+                    val caseJson = com.google.gson.JsonParser.parseString(caseFile.readText()).asJsonObject
+                    val caseName = caseJson.get("name")?.asString ?: caseFile.nameWithoutExtension
+                    val category = caseJson.get("category")?.asString ?: "unknown"
+                    val sourceFileName = caseJson.get("sourceFile")?.asString
+                    val keyword = caseJson.get("keyword")?.asString ?: ""
+                    val mode = caseJson.get("mode")?.asString ?: "http"
+                    val expected = caseJson.get("expected")?.asJsonObject
+                    val sourceFile = if (sourceFileName != null) {
+                        java.io.File(casesDirFile.parentFile, sourceFileName)
+                    } else null
+                    if (sourceFile == null || !sourceFile.exists()) {
+                        results.add(mapOf("case" to caseName, "category" to category, "status" to "skip", "reason" to "Source file not found"))
+                        continue
+                    }
+                    val sourceJson = sourceFile.readText()
+                    val sourceList = BookSource.fromJson(sourceJson)
+                    sourceList.forEach { sources[it.bookSourceUrl] = it }
+                    val source = sourceList.firstOrNull()
+                    if (source == null) {
+                        results.add(mapOf("case" to caseName, "category" to category, "status" to "skip", "reason" to "No source in file"))
+                    } else {
+                    val runService = DebugService()
+                    val steps = runBlocking(Dispatchers.IO) { runService.runFull(source, keyword, mode) }
+                    val compactSteps = steps.compact()
+                    val phases = compactSteps.associate { it.phase to it.status }
+                    val failures = mutableListOf<String>()
+                    if (expected != null) {
+                        for ((phase, expectedObj) in expected.entrySet()) {
+                            val expectedPhase = expectedObj.asJsonObject
+                            val actualStatus = phases[phase]
+                            val expectedStatus = expectedPhase.get("status")?.asString
+                            if (expectedStatus != null && actualStatus != expectedStatus) {
+                                failures.add("$phase: expected $expectedStatus, got $actualStatus")
+                            }
+                            if (expectedStatus == "success") {
+                                val step = compactSteps.find { it.phase == phase }
+                                if (step != null) {
+                                    val rc = expectedPhase.get("resultCount")?.asJsonObject
+                                    if (rc != null) {
+                                        val min = rc.get("min")?.asInt ?: 0
+                                        val actual = step.extracted["resultCount"] as? Int ?: 0
+                                        if (actual < min) failures.add("$phase.resultCount: expected >= $min, got $actual")
+                                    }
+                                    val cc = expectedPhase.get("chapterCount")?.asJsonObject
+                                    if (cc != null) {
+                                        val min = cc.get("min")?.asInt ?: 0
+                                        val actual = step.extracted["chapterCount"] as? Int ?: 0
+                                        if (actual < min) failures.add("$phase.chapterCount: expected >= $min, got $actual")
+                                    }
+                                    val cl = expectedPhase.get("contentLength")?.asJsonObject
+                                    if (cl != null) {
+                                        val min = cl.get("min")?.asInt ?: 0
+                                        val actual = step.extracted["contentLength"] as? Int ?: 0
+                                        if (actual < min) failures.add("$phase.contentLength: expected >= $min, got $actual")
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    results.add(mapOf(
+                        "case" to caseName,
+                        "category" to category,
+                        "status" to if (failures.isEmpty()) "pass" else "fail",
+                        "phases" to phases,
+                        "failures" to failures
+                    ))
+                    }
+                } catch (e: Exception) {
+                    results.add(mapOf("case" to caseFile.nameWithoutExtension, "status" to "error", "error" to e.message))
+                }
+            }
+            val passCount = results.count { it["status"] == "pass" }
+            val failCount = results.count { it["status"] == "fail" }
+            val errorCount = results.count { it["status"] == "error" }
+            val skipCount = results.count { it["status"] == "skip" }
+            val report = mapOf(
+                "ok" to true,
+                "total" to results.size,
+                "pass" to passCount,
+                "fail" to failCount,
+                "error" to errorCount,
+                "skip" to skipCount,
+                "results" to results
+            )
+            newFixedLengthResponse(Response.Status.OK, "application/json", Gson().toJson(report))
         } catch (e: Exception) {
             newFixedLengthResponse(Response.Status.INTERNAL_ERROR, "application/json",
                 """{"ok":false,"error":"${e.message?.replace("\"", "\\\"")}"}""")

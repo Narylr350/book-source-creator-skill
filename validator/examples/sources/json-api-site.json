@@ -1,0 +1,27 @@
+[
+  {
+    "bookSourceUrl": "https://api-example.com",
+    "bookSourceName": "示例JSON API站点",
+    "searchUrl": "https://api-example.com/api/search?q={{key}}&page={{page}}",
+    "ruleSearch": {
+      "bookList": "$.data.list[*]",
+      "name": "$.title",
+      "bookUrl": "$.id"
+    },
+    "ruleBookInfo": {
+      "name": "$.data.title",
+      "author": "$.data.author",
+      "coverUrl": "$.data.cover",
+      "intro": "$.data.intro",
+      "tocUrl": "/api/book/{{id}}/chapters"
+    },
+    "ruleToc": {
+      "chapterList": "$.data.chapters[*]",
+      "chapterName": "$.title",
+      "chapterUrl": "$.id"
+    },
+    "ruleContent": {
+      "content": "$.data.content"
+    }
+  }
+]
