@@ -128,8 +128,8 @@ object AndroidProbeService {
     }
 
     fun findApk(): String? {
-        // Check common locations relative to validator working dir
         val candidates = listOf(
+            "android-probe.apk",  // release package location
             "android-probe/app/build/outputs/apk/debug/app-debug.apk",
             "../android-probe/app/build/outputs/apk/debug/app-debug.apk",
             "probe.apk"

@@ -83,20 +83,36 @@ class DebugService {
             "android" -> runSearchAndroid(source, keyword)
             "browser" -> runSearchBrowser(source, keyword)
             else -> { // "http" or "auto"
-                val httpStep = runSearch(source, keyword)
+                // auto: check if searchUrl requires WebView before trying HTTP
                 if (mode == "auto") {
-                    when {
-                        httpStep.status == "success" -> httpStep
-                        httpStep.needsAppReview -> {
-                            val androidStep = runSearchAndroid(source, keyword)
-                            if (androidStep.status == "success") androidStep else httpStep
-                        }
-                        else -> {
+                    val searchAnalyzeUrl = AnalyzeUrl(
+                        mUrl = source.searchUrl ?: "", key = keyword, page = 1, source = source
+                    )
+                    if (searchAnalyzeUrl.hasWebView) {
+                        // webView:true → try Android first, then browser, then give up
+                        val androidStep = runSearchAndroid(source, keyword)
+                        if (androidStep.status == "success") androidStep
+                        else {
                             val browserStep = runSearchBrowser(source, keyword)
-                            if (browserStep.status == "success") browserStep else httpStep
+                            if (browserStep.status == "success") browserStep else androidStep
+                        }
+                    } else {
+                        val httpStep = runSearch(source, keyword)
+                        when {
+                            httpStep.status == "success" -> httpStep
+                            httpStep.needsAppReview -> {
+                                val androidStep = runSearchAndroid(source, keyword)
+                                if (androidStep.status == "success") androidStep else httpStep
+                            }
+                            else -> {
+                                val browserStep = runSearchBrowser(source, keyword)
+                                if (browserStep.status == "success") browserStep else httpStep
+                            }
                         }
                     }
-                } else httpStep
+                } else {
+                    runSearch(source, keyword)
+                }
             }
         }).withWarnings(warnings)
         steps.add(searchStep)
