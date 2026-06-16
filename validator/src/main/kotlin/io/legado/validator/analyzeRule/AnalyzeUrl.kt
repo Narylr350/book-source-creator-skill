@@ -30,7 +30,8 @@ class AnalyzeUrl(
         private set
     val headerMap = HashMap<String, String>()
     private var method = "GET"
-    private var charset: String? = null
+    var charset: String? = null
+        private set
 
     init {
         if (baseUrl.isEmpty()) {
@@ -58,16 +59,35 @@ class AnalyzeUrl(
             if (result != null) { jsUrlExecuted = true; result } else { match.value }
         }
 
-        // 剥离 JSON 选项（如 ,{"method":"POST",...}）
-        val jsonOptionIdx = mUrl.indexOf(",{")
-        if (jsonOptionIdx > 0) {
-            mUrl = mUrl.substring(0, jsonOptionIdx)
+        // 解析 URL JSON 选项: url,{"method":"POST","body":"...","headers":{...},"charset":"..."}
+        val commaIdx = findJsonOptionStart(mUrl)
+        if (commaIdx > 0) {
+            val urlPart = mUrl.substring(0, commaIdx).trim()
+            val jsonPart = mUrl.substring(commaIdx + 1).trim()
+            if (jsonPart.startsWith("{")) {
+                try {
+                    val opts = com.google.gson.Gson().fromJson(jsonPart, com.google.gson.JsonObject::class.java)
+                    opts.get("method")?.asString?.let { method = it.uppercase() }
+                    opts.get("body")?.asString?.let { body = it }
+                    opts.get("charset")?.asString?.let { charset = it }
+                    opts.get("headers")?.asJsonObject?.let { h ->
+                        h.entrySet().forEach { headerMap[it.key] = it.value.asString }
+                    }
+                    mUrl = urlPart
+                } catch (_: Exception) { /* not valid JSON, treat as part of URL */ }
+            }
         }
 
         // 替换 key
-        key?.let { mUrl = mUrl.replace("{{key}}", it) }
+        key?.let {
+            mUrl = mUrl.replace("{{key}}", it)
+            body = body?.replace("{{key}}", it)
+        }
         // 替换 page
-        page?.let { mUrl = mUrl.replace("{{page}}", it.toString()) }
+        page?.let {
+            mUrl = mUrl.replace("{{page}}", it.toString())
+            body = body?.replace("{{page}}", it.toString())
+        }
         // 替换规则变量
         val ruleData = ruleData
         if (ruleData != null) {
@@ -90,17 +110,13 @@ class AnalyzeUrl(
             } catch (e: Exception) { mUrl }
         }
 
-        // 解析 URL, method, body
+        // 解析 ;post 语法
         if (mUrl.contains(";post")) {
             method = "POST"
             val parts = mUrl.split(";post", limit = 2)
             url = parts[0].trim()
             body = parts.getOrNull(1)?.trim()?.trimStart('=')
-            // 替换 body 中的变量
-            key?.let { body = body?.replace("{{key}}", it) }
-            page?.let { body = body?.replace("{{page}}", it.toString()) }
         } else {
-            method = "GET"
             url = mUrl
         }
 
@@ -158,5 +174,17 @@ class AnalyzeUrl(
         } catch (_: Exception) {
             null
         }
+    }
+
+    private fun findJsonOptionStart(url: String): Int {
+        var depth = 0
+        for (i in url.indices) {
+            when (url[i]) {
+                '{' -> depth++
+                '}' -> depth--
+                ',' -> if (depth == 0) return i
+            }
+        }
+        return -1
     }
 }
