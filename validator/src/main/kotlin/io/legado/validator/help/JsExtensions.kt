@@ -11,6 +11,8 @@ import java.util.*
 import javax.crypto.Mac
 import javax.crypto.spec.SecretKeySpec
 
+private val cacheDir = java.io.File(System.getProperty("java.io.tmpdir"), "legado_validator_cache").apply { mkdirs() }
+
 interface JsExtensions {
     fun getSource(): Any?
 
@@ -166,11 +168,17 @@ interface JsExtensions {
 
     // ── Cache (PC temp dir) ──
 
-    fun cacheFile(urlStr: String): String? {
+    fun cacheFile(urlStr: String, saveTime: Long = 0): String? {
         return try {
-            val file = java.io.File.createTempFile("legado_cache_", ".tmp")
-            file.writeBytes(HttpHelper.get(urlStr).body.toByteArray())
-            file.absolutePath
+            val cached = java.io.File(cacheDir, md5Encode(urlStr))
+            if (cached.exists()) {
+                val age = (System.currentTimeMillis() - cached.lastModified()) / 1000
+                if (saveTime <= 0 || age < saveTime) {
+                    return cached.absolutePath
+                }
+            }
+            cached.writeBytes(HttpHelper.get(urlStr).body.toByteArray())
+            cached.absolutePath
         } catch (_: Exception) { null }
     }
 
