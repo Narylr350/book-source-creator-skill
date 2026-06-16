@@ -110,6 +110,16 @@ class AnalyzeUrlTest {
     }
 
     @Test
+    fun `webView option is detected`() {
+        val source = BookSource(bookSourceUrl = "https://example.com")
+        val au = AnalyzeUrl(
+            mUrl = """/search,{"webView":true}""",
+            source = source
+        )
+        assertTrue(au.hasWebView)
+    }
+
+    @Test
     fun `malformed JSON is treated as part of URL`() {
         val source = BookSource(bookSourceUrl = "https://example.com")
         val au = AnalyzeUrl(

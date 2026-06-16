@@ -32,6 +32,8 @@ class AnalyzeUrl(
     private var method = "GET"
     var charset: String? = null
         private set
+    var hasWebView: Boolean = false
+        private set
 
     init {
         if (baseUrl.isEmpty()) {
@@ -79,6 +81,9 @@ class AnalyzeUrl(
                     opts.get("charset")?.asString?.let { charset = it }
                     opts.get("headers")?.asJsonObject?.let { h ->
                         h.entrySet().forEach { headerMap[it.key] = it.value.asString }
+                    }
+                    if (opts.has("webView") && opts.get("webView").asBoolean) {
+                        hasWebView = true
                     }
                     mUrl = urlPart
                 } catch (_: Exception) { /* not valid JSON, treat as part of URL */ }
