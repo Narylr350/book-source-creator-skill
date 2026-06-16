@@ -147,9 +147,7 @@ object BookChapterList {
                 bookChapter.title = analyzeRule.setFieldName("chapterName").getString(nameRule)
                 bookChapter.url = getAbsoluteURL(redirectUrl, analyzeRule.setFieldName("chapterUrl").getString(urlRule))
                 val isVolume = analyzeRule.setFieldName("isVolume").getString(isVolumeRule)
-                if (isVolume == "true" || isVolume == "1") {
-                    // isVolume not in validator model, skip
-                }
+                bookChapter.isVolume = isVolume == "true" || isVolume == "1"
                 if (bookChapter.url.isEmpty()) {
                     bookChapter.url = baseUrl
                     DebugLog.log("⇒目录${index}未获取到url,使用baseUrl替代")
@@ -159,6 +157,12 @@ object BookChapterList {
                     val isPay = analyzeRule.getString(isPayRule)
                     bookChapter.isVip = isVip == "true" || isVip == "1"
                     bookChapter.isPay = isPay == "true" || isPay == "1"
+                    val upTimeStr = analyzeRule.setFieldName("updateTime").getString(upTimeRule)
+                    if (upTimeStr.isNotEmpty()) {
+                        bookChapter.updateTime = try {
+                            java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss").parse(upTimeStr)?.time ?: 0L
+                        } catch (_: Exception) { 0L }
+                    }
                     chapterList.add(bookChapter)
                 }
             }
@@ -169,6 +173,18 @@ object BookChapterList {
                 DebugLog.log("≡首章信息")
                 DebugLog.log("◇章节名称:${chapterList[0].title}")
                 DebugLog.log("◇章节链接:${chapterList[0].url}")
+            }
+        }
+        val formatJs = tocRule.formatJs
+        if (!formatJs.isNullOrBlank()) {
+            chapterList.forEach { chapter ->
+                try {
+                    analyzeRule.chapter = chapter
+                    analyzeRule.setContent(chapter.url)
+                    analyzeRule.evalJS(formatJs, chapter.title)
+                } catch (e: Exception) {
+                    DebugLog.log("formatJs error: ${e.message}")
+                }
             }
         }
         lastRuleHits = analyzeRule.ruleHits.toList()

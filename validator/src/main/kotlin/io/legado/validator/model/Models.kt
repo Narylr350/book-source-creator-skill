@@ -120,7 +120,10 @@ data class BookChapter(
     var url: String = "",
     var baseUrl: String = "",
     var isVip: Boolean = false,
-    var isPay: Boolean = false
+    var isPay: Boolean = false,
+    var tag: String? = null,
+    var updateTime: Long = 0L,
+    var isVolume: Boolean = false
 ) : RuleDataInterface {
     override val variableMap = hashMapOf<String, String>()
     override fun putBigVariable(key: String, value: String?) {
