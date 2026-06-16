@@ -32,6 +32,7 @@ object BookContent {
         analyzeRule.setRedirectUrl(redirectUrl)
         analyzeRule.setCoroutineContext(coroutineContext)
         analyzeRule.chapter = bookChapter
+        analyzeRule.nextChapterUrl = nextChapterUrl
         coroutineContext.ensureActive()
         val titleRule = contentRule.title
         if (!titleRule.isNullOrBlank()) {
@@ -45,7 +46,7 @@ object BookContent {
             }
         }
         var contentData = analyzeContent(
-            book, baseUrl, redirectUrl, body, contentRule, bookChapter, bookSource
+            book, baseUrl, redirectUrl, body, contentRule, bookChapter, bookSource, nextChapterUrl
         )
         contentList.add(contentData.first)
         if (contentData.second.size == 1) {
@@ -63,7 +64,7 @@ object BookContent {
                 res.body.let { nextBody ->
                     contentData = analyzeContent(
                         book, nextUrl, res.url, nextBody, contentRule,
-                        bookChapter, bookSource, printLog = false
+                        bookChapter, bookSource, nextChapterUrl, printLog = false
                     )
                     nextUrl = if (contentData.second.isNotEmpty()) contentData.second[0] else ""
                     contentList.add(contentData.first)
@@ -85,7 +86,7 @@ object BookContent {
                 contentList.add(
                     analyzeContent(
                         book, urlStr, res.url, res.body, contentRule,
-                        bookChapter, bookSource,
+                        bookChapter, bookSource, nextChapterUrl,
                         getNextPageUrl = false, printLog = false
                     ).first
                 )
@@ -116,6 +117,7 @@ object BookContent {
         contentRule: io.legado.validator.model.rule.ContentRule,
         chapter: BookChapter,
         bookSource: BookSource,
+        nextChapterUrl: String? = null,
         getNextPageUrl: Boolean = true,
         printLog: Boolean = true
     ): Pair<String, List<String>> {
@@ -124,6 +126,7 @@ object BookContent {
         analyzeRule.setCoroutineContext(coroutineContext)
         val rUrl = analyzeRule.setRedirectUrl(redirectUrl)
         analyzeRule.chapter = chapter
+        analyzeRule.nextChapterUrl = nextChapterUrl
         val nextUrlList = arrayListOf<String>()
         var content = analyzeRule.setFieldName("content").getString(contentRule.content)
         content = stripHtmlTagsKeepNewlines(content)
@@ -142,13 +145,18 @@ object BookContent {
     }
 
     private fun stripHtmlTagsKeepNewlines(html: String): String {
-        return html.replace(Regex("<br\\s*/?>", RegexOption.IGNORE_CASE), "\n")
-            .replace(Regex("<[^>]+>"), "")
+        return html
+            .replace(Regex("<br\\s*/?>", RegexOption.IGNORE_CASE), "\n")
+            .replace(Regex("<img\\s+([^>]*)/?>", RegexOption.IGNORE_CASE), "<img $1>")
+            .replace(Regex("</?(?!img)[a-zA-Z]+(?=[ >])[^<>]*>"), "")
             .replace(Regex("&nbsp;"), " ")
             .replace(Regex("&lt;"), "<")
             .replace(Regex("&gt;"), ">")
             .replace(Regex("&amp;"), "&")
             .replace(Regex("&quot;"), "\"")
+            .replace(Regex("&apos;"), "'")
+            .replace(Regex("&#(\\d+);")) { it.groupValues[1].toIntOrNull()?.let { c -> Char(c).toString() } ?: it.value }
+            .replace(Regex("&#x([0-9a-fA-F]+);")) { it.groupValues[1].toIntOrNull(16)?.let { c -> Char(c).toString() } ?: it.value }
             .trim()
     }
 }
