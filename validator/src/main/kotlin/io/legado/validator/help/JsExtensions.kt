@@ -148,7 +148,14 @@ interface JsExtensions {
         return try { HttpHelper.get(urlStr, headers).body } catch (e: Exception) { null }
     }
     fun get(urlStr: String, headers: Map<String, String>): StrResponse = HttpHelper.get(urlStr, headers)
-    fun head(urlStr: String, headers: Map<String, String>): String = urlStr
+    fun head(urlStr: String, headers: Map<String, String>): String {
+        return try {
+            val request = okhttp3.Request.Builder().url(urlStr).head().apply {
+                headers.forEach { (k, v) -> addHeader(k, v) }
+            }.build()
+            HttpHelper.client.newCall(request).execute().use { it.code.toString() }
+        } catch (e: Exception) { "0" }
+    }
     fun post(urlStr: String, body: String, headers: Map<String, String>): StrResponse =
         HttpHelper.post(urlStr, body, headers = headers)
     fun connect(urlStr: String): String? = ajax(urlStr)

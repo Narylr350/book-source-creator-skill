@@ -574,7 +574,12 @@ class AnalyzeRule(
 
     override fun ajax(urlStr: String): String? {
         return try {
-            io.legado.validator.help.http.HttpHelper.get(urlStr).body
+            val analyzeUrl = AnalyzeUrl(
+                mUrl = urlStr,
+                source = source,
+                ruleData = ruleData
+            )
+            analyzeUrl.getStrResponse().body
         } catch (e: Exception) {
             log("ajax($urlStr) error\n${e.message}")
             null
