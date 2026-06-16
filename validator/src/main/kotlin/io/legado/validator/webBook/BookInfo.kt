@@ -96,6 +96,16 @@ object BookInfo {
             DebugLog.log("└${e.localizedMessage}")
         }
         coroutineContext.ensureActive()
+        DebugLog.log("┌获取更新时间")
+        try {
+            analyzeRule.setFieldName("updateTime").getString(infoRule.updateTime).let {
+                if (it.isNotEmpty()) book.updateTime = it
+                DebugLog.log("└$it")
+            }
+        } catch (e: Exception) {
+            DebugLog.log("└${e.localizedMessage}")
+        }
+        coroutineContext.ensureActive()
         DebugLog.log("┌获取简介")
         try {
             stripHtmlTags(analyzeRule.setFieldName("intro").getString(infoRule.intro)).let {
@@ -126,7 +136,17 @@ object BookInfo {
     }
 
     private fun stripHtmlTags(html: String): String {
-        return html.replace(Regex("<[^>]+>"), "").trim()
+        return html
+            .replace(Regex("<br\\s*/?>", RegexOption.IGNORE_CASE), "\n")
+            .replace(Regex("</?(?:p|div)[^>]*>", RegexOption.IGNORE_CASE), "\n")
+            .replace(Regex("<[^>]+>"), "")
+            .replace(Regex("&nbsp;"), " ")
+            .replace(Regex("&lt;"), "<")
+            .replace(Regex("&gt;"), ">")
+            .replace(Regex("&amp;"), "&")
+            .replace(Regex("&quot;"), "\"")
+            .replace(Regex("\\n{3,}"), "\n\n")
+            .trim()
     }
 
     private fun getAbsoluteURL(baseUrl: String, relativeUrl: String): String {
