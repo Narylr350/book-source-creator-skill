@@ -3,6 +3,7 @@ package io.legado.validator.debug
 import io.legado.validator.analyzeRule.AnalyzeUrl
 import io.legado.validator.analyzeRule.AnalyzeRule
 import io.legado.validator.analyzeRule.RuleData
+import io.legado.validator.help.WebViewNotSupportedException
 import io.legado.validator.help.http.StrResponse
 import io.legado.validator.model.*
 import io.legado.validator.render.RenderService
@@ -24,7 +25,7 @@ class DebugService {
 
     fun getSteps(): List<DebugStep> = steps.toList()
 
-    private fun collectWarnings(source: BookSource): List<DebugStep.CompatibilityWarning> {
+    private fun collectWarnings(source: BookSource, analyzeUrl: AnalyzeUrl? = null): List<DebugStep.CompatibilityWarning> {
         val warnings = mutableListOf<DebugStep.CompatibilityWarning>()
         if (source.enabledCookieJar == true) {
             warnings.add(DebugStep.CompatibilityWarning(
@@ -41,11 +42,33 @@ class DebugService {
                 "loginUrl", "源定义了登录流程，validator 无法执行登录"
             ))
         }
+        if (analyzeUrl?.hasWebView == true) {
+            warnings.add(DebugStep.CompatibilityWarning(
+                "webView", "URL 包含 webView:true，validator 无法执行 WebView 渲染"
+            ))
+        }
         return warnings
     }
 
     private fun DebugStep.withWarnings(warnings: List<DebugStep.CompatibilityWarning>): DebugStep {
-        return copy(compatibilityWarnings = warnings.ifEmpty { null })
+        val allWarnings = warnings.toMutableList()
+        var needsReview = this.needsAppReview
+        var reviewRsn = this.reviewReason
+        // 检查当前步骤的 AnalyzeUrl 是否有 webView:true
+        if (WebBook.lastAnalyzeUrl?.hasWebView == true) {
+            if (allWarnings.none { it.feature == "webView" }) {
+                allWarnings.add(DebugStep.CompatibilityWarning(
+                    "webView", "URL 包含 webView:true，validator 无法执行 WebView 渲染"
+                ))
+            }
+            needsReview = true
+            reviewRsn = reviewRsn ?: "URL 包含 webView:true，需 App/WebView 复核"
+        }
+        return copy(
+            compatibilityWarnings = allWarnings.ifEmpty { null },
+            needsAppReview = needsReview,
+            reviewReason = reviewRsn
+        )
     }
 
     suspend fun runFull(source: BookSource, keyword: String, mode: String = "http"): List<DebugStep> {
@@ -189,6 +212,15 @@ class DebugService {
                         error = errorMsg
                     )
                 }
+            } catch (e: WebViewNotSupportedException) {
+                DebugStep(
+                    phase = "search", status = "error",
+                    request = buildRequestInfo(),
+                    response = buildResponseInfo(WebBook.lastResponse),
+                    error = e.message,
+                    needsAppReview = true,
+                    reviewReason = e.message
+                )
             } catch (e: Exception) {
                 DebugStep(
                     phase = "search", status = "error",
@@ -336,6 +368,15 @@ class DebugService {
                         "tocUrl" to result.tocUrl
                     )
                 )
+            } catch (e: WebViewNotSupportedException) {
+                DebugStep(
+                    phase = "detail", status = "error", mode = mode,
+                    request = buildRequestInfo(),
+                    response = buildResponseInfo(WebBook.lastResponse),
+                    error = e.message,
+                    needsAppReview = true,
+                    reviewReason = e.message
+                )
             } catch (e: Exception) {
                 DebugStep(
                     phase = "detail", status = "error", mode = mode,
@@ -363,6 +404,15 @@ class DebugService {
                         "chapters" to chapters,
                         "first5" to chapters.take(5).map { mapOf("title" to it.title, "url" to it.url) }
                     )
+                )
+            } catch (e: WebViewNotSupportedException) {
+                DebugStep(
+                    phase = "toc", status = "error", mode = mode,
+                    request = buildRequestInfo(),
+                    response = buildResponseInfo(WebBook.lastResponse),
+                    error = e.message,
+                    needsAppReview = true,
+                    reviewReason = e.message
                 )
             } catch (e: Exception) {
                 DebugStep(
@@ -392,6 +442,15 @@ class DebugService {
                     ),
                     preview = content.take(500)
                 )
+            } catch (e: WebViewNotSupportedException) {
+                DebugStep(
+                    phase = "content", status = "error", mode = mode,
+                    request = buildRequestInfo(),
+                    response = buildResponseInfo(WebBook.lastResponse),
+                    error = e.message,
+                    needsAppReview = true,
+                    reviewReason = e.message
+                )
             } catch (e: Exception) {
                 DebugStep(
                     phase = "content", status = "error", mode = mode,
@@ -405,5 +464,18 @@ class DebugService {
 
     fun cancel() {
         scope.coroutineContext.cancelChildren()
+    }
+}
+
+fun determineFinalStatus(steps: List<DebugStep>): String {
+    val hasNeedsAppReview = steps.any { it.needsAppReview }
+    val hasUnsupportedFeature = steps.any { !it.compatibilityWarnings.isNullOrEmpty() }
+    val allPassed = steps.all { it.status == "success" }
+
+    return when {
+        hasNeedsAppReview -> "needs_app_review"
+        hasUnsupportedFeature && allPassed -> "validator_limitation"
+        allPassed -> "passed"
+        else -> "failed"
     }
 }

@@ -175,8 +175,11 @@ class WebServer(port: Int) : NanoWSD(port) {
                 }
             }
 
+            val finalStatus = io.legado.validator.debug.determineFinalStatus(steps)
+            val allWarnings = steps.flatMap { it.compatibilityWarnings ?: emptyList() }.distinctBy { it.feature }
+
             val result = buildString {
-                append("""{"ok":true,"phases":{""")
+                append("""{"ok":true,"finalStatus":"$finalStatus","phases":{""")
                 phases.entries.joinTo(this) { "\"${it.key}\":\"${it.value}\"" }
                 append("""},"summary":{"resultCount":$resultCount,"firstBook":"${firstBook.replace("\"", "\\\"")}","chapterCount":$chapterCount,"contentPreview":"${contentPreview.replace("\"", "\\\"").replace("\n", "\\n")}"""")
                 if (errorMessage != null) {
@@ -184,6 +187,10 @@ class WebServer(port: Int) : NanoWSD(port) {
                 }
                 append("""},"steps":""")
                 append(Gson().toJson(compactSteps))
+                if (allWarnings.isNotEmpty()) {
+                    append(""","compatibilityWarnings":""")
+                    append(Gson().toJson(allWarnings))
+                }
                 append("}")
             }
             newFixedLengthResponse(Response.Status.OK, "application/json", result)

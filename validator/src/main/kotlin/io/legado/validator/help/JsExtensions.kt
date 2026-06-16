@@ -293,12 +293,10 @@ interface JsExtensions {
     // ── Stubs ──
 
     fun webView(html: String, url: String, js: String): String {
-        log("webView($url): 需 App 复核，validator 不支持 WebView 执行")
-        return html
+        throw WebViewNotSupportedException("webView($url): 需 App 复核，validator 不支持 WebView 执行")
     }
     fun webViewGetSource(html: String, url: String, js: String, sourceRegex: String): String {
-        log("webViewGetSource($url): 需 App 复核，validator 不支持 WebView 执行")
-        return html
+        throw WebViewNotSupportedException("webViewGetSource($url): 需 App 复核，validator 不支持 WebView 执行")
     }
     fun getWebViewUA(): String =
         "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 Chrome/120.0 Mobile Safari/537.36"

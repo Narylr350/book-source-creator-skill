@@ -36,7 +36,7 @@ class AnalyzeUrlTest {
             key = "test",
             source = source
         )
-        assertEquals("/search.html", au.url)
+        assertEquals("https://example.com/search.html", au.url)
     }
 
     @Test
@@ -83,6 +83,28 @@ class AnalyzeUrlTest {
             source = source
         )
         assertEquals("https://example.com/list-1.html", au.url)
+    }
+
+    @Test
+    fun `page rule picks by page index`() {
+        val source = BookSource(bookSourceUrl = "https://example.com")
+        val au = AnalyzeUrl(
+            mUrl = "/list-<10,20,30>.html",
+            page = 2,
+            source = source
+        )
+        assertEquals("https://example.com/list-20.html", au.url)
+    }
+
+    @Test
+    fun `page rule out of range picks last`() {
+        val source = BookSource(bookSourceUrl = "https://example.com")
+        val au = AnalyzeUrl(
+            mUrl = "/list-<10,20,30>.html",
+            page = 5,
+            source = source
+        )
+        assertEquals("https://example.com/list-30.html", au.url)
     }
 
     @Test

@@ -46,12 +46,20 @@ function determineStatus(result) {
   if (!result.ok) return { status: 'error', reason: result.error };
   
   const steps = result.steps || [];
-  const phases = result.phases || {};
   
-  // 全部成功
-  if (Object.values(phases).every(s => s === 'success')) {
-    return { status: 'passed', reason: null };
+  // 优先使用服务端 finalStatus（P8.5 状态门禁）
+  if (result.finalStatus) {
+    const warnings = result.compatibilityWarnings || [];
+    const warningDesc = warnings.map(w => w.description).join('; ');
+    return { 
+      status: result.finalStatus, 
+      reason: warningDesc || null,
+      warnings: warnings
+    };
   }
+  
+  // fallback: 客户端判定（旧版 validator 兼容）
+  const phases = result.phases || {};
   
   // 检查 needsAppReview
   for (const step of steps) {
@@ -60,10 +68,20 @@ function determineStatus(result) {
     }
   }
   
-  // 检查 Cloudflare/验证码（检查 error + raw response bodyPreview）
+  // 检查 compatibilityWarnings
+  const warnings = result.compatibilityWarnings || [];
+  if (warnings.length > 0 && Object.values(phases).every(s => s === 'success')) {
+    return { status: 'validator_limitation', reason: warnings.map(w => w.description).join('; '), warnings };
+  }
+  
+  // 全部成功
+  if (Object.values(phases).every(s => s === 'success')) {
+    return { status: 'passed', reason: null };
+  }
+  
+  // 检查 Cloudflare/验证码
   for (const step of steps) {
     const err = step.error || '';
-    // raw.steps 包含完整 bodyPreview
     const rawStep = (result.steps || []).find(s => s.phase === step.phase);
     const rawBody = rawStep?.response?.bodyPreview || '';
     if (/Cloudflare|Turnstile|challenge|验证码|登录|WebView/i.test(err + rawBody)) {
@@ -72,7 +90,7 @@ function determineStatus(result) {
     }
   }
   
-  // 有失败但可修
+  // 有失败
   for (const step of steps) {
     if (step.status === 'error') {
       return { status: 'failed', reason: step.error, phase: step.phase, ruleHits: step.ruleHits };

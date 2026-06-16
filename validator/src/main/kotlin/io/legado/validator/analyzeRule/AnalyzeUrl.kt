@@ -45,27 +45,30 @@ class AnalyzeUrl(
 
     private fun initUrl() {
         var mUrl = mUrl
-        var jsUrlExecuted = false
 
         // 执行 @js: 或 <js> URL 规则（必须在变量替换和相对 URL 拼接之前）
         if (mUrl.startsWith("@js:")) {
-            evalJsUrl(mUrl.substring(4))?.let { mUrl = it; jsUrlExecuted = true }
+            evalJsUrl(mUrl.substring(4))?.let { mUrl = it }
         } else if (mUrl.startsWith("<js>") && mUrl.endsWith("</js>")) {
-            evalJsUrl(mUrl.substring(4, mUrl.length - 5))?.let { mUrl = it; jsUrlExecuted = true }
+            evalJsUrl(mUrl.substring(4, mUrl.length - 5))?.let { mUrl = it }
         }
 
         // 处理内联 <js>...</js>（如 bilinovel searchUrl）
         val jsTagPattern = Regex("<js>([\\w\\W]*?)</js>")
         mUrl = jsTagPattern.replace(mUrl) { match ->
             val result = evalJsUrl(match.groupValues[1])
-            if (result != null) { jsUrlExecuted = true; result } else { match.value }
+            result ?: match.value
         }
 
-        // Expand page rule <1,2,3> → use first value (WebBook handles multi-page)
+        // Expand page rule <1,2,3> → pick by page index (1-based), out-of-range picks last
         val pageRulePattern = Regex("<([^>]+)>")
         mUrl = pageRulePattern.replace(mUrl) { match ->
-            val values = match.groupValues[1].split(",")
-            values.firstOrNull()?.trim() ?: match.value
+            val values = match.groupValues[1].split(",").map { it.trim() }
+            if (values.isEmpty()) match.value
+            else {
+                val idx = (page ?: 1) - 1  // page is 1-based
+                values.getOrElse(idx) { values.last() }
+            }
         }
 
         // 解析 URL JSON 选项: url,{"method":"POST","body":"...","headers":{...},"charset":"..."}
@@ -115,8 +118,8 @@ class AnalyzeUrl(
             mUrl = sb.toString()
         }
 
-        // 相对 URL 拼接（JS 执行结果不拼接）
-        if (!jsUrlExecuted && !mUrl.startsWith("http://") && !mUrl.startsWith("https://") && baseUrl.isNotEmpty()) {
+        // 相对 URL 拼接（JS 执行结果也需要拼接，与 legado 行为一致）
+        if (!mUrl.startsWith("http://") && !mUrl.startsWith("https://") && baseUrl.isNotEmpty()) {
             mUrl = try {
                 java.net.URL(java.net.URL(baseUrl), mUrl).toString()
             } catch (e: Exception) { mUrl }

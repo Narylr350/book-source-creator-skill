@@ -39,16 +39,3 @@ data class DebugStep(
 }
 
 fun List<DebugStep>.compact(): List<DebugStep> = map { it.compact() }
-
-fun determineFinalStatus(steps: List<DebugStep>): String {
-    val hasUnsupportedFeature = steps.any { !it.compatibilityWarnings.isNullOrEmpty() }
-    val allPassed = steps.all { it.status == "success" }
-    val hasAppReview = steps.any { it.needsAppReview }
-
-    return when {
-        hasAppReview -> "needs_app_review"
-        hasUnsupportedFeature && allPassed -> "validator_limitation"
-        allPassed -> "passed"
-        else -> "failed"
-    }
-}
