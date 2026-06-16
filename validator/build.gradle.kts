@@ -7,6 +7,14 @@ application {
     mainClass.set("io.legado.validator.AppKt")
 }
 
+sourceSets {
+    main {
+        java {
+            srcDir("src/main/kotlin")
+        }
+    }
+}
+
 repositories {
     mavenCentral()
 }

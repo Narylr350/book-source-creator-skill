@@ -42,6 +42,28 @@ class AnalyzeUrl(
 
     private fun initUrl() {
         var mUrl = mUrl
+        var jsUrlExecuted = false
+
+        // 执行 @js: 或 <js> URL 规则（必须在变量替换和相对 URL 拼接之前）
+        if (mUrl.startsWith("@js:")) {
+            evalJsUrl(mUrl.substring(4))?.let { mUrl = it; jsUrlExecuted = true }
+        } else if (mUrl.startsWith("<js>") && mUrl.endsWith("</js>")) {
+            evalJsUrl(mUrl.substring(4, mUrl.length - 5))?.let { mUrl = it; jsUrlExecuted = true }
+        }
+
+        // 处理内联 <js>...</js>（如 bilinovel searchUrl）
+        val jsTagPattern = Regex("<js>([\\w\\W]*?)</js>")
+        mUrl = jsTagPattern.replace(mUrl) { match ->
+            val result = evalJsUrl(match.groupValues[1])
+            if (result != null) { jsUrlExecuted = true; result } else { match.value }
+        }
+
+        // 剥离 JSON 选项（如 ,{"method":"POST",...}）
+        val jsonOptionIdx = mUrl.indexOf(",{")
+        if (jsonOptionIdx > 0) {
+            mUrl = mUrl.substring(0, jsonOptionIdx)
+        }
+
         // 替换 key
         key?.let { mUrl = mUrl.replace("{{key}}", it) }
         // 替换 page
@@ -61,8 +83,8 @@ class AnalyzeUrl(
             mUrl = sb.toString()
         }
 
-        // 相对 URL 拼接
-        if (!mUrl.startsWith("http://") && !mUrl.startsWith("https://") && baseUrl.isNotEmpty()) {
+        // 相对 URL 拼接（JS 执行结果不拼接）
+        if (!jsUrlExecuted && !mUrl.startsWith("http://") && !mUrl.startsWith("https://") && baseUrl.isNotEmpty()) {
             mUrl = try {
                 java.net.URL(java.net.URL(baseUrl), mUrl).toString()
             } catch (e: Exception) { mUrl }
@@ -122,4 +144,19 @@ class AnalyzeUrl(
     fun isPost(): Boolean = method == "POST"
 
     override fun getSource(): Any? = source
+
+    private fun evalJsUrl(jsCode: String): String? {
+        return try {
+            val bindings = mutableMapOf<String, Any?>()
+            bindings["key"] = key ?: ""
+            bindings["page"] = page ?: 1
+            bindings["book"] = ruleData
+            bindings["source"] = source
+            bindings["java"] = this
+            val result = RhinoAdapter.eval(jsCode, bindings)
+            result?.toString()
+        } catch (_: Exception) {
+            null
+        }
+    }
 }
