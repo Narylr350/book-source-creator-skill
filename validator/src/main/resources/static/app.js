@@ -73,85 +73,45 @@ document.getElementById('btn-debug').onclick = async () => {
   debugRunning = true;
   resetPipeline();
   clearPanels();
-  setBtnState('启动中…', true);
+  setBtnState('调试中…', true);
 
   const mode = document.getElementById('mode-select').value;
 
   try {
-    const res = await fetch(`${API}/api/debug/start`, {
+    const res = await fetch(`${API}/api/debug/run`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ sourceUrl, keyword, mode })
     });
     const data = await res.json();
     if (!data.ok) {
-      flash(`启动失败: ${data.error || 'unknown'}`, 'error');
+      flash(`运行失败: ${data.error || 'unknown'}`, 'error');
       setBtnState('运行', false);
       debugRunning = false;
       return;
     }
+    (data.steps || []).forEach(step => {
+      stepsData[step.phase] = step;
+      updateStepUI(step);
+    });
+    finishDebug();
+    if (data.finalStatus && data.finalStatus !== 'passed') {
+      flash(`状态: ${data.finalStatus}`, data.finalStatus === 'validator_limitation' ? 'warn' : 'error');
+    }
+    return;
   } catch (e) {
     flash(`请求失败: ${e.message}`, 'error');
     setBtnState('运行', false);
     debugRunning = false;
     return;
   }
-
-  setBtnState('调试中…', true);
-
-  // Try WebSocket first, fallback to polling
-  let wsConnected = false;
-  let wsFailed = false;
-
-  if (ws) ws.close();
-  const wsUrl = `ws://${location.host}`;
-  ws = new WebSocket(wsUrl);
-
-  ws.onopen = () => {
-    wsConnected = true;
-    setWsStatus(true);
-  };
-
-  ws.onmessage = (e) => {
-    try {
-      const step = JSON.parse(e.data);
-      stepsData[step.phase] = step;
-      updateStepUI(step);
-      // Check if done
-      if (isDebugDone()) finishDebug();
-    } catch (err) {
-      console.error('WS parse error:', err);
-    }
-  };
-
-  ws.onclose = () => {
-    setWsStatus(false);
-    if (!wsFailed && !isDebugDone()) {
-      // WebSocket closed prematurely, fallback to polling
-      startPolling();
-    }
-  };
-
-  ws.onerror = () => {
-    wsFailed = true;
-    setWsStatus(false);
-    startPolling();
-  };
-
-  // Timeout: if no WS connection in 3s, fallback to polling
-  setTimeout(() => {
-    if (!wsConnected && !wsFailed) {
-      wsFailed = true;
-      ws.close();
-      startPolling();
-    }
-  }, 3000);
 };
 
 function startPolling() {
+  const silent = arguments[0] === true;
   if (pollTimer) return;
-  flash('WebSocket 不可用，切换到轮询模式', 'warn');
-  pollTimer = setInterval(async () => {
+  if (!silent) flash('WebSocket 不可用，切换到轮询模式', 'warn');
+  const poll = async () => {
     try {
       const res = await fetch(`${API}/api/debug/steps`);
       const steps = await res.json();
@@ -163,7 +123,9 @@ function startPolling() {
     } catch (e) {
       console.error('Poll error:', e);
     }
-  }, 1500);
+  };
+  poll();
+  pollTimer = setInterval(poll, 1000);
 }
 
 function stopPolling() {

@@ -56,7 +56,10 @@ class WebServer(port: Int) : NanoWSD(port) {
             else -> "application/octet-stream"
         }
         val bytes = stream.readBytes()
-        return newFixedLengthResponse(Response.Status.OK, mime, bytes.inputStream(), bytes.size.toLong())
+        return newFixedLengthResponse(Response.Status.OK, mime, bytes.inputStream(), bytes.size.toLong()).apply {
+            addHeader("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
+            addHeader("Pragma", "no-cache")
+        }
     }
 
     private fun handleImportSource(session: IHTTPSession): Response {
@@ -111,11 +114,6 @@ class WebServer(port: Int) : NanoWSD(port) {
         val json = String(rawBytes, Charsets.UTF_8)
         return try {
             val req = com.google.gson.JsonParser.parseString(json).asJsonObject
-            val sourceJsonElement = req.get("sourceJson")
-                ?: return newFixedLengthResponse(Response.Status.BAD_REQUEST, "application/json",
-                    """{"ok":false,"error":"Missing sourceJson"}""")
-            val sourceJson = if (sourceJsonElement.isJsonPrimitive) sourceJsonElement.asString
-                else sourceJsonElement.toString()
             val sourceUrl = req.get("sourceUrl")?.asString
                 ?: return newFixedLengthResponse(Response.Status.BAD_REQUEST, "application/json",
                     """{"ok":false,"error":"Missing sourceUrl"}""")
@@ -124,16 +122,20 @@ class WebServer(port: Int) : NanoWSD(port) {
                     """{"ok":false,"error":"Missing keyword"}""")
             val mode = req.get("mode")?.asString ?: "http"
 
-            // Import source
-            val list = try {
-                BookSource.fromJson(sourceJson)
-            } catch (_: Exception) {
-                listOf(BookSource.fromJsonObject(sourceJson))
+            val sourceJsonElement = req.get("sourceJson")
+            if (sourceJsonElement != null) {
+                val sourceJson = if (sourceJsonElement.isJsonPrimitive) sourceJsonElement.asString
+                    else sourceJsonElement.toString()
+                val list = try {
+                    BookSource.fromJson(sourceJson)
+                } catch (_: Exception) {
+                    listOf(BookSource.fromJsonObject(sourceJson))
+                }
+                list.forEach { sources[it.bookSourceUrl] = it }
             }
-            list.forEach { sources[it.bookSourceUrl] = it }
             val source = sources[sourceUrl]
                 ?: return newFixedLengthResponse(Response.Status.NOT_FOUND, "application/json",
-                    """{"ok":false,"error":"Source not found after import: $sourceUrl"}""")
+                    """{"ok":false,"error":"Source not found: $sourceUrl"}""")
 
             // 每次创建独立 DebugService，避免并发串状态
             val runService = DebugService()
