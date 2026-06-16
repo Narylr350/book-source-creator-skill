@@ -52,6 +52,16 @@ object AndroidProbeService {
             val adbUnix = File(androidHome, "platform-tools/adb")
             if (adbUnix.exists()) return adbUnix.absolutePath
         }
+        val localAppData = System.getenv("LOCALAPPDATA")
+        if (localAppData != null) {
+            val adb = File(localAppData, "Android/Sdk/platform-tools/adb.exe")
+            if (adb.exists()) return adb.absolutePath
+        }
+        val userHome = System.getProperty("user.home")
+        if (userHome != null) {
+            val adb = File(userHome, "AppData/Local/Android/Sdk/platform-tools/adb.exe")
+            if (adb.exists()) return adb.absolutePath
+        }
         return try {
             val p = ProcessBuilder("adb", "version").start()
             p.waitFor()
