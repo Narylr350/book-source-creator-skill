@@ -7,7 +7,8 @@ Legado 书源生成与验证工具
 
 - AI 辅助分析小说站点结构，自动生成 Legado 书源 JSON
 - 内置本地 validator，可在电脑浏览器中验证书源的搜索、详情、目录、正文链路
-- 验证失败时 AI 自动回修规则，只有硬边界（验证码/登录/Cloudflare/WebView/付费）才需人工复核
+- 验证失败时 AI 自动回修规则，只有硬边界（验证码/Cloudflare/WebView/付费/登录态缺失）才需人工复核
+- 对登录态、Cookie、webView、webJs 站点，匿名验证只算初筛，不能直接标可用
 
 ## 快速开始
 
@@ -81,6 +82,32 @@ Android Probe 不可用: No Android devices connected
 - Browser 模式是桌面浏览器渲染，不等于 Android WebView。
 - 本工具不会绕过验证码、登录、Cloudflare、付费墙、DRM 或其他访问控制。
 
+## 登录态 / Cookie 验证
+
+v0.4.0 起，validator 支持临时导入 Cookie，用于验证需要登录态的书源。
+
+浏览器界面：
+
+- 打开 http://localhost:1111
+- 在 Cookie 区域填入域名和 Cookie
+- 再运行 HTTP / Android / Auto 验证
+
+CLI：
+
+node scripts\validate-with-validator.mjs book-source.json 关键词 auto --cookie=cookies.json
+
+cookies.json 格式：
+
+{
+  "novalpie.cc": "auth_token=xxx; other=value"
+}
+
+注意：
+
+- Cookie 只用于本地验证，不会写入 book-source.json。
+- 不要把 Cookie、token、登录头提交到仓库或发给别人。
+- 匿名验证通过但存在 loginUrl、enabledCookieJar、Authorization、webJs 或 webView 时，状态应为 anonymous_candidate，不能标可用。
+
 ## 停止服务
 
 - 在 run.bat 窗口按 Ctrl+C
@@ -89,6 +116,7 @@ Android Probe 不可用: No Android devices connected
 ## 结果状态说明
 
 - passed：validator 全链路通过（search→detail→toc→content）
+- anonymous_candidate：匿名验证通过，但站点存在登录态/WebView/Cookie/token 依赖，不能标可用，需登录态或 App/WebView 复核
 - degraded：技术链路通过但阅读体验降级（如章节 URL 不可区分）
 - validator_limitation：validator 不支持该能力，需 App/WebView 复核
 - needs_app_review：验证码、登录、Cloudflare、WebView、付费等需人工或 App 复核
@@ -98,7 +126,8 @@ Android Probe 不可用: No Android devices connected
 
 - validator 已支持通过 Android Probe 调用真实 Android WebView 复核部分 webView:true / webJs 场景，但需要已连接的 Android 设备或模拟器。
 - Android Probe 通过只代表该设备 WebView 环境下通过，不等于阅读 App 100% 通过。
-- 登录态 / CookieJar 尚未支持导入、记录、隔离和复用；validator 会识别并标记限制，但不能替代登录后的 App 复核。
+- validator 已支持临时导入 Cookie，并按域名注入 HTTP 请求和 Android Probe WebView；Cookie 不会写入书源 JSON，也不应提交或分发。
+- anonymous_candidate 不是可用通过，只表示匿名链路可作为候选，仍需登录态或 App/WebView 复核。
 - Cloudflare、验证码、付费墙、会员权限、DRM、强风控等访问控制只能标记需复核，不会也不应被绕过。
 - validator passed 只代表当前技术链路跑通，不代表质量通过、长期可用、合法可用或阅读体验完整。
 - 多章节 URL 为空、不可区分、全部指向同一全文页、伪章节等情况应标记 degraded。

@@ -129,8 +129,9 @@ runs/<site-slug>/
 3. 用 Browser MCP 分析搜索、详情、目录、正文
 4. 结合官方规则和模式矩阵生成 `book-source.json` 到 `outputs/`
 5. 用 validator 跑真实链路验证（`node scripts/validate-with-validator.mjs`）
-6. validator 失败时 AI 自动回修规则（最多 3 次）
-7. 只有硬边界（验证码/登录/Cloudflare/WebView/付费）才需人工/App 复核
+6. 若站点有 `loginUrl`、`enabledCookieJar`、`Authorization`、`webJs` 或 `webView`，匿名验证只能算初筛，必须优先做登录态或 App/WebView 复核
+7. validator 失败时 AI 自动回修规则（最多 3 次）
+8. 只有硬边界（验证码、Cloudflare、付费墙、Android WebView 不可用等）才需人工/App 复核
 
 固定评级只有四种：`可直接生成` / `可生成但高风险` / `需登录后再评估` / `不建议生成`
 
@@ -364,7 +365,8 @@ npm test
 
 - validator 已支持通过 Android Probe 调用真实 Android WebView 复核部分 `webView:true` / `webJs` 场景，但需要已连接的 Android 设备或模拟器。
 - Android Probe 通过只代表该设备 WebView 环境下通过，不等于阅读 App 100% 通过。
-- 登录态 / CookieJar 尚未支持导入、记录、隔离和复用；validator 会识别并标记限制，但不能替代登录后的 App 复核。
+- validator 已支持临时导入 Cookie，并会按域名注入 HTTP 请求和 Android Probe WebView；Cookie 不会写入书源 JSON，也不应提交到仓库或 Release。
+- `anonymous_candidate` 表示匿名链路通过但存在登录态、Cookie、WebView 或 token 依赖，不能标为可用，必须继续做登录态或 App/WebView 复核。
 - Cloudflare、验证码、付费墙、会员权限、DRM、强风控等访问控制不会也不应被绕过，只能标记 `needs_app_review`。
 - `validator passed` 只代表当前 search/detail/toc/content 技术链路跑通，不代表书源质量、长期可用性、合法可用性或阅读体验完整。
 - 多章节 URL 为空、不可区分、全部指向同一全文页、伪章节等情况应标记 `degraded`，不能当作完整通过。
