@@ -341,6 +341,12 @@ body {
   padding: 0 0.5rem;
 }
 
+.cookie-btns { display: flex; gap: 0.5rem; margin-top: 0.5rem; }
+.btn-sm { font-size: 0.75rem; padding: 0.25rem 0.5rem; }
+.cookie-list { font-size: 0.7rem; color: var(--text-dim); margin-top: 0.5rem; max-height: 100px; overflow-y: auto; }
+.cookie-list .cookie-item { padding: 0.15rem 0; border-bottom: 1px solid var(--border); }
+.session-indicator { font-size: 0.75rem; white-space: nowrap; padding: 0 0.5rem; }
+
 .run-icon { font-size: 10px; }
 
 /* ─── Pipeline ─── */

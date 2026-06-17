@@ -33,6 +33,17 @@
         <div id="source-list" class="source-list"></div>
       </div>
 
+      <div class="sidebar-section">
+        <div class="section-label">Cookie</div>
+        <input id="cookie-domain" type="text" placeholder="域名 (example.com)" autocomplete="off" />
+        <textarea id="cookie-value" placeholder="Cookie 值 (token=xxx; session=yyy)" spellcheck="false" rows="2"></textarea>
+        <div class="cookie-btns">
+          <button id="btn-set-cookie" class="btn-primary btn-sm">设置</button>
+          <button id="btn-clear-cookie" class="btn-sm">清空</button>
+        </div>
+        <div id="cookie-list" class="cookie-list"></div>
+      </div>
+
       <div class="sidebar-footer">
         <div class="status-dot" id="ws-status"></div>
         <span id="ws-label">未连接</span>

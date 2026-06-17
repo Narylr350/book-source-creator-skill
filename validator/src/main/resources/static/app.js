@@ -367,6 +367,8 @@ document.getElementById('keyword').addEventListener('keydown', (e) => {
 // ─── Init ───
 loadSources();
 checkProbeStatus();
+loadCookieList();
+updateSessionMode();
 
 async function checkProbeStatus() {
   const el = document.getElementById('probe-status');
@@ -384,4 +386,68 @@ async function checkProbeStatus() {
   } catch (e) {
     el.textContent = '🔴 Probe unreachable';
   }
+}
+
+// ─── Cookie Management ───
+document.getElementById('btn-set-cookie').onclick = async () => {
+  const domain = document.getElementById('cookie-domain').value.trim();
+  const cookie = document.getElementById('cookie-value').value.trim();
+  if (!domain || !cookie) return flash('请输入域名和 Cookie', 'warn');
+  await fetch(`${API}/api/cookie/set`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ domain, cookie })
+  });
+  flash(`Cookie 已设置: ${domain}`, 'ok');
+  loadCookieList();
+  updateSessionMode();
+};
+
+document.getElementById('btn-clear-cookie').onclick = async () => {
+  const domain = document.getElementById('cookie-domain').value.trim();
+  if (domain) {
+    await fetch(`${API}/api/cookie/clear`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ domain })
+    });
+    flash(`Cookie 已清空: ${domain}`, 'ok');
+  } else {
+    await fetch(`${API}/api/cookie/clear`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ all: true })
+    });
+    flash('所有 Cookie 已清空', 'ok');
+  }
+  loadCookieList();
+  updateSessionMode();
+};
+
+async function loadCookieList() {
+  try {
+    const res = await fetch(`${API}/api/cookie/list`);
+    const cookies = await res.json();
+    const el = document.getElementById('cookie-list');
+    const domains = Object.keys(cookies);
+    if (domains.length === 0) {
+      el.innerHTML = '<div class="cookie-item dim">无已存储 Cookie</div>';
+    } else {
+      el.innerHTML = domains.map(d => `<div class="cookie-item">${esc(d)}</div>`).join('');
+    }
+  } catch (e) { /* ignore */ }
+}
+
+async function updateSessionMode() {
+  try {
+    const res = await fetch(`${API}/api/cookie/list`);
+    const cookies = await res.json();
+    const hasCookies = Object.keys(cookies).length > 0;
+    // Update any session indicator in the UI
+    const indicators = document.querySelectorAll('.session-indicator');
+    indicators.forEach(el => {
+      el.textContent = hasCookies ? '🔐 登录态' : '🔓 匿名';
+      el.style.color = hasCookies ? 'var(--accent)' : 'var(--text-dim)';
+    });
+  } catch (e) { /* ignore */ }
 }
