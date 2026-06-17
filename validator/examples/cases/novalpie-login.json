@@ -1,0 +1,25 @@
+{
+  "name": "novalpie — 登录态验收",
+  "category": "login-required",
+  "sourceFile": "novalpie-com.json",
+  "keyword": "凡人修仙传",
+  "mode": "http",
+  "expected": {
+    "search": "success",
+    "detail": "success",
+    "toc": "success",
+    "content": "success",
+    "note": "匿名 passed 应返回 anonymous_candidate；登录态 passed 才能标可用"
+  },
+  "manualTest": {
+    "description": "novalpie 需要登录态验证，自动化测试仅验证 anonymous_candidate 逻辑",
+    "steps": [
+      "1. 启动 validator: java -jar legado-source-validator.jar",
+      "2. 匿名跑 /api/debug/run → 预期 finalStatus=anonymous_candidate（有 loginUrl/enabledCookieJar/webJs）",
+      "3. 获取登录 Cookie（Browser MCP 或手动登录）",
+      "4. POST /api/cookie/set {domain, cookie} 注入 Cookie",
+      "5. 再跑 /api/debug/run → 预期 finalStatus=passed + sessionMode=authenticated",
+      "6. 检查 content 不为空、不是登录墙、不是串章"
+    ]
+  }
+}
