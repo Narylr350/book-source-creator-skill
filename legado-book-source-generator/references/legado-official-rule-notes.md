@@ -25,6 +25,27 @@ https://example.com,{"headers":{"User-Agent":"..."},"webView":true}
 - `webView` 非空时，阅读会改用 WebView 加载。
 - `headers`、`charset`、`body` 等都属于请求选项的一部分。
 
+### URL 模板：JS 块 vs JSONPath
+
+**JS 块 `{{ }}`**：块内的 JS 代码先执行，产生 URL 字符串，然后 `,{"webView":true}` 等选项放在块**外部**。阅读的 `AnalyzeUrl` 会在 JS 块执行后把 URL 和 options 分开解析。
+
+```json
+"chapterUrl": "{{var m = baseUrl.match(/novels\\/(\\d+)/); '/reader?novel=' + m[1] + '&chapter=' + result.id}},{\"webView\":true}"
+```
+
+**JSONPath `{{$.field}}`**：整个字符串是 URL 模板，`{{$.field}}` 被 JSONPath 替换为字段值。`,` 后面的内容被视为 URL 的一部分，**不会被解析为 options**。validator 现已自动清洗 probe 请求中残留的 options 文本（v0.4.1+），但如果你看到章节 URL 末尾带 `,{"webView":true}`，这是 JSONPath 模板的正常行为——不影响 Legado App 内使用（App 的 AnalyzeUrl 会正确剥离）。
+
+**结论**：优先使用 JSONPath 模板（更简洁），`{"webView":true}` 可以直接放在 URL 模板末尾。validator/probe 会自动处理清洗。
+
+### result 变量在 JS 上下文中的差异
+
+在 `<js>` 块中，`result` 的类型取决于上下文：
+- **chapterName JS**：`result` 是解析后的 JSON 对象，支持 `result.chapterNumber`、`result.title` 等字段访问（Legado App 行为）
+- **validator 的 chapterName JS**：`result` 是**字符串**（未解析的 JSON 文本），点号字段访问返回 `undefined`
+- **chapterUrl JS**：`result` 也是字符串，`result.id` 返回 `undefined`
+
+**推荐**：在 validator 兼容的规则中，优先使用 JSONPath（如 `$.title`、`$.id`、`$.novelId`）替代 JS 模板中的 `result.field`。JSONPath 在 validator 和 Legado App 两端行为一致。
+
 ## 2. `JSON.stringify()` 的约束
 
 官方教程特别强调：

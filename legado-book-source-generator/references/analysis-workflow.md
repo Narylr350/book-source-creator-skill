@@ -71,6 +71,44 @@
 4. **如果 API 一次性返回全部章节**（如 `total_pages: 1` 或无分页字段），不需要 `nextTocUrl`
 5. **如果目录只有 1-3 章但站点有几百章**，几乎肯定是遗漏了分页规则
 
+## 登录态与 Cookie 注入
+
+对于需要 `enabledCookieJar` 的站点，书源的 `header` 字段常用 `<js>` 块动态生成 Authorization：
+
+```json
+"header": "<js>\nvar cookie = java.getCookie('https://example.com');\nvar token = '';\nif (cookie) {\n  var match = cookie.match(/token=([^;]+)/);\n  if (match) token = match[1];\n}\nJSON.stringify({\n  'Authorization': token ? 'Bearer ' + token : ''\n});\n</js>"
+```
+
+**关键依赖**：`java.getCookie()` 从 CookieStore 读取。validator v0.4.1+ 支持 CookieStore 持久化（JSON 文件）。验证前需要通过以下方式之一注入 cookie：
+
+1. **Browser MCP 提取**：用户在桌面浏览器登录 → AI 通过 `browser_network_requests` 提取 Cookie/Authorization header → 注入 validator（`--cookie=` 参数或 API `/api/cookie/set`）
+2. **App 登录后同步**：用户在 Legado App 内通过 `loginUrl` 登录 → Legado 将 cookie 存入 Room DB → （未来）validator 可从 App 导出导入
+
+**常见坑**：
+- 旧版 validator 的 `java.getCookie()` 硬编码返回 `""`（v0.4.1 前），导致 header JS 永为空
+- Cookie 是 HttpOnly 时，`document.cookie` 在 WebView 中不可读，但 `CookieManager` 层面的注入仍有效
+- JWT token 有有效期，验证前确认 token 未过期
+
+## 交付自检
+
+生成 book-source.json 后，交付前运行：
+
+```bash
+# 结构验证
+node scripts/audit-source.mjs outputs/<site-slug>/book-source.json
+
+# 全链路验证（需要 validator 运行中）
+node scripts/validate-with-validator.mjs outputs/<site-slug>/book-source.json <关键词> auto --output runs/<site-slug>/
+```
+
+**自检清单**：
+- [ ] `book-source.json` 顶层为 JSON 数组 `[{...}]`（就算只有一个书源）
+- [ ] 无空字符串 `""` 的可选字段
+- [ ] `ruleToc.chapterUrl` 不为空
+- [ ] `ruleContent.webJs` 有内容（CSR 站点）
+- [ ] `enabledCookieJar: true`（需要登录态的站点）
+- [ ] audit 脚本通过（无占位字段、JS 语法无错）
+
 ## 规则优先级
 
 1. 稳定 API 或 JSON 响应

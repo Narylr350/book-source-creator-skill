@@ -75,6 +75,50 @@ validator 返回失败后，按以下顺序检查：
 
 **修复**: 停止自动修，标记 `needs_app_review`
 
+### CSR 正文 — WebView 返回空（4 字符 HTML）
+
+**症状**: Android mode content 返回 `webViewHtmlPreview: "null"`（4 chars），HTTP mode 正常（search/detail/toc success）
+
+**原因**: `JsExtensions.getCookie()` 遗留硬编码返回 `""`，导致 header JS（如 `java.getCookie('https://novalpie.cc')`）无法从 CookieStore 读取 JWT/认证信息。Authorization header 始终为空，WebView 加载 CSR 页面时 Nuxt/Next.js 的 API 调用无认证 → 页面不渲染 → evaluateJavascript 返回 null。
+
+**诊断**: 检查 `validator/src/main/kotlin/io/legado/validator/help/JsExtensions.kt:268-270`，确认 `getCookie()` 是否已改为读取 `CookieStore`（v0.4.1 后已修复）。
+
+**修复**: 无需用户操作（已修）。如果发现类似问题，检查 header JS 是否依赖 `java.getCookie()`，确认 CookieStore 中是否有对应域名的 cookie。
+
+### chapterUrl 中 webView options 导致的 probe URL 污染
+
+**症状**: Android mode 下 content `webViewHtmlPreview` 只有 4 chars（与上条同症状），但 HTTP mode 正常。debug step 显示 `request.url` 末尾带有 `,%7B%22webView%22%3Atrue%7D` 或 `,{"webView":true}`。
+
+**原因**: JsonPath 模板（如 `/book/{{$.novelId}}/{{$.id}},{"webView":true}`）中，`{{ }}` 替换后 `,{"webView":true}` 保留在 URL 中。Legado 的 `AnalyzeUrl` 会解析 URL options 并剥离，但 probe 直接使用 `chapter.url` 作为请求 URL，导致 probe 收到的 URL 包含 JSON 垃圾后缀。
+
+**修复**: `DebugService.runContentAndroid` 现在自动用 regex 清洗 URL（v0.4.1+）。如果用旧版 validator，手动去掉 chapterUrl 中的 `,{"webView":true}` 后缀，改用 JS 模板（`{{ }}` 块）把 options 放在块外。
+
+### TOC chapterCount=1
+
+**症状**: validator HTTP mode 下 search/detail 正常，toc success 但 `chapterCount` 为 1（站点实际有几百章）
+
+**原因**: `ruleBookInfo.tocUrl` 指向错误的 API endpoint。常见于手写或 AI 生成的 tocUrl 使用了不存在的路径（如旧版 novalpie 用了 `/api/chapter/list.php?novel_id={$.id}` 而非 `/api/novels/{{$.id}}/chapters`）。
+
+**诊断**: 在 Browser MCP 中直接访问 TOC API，确认返回数据结构。检查 `tocUrl` 中的 `{{ }}` 变量替换是否正确。
+
+**修复**: 修正 `ruleBookInfo.tocUrl` 为正确的 API 路径。用 `{{$.id}}` 引用 detail 响应中的 `id` 字段。
+
+### chapterName 显示 "undefined"
+
+**症状**: TOC success 但章节名显示 "第undefined章 undefined"
+
+**原因**: chapterName 使用 JS 模板（如 `<js>'第' + String(result.chapterNumber) + '章 ' + result.title</js>`），但 validator Rhino 引擎中 `result` 为字符串（未解析的 JSON 文本），`result.chapterNumber` 无法通过点号访问字段。
+
+**修复**: 改用 JSONPath（如 `$.title`）替代 JS 模板。JSONPath 在 chapterName 上下文中能正确提取当前元素字段。
+
+### 导入报错 — Expected BEGIN_ARRAY but was BEGIN_OBJECT
+
+**症状**: Legado App 导入书源时报 `Expected BEGIN_ARRAY but was BEGIN_OBJECT`
+
+**原因**: `book-source.json` 顶层是单个对象 `{...}` 而非数组 `[{...}]`。Legado 要求顶层为 JSON 数组。
+
+**修复**: 用 `[{...}]` 包裹书源对象。交付前运行 `node scripts/audit-source.mjs <file>` 验证 JSON 结构。
+
 ## 证据收集
 
 每次诊断必须记录：
