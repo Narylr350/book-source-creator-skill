@@ -1,24 +1,29 @@
 Legado 书源生成与验证工具
 ==========================
 
-一个用于生成和验证 Legado/阅读书源的 AI Skill，内置本地 validator。
+一个用于生成和验证 Legado/阅读书源的 **AI Skill**，内置本地 validator。
 
 ## 这是什么
 
-- AI 辅助分析小说站点结构，自动生成 Legado 书源 JSON
-- 内置本地 validator，可在电脑浏览器中验证书源的搜索、详情、目录、正文链路
-- 验证失败时 AI 自动回修规则，只有硬边界（验证码/Cloudflare/WebView/付费/登录态缺失）才需人工复核
-- 对登录态、Cookie、webView、webJs 站点，匿名验证只算初筛，不能直接标可用
+本目录是一个 **Claude Code / Codex Skill**。主要使用方式是让 AI 读取 `SKILL.md`，AI 会自主完成：
 
-## 快速开始
+  匿名初探 → 登录判定 → 可生成性评估 → 网站分析 → 生成 JSON → validator 验证 → 自动回修 → 交付
+
+人类只需对 AI 说一句：**"帮我给 https://xxx.com 生成书源"**。
+
+内置的 validator (http://localhost:1111) 和 CLI 脚本是供人类调试/演示/手动验证的辅助入口。
+
+## 给 AI 用（主要）
+
+让 Claude Code / Codex 加载本目录作为 skill 目录，然后告诉 AI 目标站点 URL 即可。
+
+## 给人类用（调试/手动验证）
 
 1. 解压本 zip
-2. 双击 validator\run.bat，等待窗口显示服务地址
+2. 双击 `validator\run.bat`，等待窗口显示服务地址
 3. 浏览器打开 http://localhost:1111
-4. 在网页里导入 book-source.json，输入关键词，选择 HTTP / Browser / Android / Auto 模式后运行
-5. 如果要让 AI 生成书源，让 Claude/Codex 使用本目录作为 skill 目录
-6. 给出小说站点 URL，AI 会自动生成书源并调用 validator 验证
-7. 生成的书源在 outputs\<站点>\book-source.json
+4. 导入 book-source.json，输入关键词，选择 HTTP / Browser / Android / Auto 模式后运行
+5. 生成的书源在 `outputs\<站点>\book-source.json`
 
 ## 运行环境
 
