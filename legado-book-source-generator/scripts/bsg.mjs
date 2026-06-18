@@ -468,6 +468,17 @@ function completePhase(phase, state, runDir) {
       }
     }
 
+    // Rule: webView should NOT be on search/detail/toc/API URLs
+    const webViewFields = [];
+    if (source.searchUrl && /webView|webview/i.test(source.searchUrl)) webViewFields.push("searchUrl");
+    if (source.ruleBookInfo?.tocUrl && /webView|webview/i.test(source.ruleBookInfo.tocUrl)) webViewFields.push("ruleBookInfo.tocUrl");
+    if (source.ruleSearch?.bookUrl && /webView|webview/i.test(source.ruleSearch.bookUrl)) webViewFields.push("ruleSearch.bookUrl");
+    if (webViewFields.length > 0) {
+      structuralErrors.push(
+        `webView:true 不应出现在 ${webViewFields.join(", ")} 上。WebView 只用于渲染 CSR 正文页面，JSON API 和静态 HTML 不需要 WebView。将 webView 移到 ruleToc.chapterUrl 上。`
+      );
+    }
+
     // Rule: auth site MUST have enabledCookieJar + header or loginUrl
     if (state.loginFeatures.hasEnabledCookieJar || state.loginFeatures.hasAuthorization) {
       if (!source.enabledCookieJar) {
