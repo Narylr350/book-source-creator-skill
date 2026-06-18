@@ -14,7 +14,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import java.util.Base64
 
-class WebServer(port: Int) : NanoWSD(port) {
+class WebServer(port: Int) : NanoWSD("127.0.0.1", port) {
     private val sources = mutableMapOf<String, BookSource>()
     private val debugService = DebugService()
 
