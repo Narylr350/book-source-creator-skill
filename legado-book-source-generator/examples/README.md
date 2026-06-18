@@ -7,7 +7,7 @@
 | 样例 | 复杂度 | 验证状态 | 关键特征 |
 |------|--------|---------|----------|
 | `pattern-api-webview-auth/` | 高 | ✅ App 实测通过 | JSON API + CSR WebView + 登录态 |
-| `pattern-css-pagination/` | 中 | ⚠️ validator 通过 | CSS 选择器 + 分页 |
+| `pattern-css-pagination/` | 中 | ✅ App 实测通过 | CSS 选择器 + JS 内容处理 + 分页 |
 | `pattern-post-detail-toc/` | 低 | ❌ Turnstile 不可用 | POST 搜索语法参考（站已加盾，不可导入） |
 
 ## 使用规则
