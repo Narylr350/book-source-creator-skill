@@ -41,11 +41,35 @@ class WebViewProbeActivity : Activity() {
 
     fun showLoginWebView(webView: WebView) {
         handler.post {
+            // Floating "Done" button overlay
+            val doneBtn = android.widget.Button(this).apply {
+                text = "✓ 完成登录"
+                setTextColor(Color.WHITE)
+                setBackgroundColor(Color.parseColor("#4CAF50"))
+                setOnClickListener {
+                    rootLayout.removeAllViews()
+                    rootLayout.addView(scrollView, FrameLayout.LayoutParams(
+                        FrameLayout.LayoutParams.MATCH_PARENT,
+                        FrameLayout.LayoutParams.MATCH_PARENT
+                    ))
+                    refreshDisplay()
+                    status("登录完成")
+                }
+            }
+            val btnParams = FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.WRAP_CONTENT,
+                FrameLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
+                bottomMargin = 48
+            }
+
             rootLayout.removeAllViews()
             rootLayout.addView(webView, FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
                 FrameLayout.LayoutParams.MATCH_PARENT
             ))
+            rootLayout.addView(doneBtn, btnParams)
             status("显示登录页")
         }
     }
