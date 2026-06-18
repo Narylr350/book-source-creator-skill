@@ -140,6 +140,18 @@ legado-book-source-generator\
 
 详细 validator 启动、adb 安装、Android Probe 配置见 **[SETUP.md](docs/SETUP.md)**。
 
+## 核心能力
+
+`bsg.mjs` 自动执行以下检查，不需 AI 记忆规则：
+
+- **结构完整性**（advance generate→validate）：chapterUrl webView、webJs 轮询、enabledCookieJar、respondTime、jQuery 选择器、POST 语法、webView 位置（8 项硬拦截）
+- **CSR 空壳检测**（record-validation）：识别 Vite/Nuxt/Next.js 壳，拒绝假阳性 passed
+- **Android Probe 强制**：webView + adb 必须在 Android 上验证，读 validator-report.json mode 判断是否真用了
+- **登录墙阻断**（advance assess→analyze）：登录未完成则阻塞
+- **收敛检测**：同一错误连续 5 次才停，不同错误无限重试
+- **run-state.json 签名**：SHA256 防篡改
+- **Android Probe 原生登录**：`/login` 在手机显示登录页，用户登录后 CookieManager 共享——环境一致不掉验证
+
 ## 辅助脚本
 
 ```powershell

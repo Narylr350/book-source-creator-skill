@@ -84,7 +84,12 @@ loginFeatures 含 webView 或 webJs 时，用 mode=android 验证正文。
 1. `bsg.mjs validator-start`
 2. `validator/setup-adb.bat`
 3. `validator/setup-android-probe.bat`
-4. `validate-with-validator.mjs <source> <keyword> android --output runs/<slug>/`
+4. **如果站点需要登录态且 Cookie 来自桌面浏览器（环境不一致）**：
+   - `POST http://localhost:18888/login {"url":"登录页URL"}` → 手机屏幕显示登录页
+   - 用户在手机上手动登录，登录完成后点底部绿色"✓ 完成登录"
+   - `GET http://localhost:18888/cookie-check?domain=xxx` 确认 Cookie 已注入
+   - CookieManager 自动共享给后续 `/render`——环境一致，不掉验证码
+5. `validate-with-validator.mjs <source> <keyword> android --output runs/<slug>/`
 
 Android Probe 不可用时标 `validator_limitation`，不标 passed。
 
