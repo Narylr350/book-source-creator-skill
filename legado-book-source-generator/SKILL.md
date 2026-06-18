@@ -74,7 +74,7 @@ init → advance → advance → advance → advance → record-validation → a
 | analyze | `references/analysis-workflow.md` | `references/webview-behavior-matrix.md`（CSR/WebView）、`examples/README.md` |
 | generate | `references/legado-official-rule-notes.md`、`references/legado-json-structure.md` | `examples/README.md`、`examples/<site>/book-source.json` |
 | validate | `references/validator-integration.md`、`references/validation-policy.md` | `references/failure-diagnosis.md`、`references/validation-checklist.md` |
-| 调试/复核 | `references/debugging-collaboration.md` | `references/failure-diagnosis.md` |
+| 调试/复核 | `references/debugging-collaboration.md` | `references/failure-diagnosis.md`、`references/blackbox-lessons.md`（5 站踩坑实录） |
 
 ## Android WebView Probe
 
