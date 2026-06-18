@@ -190,6 +190,12 @@ class WebViewRunner(private val context: Context) {
                 blockNetworkImage = false
                 userAgentString = "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
                 databaseEnabled = true
+                // Viewport/zoom for login pages
+                useWideViewPort = true
+                loadWithOverviewMode = true
+                builtInZoomControls = true
+                displayZoomControls = false  // hide +/- buttons, keep pinch
+                setSupportZoom(true)
             }
         }
         webView.webViewClient = object : WebViewClient() {
