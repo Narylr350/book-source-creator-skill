@@ -28,7 +28,20 @@ cd .\legado-book-source-generator\validator
 
 ## Android WebView Probe（可选）
 
-用于复核带 `webView:true` / `webJs` 的书源链路。运行在真实 Android WebView 上，比桌面 Browser 模式更接近阅读 App，但仍不等于阅读 App 100% 通过。
+用于复核带 `webView:true` / `webJs` 的书源链路。
+
+### 为什么需要 Android APK？直接用阅读 App 不行吗？
+
+阅读 App **是**最终验证目标——书源生成后必须导入阅读 App 实测。但阅读 App 无法以编程方式被 AI 自动调用：它没有 API 接口，不能从命令行触发"搜索→打开详情→加载目录→翻页阅读"的自动化流程。
+
+Android Probe 解决的就是这个 gap——它是一个轻量的 Android APK，只运行一个 WebView，暴露 HTTP API（`/render`）。validator 通过 ADB 连接手机上的 Probe，自动完成 WebView 渲染、JS 执行、截图和正文提取，**全程无需人工操作**。
+
+**三者关系：**
+- **validator HTTP 模式**：快速验证非 CSR 的搜索/详情/目录链路
+- **validator Android Probe**：接管手机 WebView 自动验证 CSR 正文（代替人工点来点去）
+- **阅读 App**：最终人工验收——书源导入后正常搜索、阅读，确认体验正常
+
+Probe 运行在真实 Android WebView 上，比桌面 Browser 模式更接近阅读 App WebView 环境，但仍不等于阅读 App 100% 通过。
 
 需要：
 

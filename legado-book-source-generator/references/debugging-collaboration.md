@@ -11,7 +11,7 @@
 - 仅在以下情况进入调试模式：
   - validator 标记 `needs_app_review`（Cloudflare、验证码、登录、WebView、付费墙）
   - validator 标记 `validator_limitation`（工具不支持的规则能力）
-  - validator 标记 `failed_unresolved`（3 次回修后仍未通过）
+  - validator 标记 `failed_unresolved`（5 次回修后仍未通过）
   - 用户反馈"书源用不了了"
   - 导入失败
   - 搜索、详情、目录、正文任一链路失效

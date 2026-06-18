@@ -94,7 +94,7 @@ curl -X POST http://localhost:1111/api/debug/smoke \
 | `failed` | 某阶段 error，有可修证据 | AI 自动回修 |
 | `needs_app_review` | needsAppReview=true 或命中 App-only 行为 | 停止自动修，标记需复核 |
 | `validator_limitation` | validator 不支持的规则能力（如 @js 动态 URL） | validator 无法验证该能力；预期需要 App/WebView 复核。当前不是 full pass，不能标可用。 |
-| `failed_unresolved` | AI 回修 3 次后仍未通过 | 标记未解决，需人工检查 |
+| `failed_unresolved` | AI 回修 5 次后仍未通过 | 标记未解决，需人工检查 |
 | `blocked` | validator 未运行 | 阻塞，要求启动 validator，除非用户明确选择"仅生成未验证草稿" |
 
 ## 判定逻辑
@@ -118,7 +118,7 @@ else:
     status = "needs_app_review"  // 保守判定
 ```
 
-回修 3 次后仍未通过 → `failed_unresolved`
+回修 5 次后仍未通过 → `failed_unresolved`
 
 ## 前置检查与生命周期管理
 
