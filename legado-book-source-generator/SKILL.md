@@ -49,7 +49,7 @@ node "<skill-dir>/scripts/bsg.mjs" init <site-url> [--fast] [--cwd <输出目录
 
 | 触发条件 | 需要用户做什么 |
 |---------|--------------|
-| 评级为"需登录后再评估"或"不建议生成" | 用户决定是否继续 |
+| 评级为"不建议生成" | 用户决定是否继续 |
 | **评估发现需要 WebView/CSR 但无 Android 设备** | **advance 会在 assess 完成时自动检测。无设备时阻塞并询问用户是否可连接 Android 手机/模拟器。** |
 | 需要登录凭据（扫码/Token/Cookie） | 用户完成登录后继续 |
 | Android Probe 需要 adb 授权 | 用户在手机上确认 USB 调试 |

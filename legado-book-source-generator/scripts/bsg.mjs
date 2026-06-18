@@ -357,17 +357,23 @@ function completePhase(phase, state, runDir) {
     if (!rating) {
       // Try to detect rating from the file
       const content = fs.readFileSync(assessPath, "utf-8");
-      const m = content.match(/评级[：:]\s*(可直接生成|可生成但高风险|需登录后再评估|不建议生成)/);
+      const m = content.match(/评级[：:]\s*(可生成|不建议生成)/);
       if (m) state.phases.assess.rating = m[1];
-      else return fail("assessment 评级未设置。assessment.md 中必须有 '评级: 可直接生成/可生成但高风险/需登录后再评估/不建议生成'。");
+      else return fail("assessment 评级未设置。assessment.md 中必须有 '评级: 可生成 / 不建议生成'。");
     }
 
-    if (state.phases.assess.rating === "需登录后再评估" || state.phases.assess.rating === "不建议生成") {
+    // Auto-detect risk labels
+    const assessContent = fs.readFileSync(assessPath, "utf-8");
+    if (/WebView\s*依赖/i.test(assessContent)) state.loginFeatures.hasWebView = true;
+    if (/需登录态/i.test(assessContent)) state.loginFeatures.hasEnabledCookieJar = true;
+    if (/加密正文/i.test(assessContent)) { state.loginFeatures.hasWebView = true; state.loginFeatures.hasWebJs = true; }
+
+    if (state.phases.assess.rating === "不建议生成") {
       return {
         ok: true,
         nextAction: "stop",
         requiredUserAction: "rating_blocked",
-        message: `评估评级为"${state.phases.assess.rating}"，需要用户决定是否继续。`,
+        message: `评估评级为"不建议生成"，需要用户决定是否继续。`,
         blockingPhase: "assess",
         rating: state.phases.assess.rating,
       };
