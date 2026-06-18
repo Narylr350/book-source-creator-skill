@@ -33,8 +33,15 @@ class WebViewRunner(private val context: Context) {
                             javaScriptEnabled = true
                             domStorageEnabled = true
                             mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
-                            blockNetworkImage = true
+                            blockNetworkImage = false
+                            // Default mobile Chrome UA to avoid WebView detection
+                            if (request.headers?.get("User-Agent") == null) {
+                                userAgentString = "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
+                            }
                             request.headers?.get("User-Agent")?.let { userAgentString = it }
+                            // Anti-bot: disable webdriver detection
+                            setGeolocationEnabled(false)
+                            databaseEnabled = true
                         }
                     }
 
@@ -166,4 +173,35 @@ class WebViewRunner(private val context: Context) {
             .replace("\\u003C", "<").replace("\\u003E", ">")
             .replace("\\u0026", "&")
     }
+
+    // ── Login support — mirrors Legado's login flow ──────────────────
+
+    // Android CookieManager is per-app (like Legado).
+    // After user logs in via this WebView, CookieManager stores the cookies.
+    // Subsequent /render calls automatically get those cookies via CookieManager.getInstance().
+    @SuppressLint("SetJavaScriptEnabled")
+    suspend fun openLoginWebView(loginUrl: String): LoginSessionResponse = withContext(Dispatchers.Main) {
+        status("登录页: ${loginUrl.take(50)}")
+        val webView = android.webkit.WebView(context).apply {
+            settings.apply {
+                javaScriptEnabled = true
+                domStorageEnabled = true
+                mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
+                blockNetworkImage = false
+                userAgentString = "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
+                databaseEnabled = true
+            }
+        }
+        webView.webViewClient = object : WebViewClient() {
+            override fun onPageFinished(view: android.webkit.WebView, url: String?) {
+                status("登录中: ${url?.take(60) ?: ""}")
+            }
+        }
+        webView.loadUrl(loginUrl)
+        // Show WebView on screen so user can interact
+        WebViewProbeActivity.instance?.showLoginWebView(webView)
+        LoginSessionResponse(ok = true, message = "登录 WebView 已显示在手机上")
+    }
+
+    data class LoginSessionResponse(val ok: Boolean, val message: String)
 }

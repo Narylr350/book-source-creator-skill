@@ -7,6 +7,8 @@ import android.os.Handler
 import android.os.Looper
 import android.util.Log
 import android.view.Gravity
+import android.webkit.WebView
+import android.widget.FrameLayout
 import android.widget.ScrollView
 import android.widget.TextView
 
@@ -15,6 +17,7 @@ class WebViewProbeActivity : Activity() {
     private var server: ProbeHttpServer? = null
     private lateinit var logText: TextView
     private lateinit var scrollView: ScrollView
+    private lateinit var rootLayout: FrameLayout
     private val handler = Handler(Looper.getMainLooper())
     private var requestCount = 0
     private val logLines = mutableListOf<String>()
@@ -31,10 +34,41 @@ class WebViewProbeActivity : Activity() {
                 .format(java.util.Date())
             val line = "$ts | #$requestCount | $message"
             logLines.add(line)
-            // Keep last 50 entries
             while (logLines.size > 50) logLines.removeAt(0)
             refreshDisplay()
         }
+    }
+
+    fun showLoginWebView(webView: WebView) {
+        handler.post {
+            rootLayout.removeAllViews()
+            rootLayout.addView(webView, FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT
+            ))
+            status("显示登录页")
+        }
+    }
+
+    fun showLogView() {
+        handler.post {
+            rootLayout.removeAllViews()
+            rootLayout.addView(scrollView, FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT
+            ))
+            refreshDisplay()
+            status("返回日志")
+        }
+    }
+
+    private fun status(msg: String) {
+        requestCount++
+        val ts = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault())
+            .format(java.util.Date())
+        val line = "$ts | #$requestCount | $msg"
+        logLines.add(line)
+        while (logLines.size > 50) logLines.removeAt(0)
     }
 
     private fun refreshDisplay() {
@@ -45,7 +79,6 @@ class WebViewProbeActivity : Activity() {
         sb.append("━━━━━━━━━━━━━━━━━━━━━━\n")
         logLines.forEach { sb.append(it).append("\n") }
         logText.text = sb.toString()
-        // Auto-scroll to bottom
         scrollView.post { scrollView.fullScroll(android.view.View.FOCUS_DOWN) }
     }
 
@@ -66,7 +99,14 @@ class WebViewProbeActivity : Activity() {
             addView(logText)
             setBackgroundColor(Color.parseColor("#1A1A2E"))
         }
-        setContentView(scrollView)
+
+        rootLayout = FrameLayout(this).apply {
+            addView(scrollView, FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT
+            ))
+        }
+        setContentView(rootLayout)
 
         if (server == null) {
             server = ProbeHttpServer(applicationContext, 18888).apply {

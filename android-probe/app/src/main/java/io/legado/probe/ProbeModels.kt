@@ -11,7 +11,9 @@ data class RenderRequest(
     val screenshot: Boolean = true,
     // Gap #8: support loadDataWithBaseURL — matches Legado BackstageWebView.load()
     val html: String? = null,
-    val encoding: String? = null
+    val encoding: String? = null,
+    // Session mode: reuse persistent WebView from /login
+    val useSession: Boolean = false
 )
 
 data class RenderResponse(

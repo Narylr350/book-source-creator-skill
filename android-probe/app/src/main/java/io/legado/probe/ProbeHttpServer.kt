@@ -17,6 +17,9 @@ class ProbeHttpServer(
         val uri = session.uri
         return when {
             uri == "/render" && session.method == Method.POST -> handleRender(session)
+            uri == "/login" && session.method == Method.POST -> handleLogin(session)
+            uri == "/cookie-check" -> handleCookieCheck(session)
+            uri == "/login-done" -> handleLoginDone()
             uri == "/ping" -> newFixedLengthResponse(Response.Status.OK, "text/plain", "pong")
             uri == "/info" -> handleInfo()
             uri == "/test" -> handleTest()
@@ -25,13 +28,51 @@ class ProbeHttpServer(
         }
     }
 
+    // Open a WebView for user to manually log in.
+    // Android CookieManager is per-app — once user logs in,
+    // all subsequent WebViews share the same cookies.
+    private fun handleLogin(session: IHTTPSession): Response {
+        return try {
+            val bodyMap = HashMap<String, String>()
+            session.parseBody(bodyMap)
+            val jsonBody = bodyMap["postData"] ?: return newFixedLengthResponse(
+                Response.Status.BAD_REQUEST, "application/json", """{"error":"Empty body"}""")
+            val req = gson.fromJson(jsonBody, LoginRequest::class.java)
+            val resp = runBlocking { runner.openLoginWebView(req.url) }
+            newFixedLengthResponse(Response.Status.OK, "application/json", gson.toJson(resp))
+        } catch (e: Exception) {
+            newFixedLengthResponse(Response.Status.INTERNAL_ERROR, "application/json",
+                """{"ok":false,"error":"${e.message?.replace("\"", "\\\"")}"}""")
+        }
+    }
+
+    // Switch back to log view after login is done
+    private fun handleLoginDone(): Response {
+        WebViewProbeActivity.instance?.showLogView()
+        return newFixedLengthResponse(Response.Status.OK, "application/json", """{"ok":true,"message":"Switched to log view"}""")
+    }
+
+    // Check CookieManager for cookies after user completed login
+    private fun handleCookieCheck(session: IHTTPSession): Response {
+        val domain = session.parms["domain"] ?: ""
+        val cm = android.webkit.CookieManager.getInstance()
+        val url = if (domain.isNotEmpty()) "https://$domain" else "https://www.ciweimao.com"
+        val cookies = cm.getCookie(url) ?: ""
+        val hasCookies = cookies.isNotEmpty()
+        return newFixedLengthResponse(Response.Status.OK, "application/json", gson.toJson(mapOf(
+            "url" to url,
+            "cookies" to cookies,
+            "hasCookies" to hasCookies,
+            "message" to if (hasCookies) "Cookies found — login likely successful" else "No cookies yet — user may still be on login page"
+        )))
+    }
+
     private fun handleRender(session: IHTTPSession): Response {
         return try {
             val bodyMap = HashMap<String, String>()
             session.parseBody(bodyMap)
             val jsonBody = bodyMap["postData"] ?: return newFixedLengthResponse(
                 Response.Status.BAD_REQUEST, "application/json", """{"error":"Empty body"}""")
-
             val request = gson.fromJson(jsonBody, RenderRequest::class.java)
             val response = runBlocking { runner.render(request) }
             newFixedLengthResponse(Response.Status.OK, "application/json", gson.toJson(response))
@@ -45,12 +86,9 @@ class ProbeHttpServer(
         return try {
             val request = RenderRequest(
                 url = "data:text/html,<h1>Probe OK</h1><p>WebView works</p>",
-                timeout = 10000L,
-                jsRetries = 3,
-                jsDelay = 500L,
-                screenshot = false
+                timeout = 10000L, jsRetries = 3, jsDelay = 500L, screenshot = false
             )
-            val response = kotlinx.coroutines.runBlocking { runner.render(request) }
+            val response = runBlocking { runner.render(request) }
             newFixedLengthResponse(Response.Status.OK, "application/json", gson.toJson(response))
         } catch (e: Exception) {
             newFixedLengthResponse(Response.Status.INTERNAL_ERROR, "application/json",
@@ -64,8 +102,8 @@ class ProbeHttpServer(
         } catch (_: Exception) { null }
         val info = mapOf(
             "name" to "legado-android-probe",
-            "version" to "0.1.0",
-            "api" to listOf("/render", "/ping", "/info"),
+            "version" to "0.2.0",
+            "api" to listOf("/render", "/login", "/cookie-check", "/ping", "/info"),
             "androidSdk" to android.os.Build.VERSION.SDK_INT,
             "androidRelease" to android.os.Build.VERSION.RELEASE,
             "webViewPackage" to webViewPackage?.packageName,
@@ -75,3 +113,5 @@ class ProbeHttpServer(
         return newFixedLengthResponse(Response.Status.OK, "application/json", gson.toJson(info))
     }
 }
+
+data class LoginRequest(val url: String = "", val timeout: Long = 180000L)

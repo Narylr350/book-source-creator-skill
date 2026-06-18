@@ -73,16 +73,6 @@
 4. **如果 API 一次性返回全部章节**（如 `total_pages: 1` 或无分页字段），不需要 `nextTocUrl`
 5. **如果目录只有 1-3 章但站点有几百章**，几乎肯定是遗漏了分页规则
 
-## 强反爬站点（验证码 / 频率限制）
-
-部分站点（如刺猬猫）对非浏览器请求返回验证码。应对策略：
-
-1. **优先用 WAP/移动版域名**（如 `wap.ciweimao.com`）——移动端反爬通常比 PC 端宽松
-2. **完整 Cookie 必须**——仅 session cookie 不够，需要 `user_id` + `login_token` 等认证字段
-3. **移动端 UA 必须**——`Mozilla/5.0 (Linux; Android 13...)`，桌面 UA 也会触发验证码
-4. **WebView 必须**——chapterUrl 加 `,{"webView":true}`，SPA 页面只能通过 WebView 渲染
-5. **isVip 检测**——付费章无法绕过，标记为 VIP 让用户知晓
-
 ## 登录态与 Cookie 注入
 
 对于需要 `enabledCookieJar` 的站点，书源的 `header` 字段常用 `<js>` 块动态生成 Authorization：
