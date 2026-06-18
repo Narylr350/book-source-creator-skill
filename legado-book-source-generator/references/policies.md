@@ -17,8 +17,8 @@
 
 **Browser MCP 提取流程:**
 1. 用户打开目标站点登录页，在 Browser MCP 中完成登录（账号密码/扫码）
-2. AI 调用 `browser_evaluate` 执行 `document.cookie` 获取 cookie 字符串
-3. AI 将 cookie 解析为 `{"domain": "cookie_string"}` JSON 格式
+2. AI 通过 `browser_network_requests` 找到 API 请求的 Cookie 或 Authorization header（注意：HttpOnly cookie 无法通过 `document.cookie` 获取，必须从网络请求头提取）
+3. AI 将凭据保存为 `{"domain": "cookie_string"}` JSON 格式
 4. 保存到 `runs/<site-slug>/cookies.json`
 5. 调用 `node scripts/validate-with-validator.mjs <source> <keyword> --cookie=runs/<site-slug>/cookies.json`
 
