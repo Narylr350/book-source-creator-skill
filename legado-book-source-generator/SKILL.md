@@ -14,11 +14,10 @@ node "<skill-dir>/scripts/bsg.mjs" init <site-url> [--fast] [--cwd <输出目录
 然后按 `nextAction` 执行每个阶段，每阶段完成后运行 `advance` 进入下一阶段。具体命令序列：
 
 ```
-init → advance → advance → advance → advance → record-validation → advance → deliver
-       probe    assess   analyze  generate   validate           deliver
+init → advance → advance → advance → advance → record-validation → advance → deliver → validator-stop
 ```
 
-每步写文件到 `runs/<slug>/`，不是到 skill 目录。`run-state.json` 由 bsg.mjs 命令写入，不手动编辑。只有 `deliver` 生成 "passed" 认证。
+每步写文件到 `runs/<slug>/`，不是到 skill 目录。`run-state.json` 由 bsg.mjs 命令写入，不手动编辑。只有 `deliver` 生成 "passed" 认证。**deliver 完成后必须运行 `validator-stop` 关闭 validator，不得保持运行。**
 
 ## 输出
 
