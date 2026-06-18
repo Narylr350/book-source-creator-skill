@@ -1,4 +1,47 @@
 [{
+  "bookSourceComment": "novalpie — JSON API 搜索/详情/目录（匿名可用），正文 CSR 需 WebView + 登录态。v2: 修复 tocUrl 为 /api/novels/{{$.id}}/chapters（旧版指向错误的 PHP endpoint 导致 chapterCount=1），chapterUrl 改用 /book/{novelId}/{chapterId} 格式。需先通过 loginUrl 登录。",
+  "bookSourceGroup": "网络小说",
+  "bookSourceName": "novalpie",
+  "bookSourceType": 0,
+  "bookSourceUrl": "https://novalpie.cc",
+  "customOrder": 3,
+  "enabled": true,
+  "enabledCookieJar": true,
+  "enabledExplore": false,
+  "header": "<js>\nvar cookie = java.getCookie('https://novalpie.cc');\nvar token = '';\nif (cookie) {\n  var match = cookie.match(/auth_token=([^;]+)/);\n  if (match) token = match[1];\n}\nJSON.stringify({\n  'User-Agent': 'Mozilla/5.0 (Linux; Android 11) AppleWebKit/537.36',\n  'Authorization': token ? 'Bearer ' + token : ''\n});\n</js>",
+  "loginUrl": "https://novalpie.cc/login",
+  "respondTime": 180000,
+  "ruleBookInfo": {
+    "author": "$.authorName",
+    "coverUrl": "$.photoUrl",
+    "intro": "$.description",
+    "kind": "$.tags[*]",
+    "name": "$.title",
+    "tocUrl": "/api/novels/{{$.id}}/chapters",
+    "wordCount": "$.wordCount"
+  },
+  "ruleContent": {
+    "content": "<js>result</js>",
+    "webJs": "var content = ''; var retry = 0; var chapterId = ''; try { var m = location.href.match(/[?&]chapter=(\\d+)/) || location.href.match(/#chapter-(\\d+)/) || location.href.match(/\\/(\\d+)(?:[?#]|$)/); chapterId = m ? m[1] : ''; } catch(e) {} while (!content && retry < 150) { var item = null; if (chapterId) item = document.querySelector('#chapter-' + chapterId + ', .chapter-item[data-chapter-id=\"' + chapterId + '\"], .chapter-item[data-id=\"' + chapterId + '\"]'); if (!item) item = document.querySelector('article.reader-content .chapter-item'); if (item) { var textEl = item.querySelector('div:not([class])'); if (textEl && textEl.innerHTML.length > 100) content = textEl.innerHTML; } if (!content) { java.sleep(200); retry++; } } content;"
+  },
+  "ruleSearch": {
+    "author": "$.author_name",
+    "bookList": "$.results[*]",
+    "bookUrl": "/api/novels/{{$.id}}/detail",
+    "coverUrl": "$.photo_url",
+    "intro": "$.spans",
+    "kind": "$.novel_type",
+    "name": "$.title",
+    "wordCount": "$.word_count"
+  },
+  "ruleToc": {
+    "chapterList": "$.data[*]",
+    "chapterName": "$.title",
+    "chapterUrl": "/book/{{$.novelId}}/{{$.id}},{\"webView\":true}"
+  },
+  "searchUrl": "/api/search/index.php?q={{key}}&page={{page}}&limit=20&scope=all&match_type=fuzzy&sort_by=relevance&sort_order=desc&adult_filter=all&max_word_count=10000000",
+  "weight": 0
+},{
   "bookSourceName": "刺猬猫阅读",
   "bookSourceUrl": "https://www.ciweimao.com",
   "bookSourceType": 0,
