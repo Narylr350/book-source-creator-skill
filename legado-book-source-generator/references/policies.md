@@ -38,9 +38,9 @@
 
 ## WebView 回退
 
-- 如果正文接口带签名、返回密文，或阅读页只有 CSR 空壳，但 Browser MCP 已能稳定看到渲染后的正文，先按 `可生成但高风险` 处理，优先评估 `P15` (`WebView`)。
+- 如果正文接口带签名、返回密文，或阅读页只有 CSR 空壳，但 Browser MCP 已能稳定看到渲染后的正文，先按 `可生成但高风险` 处理，优先评估 WebView 方案。
 - 不能直接判 `不建议生成`。
-- 如果准备给出 `不建议生成`，必须先排除 `references/reference-source-patterns.md` 中更低复杂度的回退路径，尤其是 `P15` (`WebView`) 和直接提取方案。
+- 如果准备给出 `不建议生成`，必须先排除 `references/reference-source-patterns.md` 中更低复杂度的回退路径，尤其是 WebView 和直接提取方案。
 
 ## 调试模式触发
 
