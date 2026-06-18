@@ -598,6 +598,36 @@ function completePhase(phase, state, runDir) {
       );
     }
 
+    // Rule: chapterName/author/name fields must have @text/@textNodes/@html action
+    const textFields = ["chapterName", "name", "author", "intro", "kind"];
+    for (const group of [source.ruleSearch, source.ruleBookInfo, source.ruleToc]) {
+      if (!group || typeof group !== "object") continue;
+      for (const field of textFields) {
+        const val = group[field];
+        if (typeof val === "string" && val.length > 0 && !val.includes("@") && !val.startsWith("$.") && !val.startsWith("<js>")) {
+          structuralErrors.push(
+            `${field}: "${val}" — 纯 CSS 选择器缺少 @text/@textNodes/@html action。Legado 需要 @ 动作来提取内容。如果是 JSONPath 改用 $.field 格式，如果是 JS 用 <js>。`
+          );
+          break; // one per group is enough
+        }
+      }
+    }
+
+    // Rule: chapterUrl/bookUrl/tocUrl fields must have @href when using CSS
+    const urlFields = ["chapterUrl", "bookUrl", "tocUrl"];
+    for (const group of [source.ruleSearch, source.ruleToc, source.ruleBookInfo]) {
+      if (!group || typeof group !== "object") continue;
+      for (const field of urlFields) {
+        const val = group[field];
+        if (typeof val === "string" && val.length > 0 && !val.includes("@href") && !val.includes("@js") && !val.startsWith("$.") && !val.startsWith("http") && !val.startsWith("/") && !val.startsWith("<js>") && !val.includes("{{") && !val.startsWith("##")) {
+          structuralErrors.push(
+            `${field}: "${val}" — URL 规则缺少 @href action。CSS 选择器提取链接必须加 @href。`
+          );
+          break;
+        }
+      }
+    }
+
     // Rule: respondTime for WebView sites
     if ((state.loginFeatures.hasWebView || state.loginFeatures.hasWebJs) && !source.respondTime) {
       structuralErrors.push("WebView 站点建议设置 respondTime: 180000（3 分钟），CSR 页面加载较慢。");
