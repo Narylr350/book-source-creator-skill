@@ -79,6 +79,7 @@ function freshRunState(siteUrl, siteSlug, mode, workingDir) {
       analyze: { status: "pending" },
       generate:{ status: "pending" },
       validate:{ status: "pending", attempts: 0, lastStatus: null, lastError: "", consecutiveSame: 0 },
+      adbDetected: false, // set at init, used to detect dropped connections
       deliver: { status: "pending" },
     },
     loginFeatures: {
@@ -198,6 +199,7 @@ function cmdInit(args) {
   const runDir = initializeRunBundle(runsRoot, siteUrl);
 
   const state = freshRunState(siteUrl, siteSlug, fastMode ? "fast" : "full", cwd);
+  state.adbDetected = checkAdb();
   saveRunState(runDir, state);
 
   return {
@@ -478,6 +480,24 @@ function completePhase(phase, state, runDir) {
           "ruleContent.webJs 缺少轮询等待逻辑（无 java.sleep / while / retry）。CSR 页面的 DOM 在 JS 执行后才渲染，webJs 必须循环等待元素出现。参考 examples/pattern-api-webview-auth/ 的 webJs 写法。"
         );
       }
+    }
+
+    // Rule: no jQuery selectors (Jsoup doesn't support :contains, :has, :eq, etc.)
+    const jqueryPatterns = [":contains(", ":has(", ":eq(", ":first", ":last", ":text", ":input", ":visible", ":hidden"];
+    for (const pattern of jqueryPatterns) {
+      if (jsonStr.includes(pattern)) {
+        structuralErrors.push(
+          `检测到 jQuery 选择器 "${pattern}" — Legado 底层是 Jsoup，不支持此选择器。:contains() 需改用 @text action + <js> 过滤，:first/:last 改用 :first-child/:last-child。详见 references/legado-official-rule-notes.md。`
+        );
+        break;
+      }
+    }
+
+    // Rule: wrong POST search syntax (;post= is not Legado format)
+    if (source.searchUrl && (source.searchUrl.includes(";post=") || source.searchUrl.includes(";get="))) {
+      structuralErrors.push(
+        "searchUrl 使用了错误的 POST 语法 (;post=)。正确格式: url,{\"body\":\"key={{key}}\",\"method\":\"POST\"}。"
+      );
     }
 
     // Rule: respondTime for WebView sites
@@ -953,6 +973,18 @@ function cmdRecordValidation(args) {
             "立即执行: validator/setup-android-probe.bat → 重新验证 → record-validation。",
             "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
           ].join("\n");
+        } else if (state.adbDetected) {
+          // Device was available at init but now gone → likely disconnected/sleeping
+          androidWarning = [
+            "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+            "⚠️  Android 设备已断开 — 请重新连接",
+            "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+            "init 时检测到 Android 设备，但现在 adb 找不到设备。",
+            "可能原因：手机息屏后 USB 断开、adb 授权过期、数据线松动。",
+            "请重新插拔 USB 并在手机上确认 USB 调试授权。",
+            "然后运行: validator/setup-android-probe.bat → 重新用 mode=android 验证。",
+            "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+          ].join("\n");
         } else {
           // No Android device → warn but don't block. User genuinely can't provide one.
           androidWarning = [
@@ -971,21 +1003,19 @@ function cmdRecordValidation(args) {
   }
 
   if (androidWarning && checkAdb()) {
-    // adb available but not used → BLOCK, force retry
+    // adb available but not used → BLOCK
     v.attempts -= 1;
     saveRunState(runDir, state);
-    return {
-      ok: true,
-      status: "blocked",
-      blockedBy: "android_probe_not_used",
-      shouldRetry: true,
-      nextAction: "setup_android_probe_and_retry",
-      message: androidWarning,
-    };
+    return { ok: true, status: "blocked", blockedBy: "android_probe_not_used", shouldRetry: true, nextAction: "setup_android_probe_and_retry", message: androidWarning };
   }
-  // adb not available → warning only, continue with current status
+  if (androidWarning && state.adbDetected) {
+    // Device was available at init but now disconnected → BLOCK, fixable
+    v.attempts -= 1;
+    saveRunState(runDir, state);
+    return { ok: true, status: "blocked", blockedBy: "android_device_disconnected", shouldRetry: true, nextAction: "reconnect_device_and_retry", message: androidWarning };
+  }
+  // Never had device → warning only, allow continue
   if (androidWarning) {
-    // Inject the warning into the final message
     state._androidWarning = androidWarning;
   }
 

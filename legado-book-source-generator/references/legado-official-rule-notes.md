@@ -66,6 +66,38 @@ class.item@tag.dt@tag.a@href##$##<js>result.indexOf('http') === 0 ? result : 'ht
 
 **推荐**：在 validator 兼容的规则中，优先使用 JSONPath（如 `$.title`、`$.id`、`$.novelId`）替代 JS 模板中的 `result.field`。JSONPath 在 validator 和 Legado App 两端行为一致。
 
+### Jsoup 选择器限制
+
+Legado 底层使用 Jsoup 解析 HTML，只支持标准 CSS 选择器。以下 **jQuery 扩展选择器在 Legado 中无效**：
+
+| ❌ 无效（jQuery） | ✅ 替代（标准 CSS / Jsoup） |
+|-------------------|---------------------------|
+| `:contains('文本')` | 用 `@text` action：`.class@text##^文本` 或在 `<js>` 中 `result.includes('文本')` |
+| `:has(selector)` | 反向写：`selector` 先定位，再 `.parent()` 或用 parent selector `> ` |
+| `:first` / `:last` | `:first-child` / `:last-child` / `:nth-child(1)` / `:nth-last-child(1)` |
+| `:eq(n)` | `:nth-child(n+1)` |
+| `:text` | `@text` action |
+| `:input` | `input, select, textarea, button` |
+| `:visible` / `:hidden` | 无法直接替代，在 `<js>` 中用 `element.style.display` 判断 |
+
+**注意**：Legado 的 `ruleSearch.bookList` / `ruleBookInfo` / `ruleToc.chapterList` / `ruleContent.content` 中的 CSS 选择器都走 Jsoup，受到以上限制。只有 `<js>` 块中的 `document.querySelector()` 可以用浏览器完整 CSS。
+
+### POST 搜索语法
+
+Legado 的 POST 搜索用 URL options，不是 PHP 风格的参数拼接：
+
+```json
+// ✅ 正确：URL + JSON options
+"searchUrl": "https://example.com/search.php,{\"body\":\"searchkey={{key}}\",\"method\":\"POST\"}"
+
+// ❌ 错误：不是 ;post= 也不是 form data 拼接
+"searchUrl": "https://example.com/search.php;post=searchkey={{key}}"
+```
+
+### WebView 的适用边界
+
+`webView:true` 解决的是 **CSR 页面渲染**——前端框架（Nuxt/Vue/React）生成的空壳 HTML 需要 JS 执行后才能提取正文。**WebView 不能绕过 Cloudflare Turnstile、验证码或 IP 封禁**。遇到反爬导致的 403/503，应尝试换 UA header、降低请求频率或换镜像站。
+
 ## 2. `JSON.stringify()` 的约束
 
 官方教程特别强调：
