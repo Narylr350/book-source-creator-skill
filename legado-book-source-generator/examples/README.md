@@ -4,11 +4,11 @@
 
 ## 样例
 
-| 样例 | 复杂度 | 关键特征 |
-|------|--------|----------|
-| `pattern-css-pagination/` | 中 | CSS 选择器 + JS 内容处理 + 目录分页 |
-| `pattern-post-detail-toc/` | 低 | POST 搜索、目录嵌详情页、纯静态 HTML |
-| `pattern-api-webview-auth/` | 高 | JSON API 搜索/详情/目录 + CSR WebView 正文 + enabledCookieJar + loginUrl + header JS |
+| 样例 | 复杂度 | 验证状态 | 关键特征 |
+|------|--------|---------|----------|
+| `pattern-api-webview-auth/` | 高 | ✅ App 实测通过 | JSON API + CSR WebView + 登录态 |
+| `pattern-css-pagination/` | 中 | ⚠️ validator 通过 | CSS 选择器 + 分页 |
+| `pattern-post-detail-toc/` | 低 | ⚠️ validator 通过 | POST 搜索 + 详情嵌目录 |
 
 ## 使用规则
 
