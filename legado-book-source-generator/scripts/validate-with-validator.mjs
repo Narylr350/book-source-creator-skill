@@ -18,8 +18,8 @@
  *   如果指定 --output <dir>，则写入 <dir>/validator-report.json
  */
 
-import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'fs';
-import { dirname, basename, join } from 'path';
+import { readFileSync, writeFileSync, mkdirSync } from 'fs';
+import { join } from 'path';
 
 const VALIDATOR_URL = process.env.VALIDATOR_URL || 'http://localhost:1111';
 
@@ -224,12 +224,28 @@ async function main() {
       status: s.status,
       mode: s.mode,
       error: s.error,
+      // ── 诊断字段 (P11) ──
+      errorCode: s.errorCode,
+      subphase: s.subphase,
+      failedField: s.failedField,
+      allowedFixes: s.allowedFixes || [],
+      forbiddenFixes: s.forbiddenFixes || [],
+      evidence: s.evidence || {},
+      debugArtifacts: s.debugArtifacts,
+      // ── 原有字段 ──
       needsAppReview: s.needsAppReview,
       ruleHits: s.ruleHits || [],
+      probeAvailable: s.probeAvailable,
+      compatibilityWarnings: s.compatibilityWarnings,
+      reviewReason: s.reviewReason,
       request: s.request ? { url: s.request.url, method: s.request.method } : null,
-      response: s.response ? { code: s.response.code, bodyLength: s.response.bodyLength } : null
+      response: s.response ? { code: s.response.code, bodyLength: s.response.bodyLength } : null,
+      preview: s.preview?.slice(0, 200),
+      sessionMode: s.sessionMode,
     })),
-    raw: result
+    raw: result,
+    finalStatus: result.finalStatus,
+    compatibilityWarnings: result.compatibilityWarnings
   };
   
   // 输出

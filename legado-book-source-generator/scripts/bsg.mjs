@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+/* global process, AbortSignal */
 
 /**
  * bsg.mjs ― Legado 书源生成工作流状态机
@@ -41,15 +42,6 @@ function isInSkillInstallDir(cwd) {
   return blocked.some((b) => dir === b || dir.startsWith(b + path.sep));
 }
 
-const SKILL_INSTALL_DIRS = [
-  "~/.claude/skills",
-  "~/.codex/skills",
-  "~/.agents/skills",
-];
-
-function formatDirList() {
-  return SKILL_INSTALL_DIRS.join(", ");
-}
 
 function signState(state) {
   const { _signature, ...clean } = state;
@@ -180,7 +172,7 @@ function checkEnvironment() {
   // adb
   try {
     const adbOut = execSync("adb version", { encoding: "utf-8", timeout: 5000 });
-    const adbMatch = adbOut.match(/Android Debug Bridge version ([^\s]+)/);
+    const adbMatch = adbOut.match(/Android Debug Bridge version (\S+)/);
     results.push({
       tool: "adb",
       ok: true,
@@ -1474,6 +1466,11 @@ async function cmdValidatorStart(args) {
   const running = await checkValidator();
   if (running) {
     const pid = findValidatorPid();
+    // Save PID even when reusing existing process
+    if (pid) {
+      const pidFile = path.join(SKILL_ROOT, ".validator-pid");
+      fs.writeFileSync(pidFile, String(pid), "utf-8");
+    }
     return {
       ok: true,
       running: true,
