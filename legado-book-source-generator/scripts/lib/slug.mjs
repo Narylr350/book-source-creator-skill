@@ -1,5 +1,5 @@
 export function deriveSiteSlug(siteUrl) {
-  let host = "";
+  let host;
   try {
     host = new URL(siteUrl).host;
   } catch {

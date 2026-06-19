@@ -76,6 +76,7 @@ enum class Severity {
     /** validator 能力不足 */
     VALIDATOR_LIMITATION,
     /** 规则/环境严重错误，停止 */
+    @Suppress("unused")
     FATAL
 }
 
@@ -86,6 +87,7 @@ enum class Category {
 enum class Capability {
     ANDROID_PROBE,
     AUTHENTICATED_COOKIE,
+    @Suppress("unused")
     BROWSER_RENDER,
     LEGADO_APP_MANUAL_TEST
 }
@@ -93,6 +95,7 @@ enum class Capability {
 enum class HumanAction {
     NONE,
     CONNECT_ANDROID_DEVICE,
+    @Suppress("unused")
     LOGIN_IN_BROWSER,
     LOGIN_IN_ANDROID_PROBE,
     SOLVE_CAPTCHA,
@@ -654,5 +657,6 @@ object ErrorCodeRegistry {
 
     fun get(code: ErrorCode): ErrorCodeMeta? = registry[code]
 
+    @Suppress("unused")
     fun getOrNull(code: ErrorCode): ErrorCodeMeta? = registry[code]
 }

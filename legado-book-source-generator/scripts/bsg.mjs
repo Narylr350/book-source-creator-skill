@@ -1,6 +1,13 @@
 #!/usr/bin/env node
 /* eslint-env node */
 /* global AbortSignal */
+/**
+ * @typedef {typeof import("node:process")} NodeProcess
+ * @typedef {typeof import("node:crypto")} NodeCrypto
+ * @typedef {typeof import("node:fs")} NodeFs
+ * @typedef {typeof import("node:path")} NodePath
+ * @typedef {typeof import("node:child_process")} NodeChildProcess
+ */
 
 /**
  * bsg.mjs ― Legado 书源生成工作流状态机
@@ -27,7 +34,8 @@ import { initializeRunBundle } from "./lib/output-bundle.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const SKILL_ROOT = path.resolve(__dirname, "..");
-const VALIDATOR_URL = process.env.VALIDATOR_URL || /* eslint-disable-next-line @typescript-eslint/no-unused-vars */ "http://localhost:1111";
+// noinspection JSUnresolvedReference
+const VALIDATOR_URL = process.env.VALIDATOR_URL || "http://localhost:1111";
 
 // ── helpers ────────────────────────────────────────────────────────────────
 
@@ -47,7 +55,8 @@ function isInSkillInstallDir(cwd) {
 function signState(state) {
   const { _signature, ...clean } = state;
   const json = JSON.stringify(clean, null, 2);
-  return crypto.createHash("sha256").update(json).digest("hex").slice(0, 16);
+// noinspection JSCheckFunctionSignatures
+  return crypto.createHash("sha256").update(json).digest().toString("hex").slice(0, 16);
 }
 
 function loadRunState(runDir) {
@@ -120,7 +129,6 @@ function loadAndVerify(runDir) {
   return { state, error: null };
 }
 
-/** @deprecated Use try { fs.statSync } catch instead */
 function fileExists(filePath) {
   try { fs.statSync(filePath); return true; } catch { return false; }
 }
@@ -198,7 +206,7 @@ function checkEnvironment() {
 
 function cmdInit(args) {
   if (args.length < 1) {
-    return fail("用法: node scripts/bsg.mjs init <site-url> [--fast] [--cwd <dir>]");
+    return fail("用法: node scripts/bsg.mjs init <site-url> [--fast] [--cwd {dir}]");
   }
 
   const siteUrl = args[0];
@@ -211,7 +219,8 @@ function cmdInit(args) {
     return fail("无效的站点 URL: " + siteUrl);
   }
   if (!["http:", "https:"].includes(parsed.protocol)) {
-    return fail("站点 URL 必须以 http:// 或 https:// 开头");
+    return fail(/* noinspection HttpUrlsUsage */
+      "站点 URL 必须以 http:// 或 https:// 开头");
   }
 
   const inSkillDir = isInSkillInstallDir(cwd);
@@ -546,6 +555,7 @@ function completePhase(phase, state, runDir) {
     if (source.ruleBookInfo?.tocUrl && /webView|webview/i.test(source.ruleBookInfo.tocUrl)) webViewFields.push("ruleBookInfo.tocUrl");
     if (source.ruleSearch?.bookUrl && /webView|webview/i.test(source.ruleSearch.bookUrl)) webViewFields.push("ruleSearch.bookUrl");
     if (webViewFields.length > 0) {
+// noinspection JSUnresolvedReference
       structuralErrors.push(
         `webView:true 不应出现在 ${webViewFields.join(", ")} 上。WebView 只用于渲染 CSR 正文页面，JSON API 和静态 HTML 不需要 WebView。将 webView 移到 ruleToc.chapterUrl 上。`
       );
@@ -558,6 +568,7 @@ function completePhase(phase, state, runDir) {
       }
       if (!source.loginUrl) {
         structuralErrors.push("enabledCookieJar 已启用但缺少 loginUrl。用户在 App 中无法登录。loginUrl 指向站点登录页 URL。");
+// noinspection JSUnresolvedReference
       }
       if (!source.header) {
         structuralErrors.push("enabledCookieJar 已启用但缺少 header。需用 <js>java.getCookie()</js> 动态注入登录凭据。参考 examples/pattern-api-webview-auth/。");
@@ -615,6 +626,7 @@ function completePhase(phase, state, runDir) {
         const val = group[field];
         if (typeof val === "string" && val.length > 0 && !val.includes("@href") && !val.includes("@js") && !val.startsWith("$.") && !val.startsWith("http") && !val.startsWith("/") && !val.startsWith("<js>") && !val.includes("{{") && !val.startsWith("##")) {
           structuralErrors.push(
+// noinspection JSUnresolvedReference
             `${field}: "${val}" — URL 规则缺少 @href action。CSS 选择器提取链接必须加 @href。`
           );
           break;
@@ -676,7 +688,7 @@ function moveToNext(fromPhase, state, runDir) {
         .filter(([k, v]) => v && !state.loginFeatures[k])
         .map(([k]) => k);
       if (missing.length > 0) {
-        authReminder = `⚠️ analysis.md 提到 auth/登录特征但 loginFeatures 未设: ${missing.join(", ")}。请在生成书源前运行: node scripts/bsg.mjs set-login-features --run <dir>`;
+        authReminder = `⚠️ analysis.md 提到 auth/登录特征但 loginFeatures 未设: ${missing.join(", ")}。请在生成书源前运行: node scripts/bsg.mjs set-login-features --run {dir}`;
       }
     }
   }
@@ -935,7 +947,7 @@ function cmdCheck(args) {
 
 function cmdSetLoginFeatures(args) {
   const runDir = parseArg(args, "--run");
-  if (!runDir) return fail("用法: node scripts/bsg.mjs set-login-features --run <dir> [--flags <json>]");
+  if (!runDir) return fail("用法: node scripts/bsg.mjs set-login-features --run {dir} [--flags <json>]");
 
   const { state, error } = loadAndVerify(runDir);
   if (error) return fail(error);
@@ -956,10 +968,12 @@ function cmdSetLoginFeatures(args) {
     if (authInfo.found) {
       Object.assign(state.loginFeatures, authInfo.flags);
     }
+// noinspection JSUnresolvedReference
   }
 
   // Also try to detect from existing book-source.json
   const bookSourcePath = path.join(state.workingDir, "outputs", state.siteSlug, "book-source.json");
+// noinspection JSUnresolvedReference
   if (fileExists(bookSourcePath)) {
     try {
       const json = JSON.parse(fs.readFileSync(bookSourcePath, "utf-8"));
@@ -990,7 +1004,7 @@ function cmdSetLoginFeatures(args) {
 
 function cmdRecordValidation(args) {
   const runDir = parseArg(args, "--run");
-  if (!runDir) return fail("用法: node scripts/bsg.mjs record-validation --run <dir> --status <status> [--report <file>]");
+  if (!runDir) return fail("用法: node scripts/bsg.mjs record-validation --run {dir} --status <status> [--report <file>]");
 
   const statusIdx = args.indexOf("--status");
   if (statusIdx < 0) return fail("缺少 --status 参数 (passed|failed|needs_app_review|validator_limitation|degraded)");
@@ -1079,6 +1093,7 @@ function cmdRecordValidation(args) {
           }
         }
       } catch { /* ignore parse error */ }
+// noinspection JSUnresolvedReference
     }
   }
 
@@ -1229,7 +1244,7 @@ function cmdRecordValidation(args) {
           const field = failedStep.failedField || "";
           const reqUrl = failedStep.request?.url || "";
           const reqUrlHash = reqUrl
-            ? crypto.createHash("sha256").update(reqUrl).digest("hex").slice(0, 12)
+            ? crypto.createHash("sha256").update(reqUrl).digest().toString("hex").slice(0, 12)
             : "no-url";
           let chapterUrlHash = "";
           // For content phase, also include chapter URL in signature
@@ -1240,7 +1255,7 @@ function cmdRecordValidation(args) {
               const url1 = contentSteps[0].request?.url || "";
               const url2 = contentSteps[1].request?.url || "";
               if (url1 !== url2) {
-                chapterUrlHash = "|ch:" + crypto.createHash("sha256").update(url1 + url2).digest("hex").slice(0, 8);
+                chapterUrlHash = "|ch:" + crypto.createHash("sha256").update(url1 + url2).digest().toString("hex").slice(0, 8);
               }
             }
           }
@@ -1420,6 +1435,7 @@ function findValidatorPid() {
       const savedPid = parseInt(fs.readFileSync(pidFile, "utf-8").trim());
       // Verify the process still exists
       try {
+        // noinspection JSDeprecatedSymbols
         if (process.platform === "win32") {
           execSync(`tasklist /FI "PID eq ${savedPid}" /NH`, { encoding: "utf-8", timeout: 3000 });
           return savedPid;
@@ -1436,7 +1452,8 @@ function findValidatorPid() {
 
   // Fallback: scan port 1111 via netstat
   try {
-    if (process.platform === "win32") {
+    // noinspection JSDeprecatedSymbols
+        if (process.platform === "win32") {
       const out = execSync('netstat -aon | findstr :1111 | findstr LISTENING', {
         encoding: "utf-8",
         timeout: 5000,
@@ -1464,7 +1481,7 @@ function getValidatorJar() {
   return jarPath;
 }
 
-async function cmdValidatorStart(args) {
+async function cmdValidatorStart(_args) {
   const running = await checkValidator();
   if (running) {
     const pid = findValidatorPid();
@@ -1536,7 +1553,8 @@ async function cmdValidatorStop() {
   }
 
   try {
-    if (process.platform === "win32") {
+    // noinspection JSDeprecatedSymbols
+        if (process.platform === "win32") {
       execSync(`taskkill /PID ${pid} /F`, { timeout: 5000 });
     } else {
       execSync(`kill ${pid}`, { timeout: 5000 });
@@ -1554,12 +1572,12 @@ function printUsage() {
     [
       "用法:",
       "  node scripts/bsg.mjs init <site-url> [--fast]",
-      "  node scripts/bsg.mjs status --run <dir>",
-      "  node scripts/bsg.mjs advance --run <dir>",
-      "  node scripts/bsg.mjs check --run <dir>",
-      "  node scripts/bsg.mjs set-login-features --run <dir> [--flags <json>]",
-      "  node scripts/bsg.mjs record-validation --run <dir> --status <status> [--report <file>]",
-      "  node scripts/bsg.mjs deliver --run <dir>",
+      "  node scripts/bsg.mjs status --run {dir}",
+      "  node scripts/bsg.mjs advance --run {dir}",
+      "  node scripts/bsg.mjs check --run {dir}",
+      "  node scripts/bsg.mjs set-login-features --run {dir} [--flags <json>]",
+      "  node scripts/bsg.mjs record-validation --run {dir} --status <status> [--report <file>]",
+      "  node scripts/bsg.mjs deliver --run {dir}",
       "  node scripts/bsg.mjs validator-start [--background]",
       "  node scripts/bsg.mjs validator-stop",
     ].join("\n")

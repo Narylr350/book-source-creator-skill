@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+/* eslint-env node */
 
 /**
  * validate-with-validator.mjs
@@ -113,7 +114,7 @@ function extractSummary(result) {
     contentPreview: (summary.contentPreview || '').slice(0, 200),
     phases: result.phases || {},
     ruleHitsCount: steps.reduce((acc, s) => acc + (s.ruleHits?.length || 0), 0),
-    failedFields: steps.flatMap(s => (s.ruleHits || []).filter(r => !r.success).map(r => r.field))
+    failedFields: steps.flatMap(s => (s.ruleHits || []).filter(r => !r.success).map(r => r["field"]))
   };
 }
 
@@ -121,7 +122,7 @@ async function main() {
   const args = process.argv.slice(2);
   
   if (args.length < 2) {
-    console.error('用法: node validate-with-validator.mjs <source-json-file> <keyword> [http|browser|android] [--output <dir>] [--cookie=<file>]');
+    console.error('用法: node validate-with-validator.mjs <source-json-file> <keyword> [http|browser|android] [--output {dir}] [--cookie=<file>]');
     process.exit(1);
   }
   
@@ -196,14 +197,15 @@ async function main() {
   const result = await runDebug(sourceJson, sourceUrl, keyword, mode, debugDir);
   
   // 判定状态
-  const { status, reason, phase, ruleHits } = determineStatus(result);
+  const { status, reason, phase } = determineStatus(result);
   const summary = extractSummary(result);
   
   // Debug: log detection info
+  // noinspection JSUnresolvedReference
   if (process.env.DEBUG) {
     const rawSteps = result.steps || [];
     for (const s of rawSteps) {
-      console.error(`[DEBUG] step ${s.phase}: bodyPreview length=${s.response?.bodyPreview?.length}, has turnstile=${s.response?.bodyPreview?.includes('turnstile')}`);
+      console.error(`[DEBUG] step ${s.phase}: bodyPreview length=${s.response?.["bodyPreview"]?.length}, has turnstile=${s.response?.["bodyPreview"]?.includes('turnstile')}`);
     }
     console.error(`[DEBUG] status=${status}, reason=${reason}`);
   }

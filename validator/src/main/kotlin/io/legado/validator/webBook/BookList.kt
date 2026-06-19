@@ -206,6 +206,7 @@ object BookList {
 
     private fun getAbsoluteURL(baseUrl: String, relativeUrl: String): String {
         if (relativeUrl.isBlank()) return ""
+        @Suppress("HttpUrlsUsage") // string check, not actual HTTP
         if (relativeUrl.startsWith("http://") || relativeUrl.startsWith("https://")) return relativeUrl
         return try {
             runCatching {

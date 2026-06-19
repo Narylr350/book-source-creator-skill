@@ -91,5 +91,6 @@ function main(argv) {
 
 
 if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) {
-  process.exitCode = main(process.argv.slice(2));
+  // noinspection JSUnresolvedReference
+process.exitCode = main(process.argv.slice(2));
 }
