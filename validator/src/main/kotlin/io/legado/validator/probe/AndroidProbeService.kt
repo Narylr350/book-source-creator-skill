@@ -130,7 +130,7 @@ object AndroidProbeService {
     fun render(request: ProbeRenderRequest): ProbeRenderResponse {
         return try {
             val effectiveRequest = if (request.cookies == null) {
-                val domain = try { java.net.URL(request.url).host.lowercase() } catch (_: Exception) { "" }
+                val domain = try { java.net.URI.create(request.url).toURL().host.lowercase() } catch (_: Exception) { "" }
                 val storedCookie = if (domain.isNotEmpty()) io.legado.validator.web.CookieStore.getCookie(domain) else null
                 if (storedCookie != null) request.copy(cookies = storedCookie) else request
             } else request
@@ -145,7 +145,7 @@ object AndroidProbeService {
             val renderResponse = gson.fromJson(body, ProbeRenderResponse::class.java)
             // Gap #10: persist WebView cookies — matches Legado BackstageWebView.setCookie()
             if (renderResponse.ok && !renderResponse.cookies.isNullOrEmpty()) {
-                val domain = try { java.net.URL(renderResponse.finalUrl ?: request.url).host.lowercase() } catch (_: Exception) { "" }
+                val domain = try { java.net.URI.create(renderResponse.finalUrl ?: request.url).toURL().host.lowercase() } catch (_: Exception) { "" }
                 if (domain.isNotEmpty()) {
                     io.legado.validator.web.CookieStore.setCookie(domain, renderResponse.cookies)
                 }
@@ -194,23 +194,31 @@ object AndroidProbeService {
         if (devices.isEmpty()) return ProbeInfo(available = false, error = "No Android devices connected")
         val device = devices.first()
         if (!setupForward(adb, device.serial)) return ProbeInfo(available = false, device = device, error = "adb forward failed")
-        if (!ping()) {
-            if (autoInstall) {
-                val apk = findApk()
-                if (apk != null) {
-                    installApk(adb, device.serial, apk)
-                    startProbe(adb, device.serial)
-                    Thread.sleep(2000) // wait for server startup
-                    if (ping()) {
-                        val probeInfo = info()
-                        return ProbeInfo(available = true, device = device,
-                            probeVersion = probeInfo?.get("version")?.toString(),
-                            webViewVersion = probeInfo?.get("webViewVersion")?.toString())
-                    }
-                }
+
+        // Try 1: quick ping (probe already running)
+        if (ping()) return buildAvailableInfo(device)
+
+        // Try 2: probe may have been killed by Android — restart activity
+        startProbe(adb, device.serial)
+        Thread.sleep(3000)
+        if (ping()) return buildAvailableInfo(device)
+
+        // Try 3: full reinstall
+        if (autoInstall) {
+            val apk = findApk()
+            if (apk != null) {
+                installApk(adb, device.serial, apk)
+                startProbe(adb, device.serial)
+                Thread.sleep(3000)
+                if (ping()) return buildAvailableInfo(device)
             }
-            return ProbeInfo(available = false, device = device, error = "Probe not responding on port $LOCAL_PORT")
         }
+
+        return ProbeInfo(available = false, device = device,
+            error = "Probe not responding on port $LOCAL_PORT (try: adb shell am start -n io.legado.probe/.WebViewProbeActivity)")
+    }
+
+    private fun buildAvailableInfo(device: ProbeDevice): ProbeInfo {
         val probeInfo = info()
         return ProbeInfo(
             available = true,

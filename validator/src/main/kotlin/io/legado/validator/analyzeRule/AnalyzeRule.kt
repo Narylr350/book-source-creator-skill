@@ -9,6 +9,7 @@ import io.legado.validator.model.BookSource
 import org.apache.commons.text.StringEscapeUtils
 import org.jsoup.nodes.Node
 import org.mozilla.javascript.NativeObject
+import java.net.URI
 import java.net.URL
 import java.util.regex.Pattern
 import kotlin.coroutines.ContinuationInterceptor
@@ -95,7 +96,7 @@ class AnalyzeRule(
     }
 
     fun setRedirectUrl(url: String): URL? {
-        try { redirectUrl = URL(url) } catch (e: Exception) { log("URL($url) error\n${e.localizedMessage}") }
+        try { redirectUrl = URI.create(url).toURL() } catch (e: Exception) { log("URL($url) error\n${e.localizedMessage}") }
         return redirectUrl
     }
 
@@ -228,7 +229,7 @@ class AnalyzeRule(
                 putRule(sourceRule.putMap)
                 sourceRule.makeUpRule(result)
                 result = if (sourceRule.getParamSize() > 1) sourceRule.rule
-                else (result as NativeObject)[sourceRule.rule]?.toString()
+                else result[sourceRule.rule]?.toString()
                     ?.let { replaceRegex(it, sourceRule) }
             } else {
                 for (sourceRule in ruleList) {
@@ -601,7 +602,7 @@ private fun getAbsoluteURL(baseUrl: URL?, relativeUrl: String): String {
     if (relativeUrl.startsWith("http://") || relativeUrl.startsWith("https://")) return relativeUrl
     if (baseUrl == null) return relativeUrl
     return try {
-        URL(baseUrl, relativeUrl).toString()
+        URI.create(baseUrl.toString()).resolve(relativeUrl).toURL().toString()
     } catch (e: Exception) {
         relativeUrl
     }

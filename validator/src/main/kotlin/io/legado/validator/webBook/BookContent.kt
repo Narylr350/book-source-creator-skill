@@ -109,6 +109,7 @@ object BookContent {
         return contentStr
     }
 
+    @Suppress("UNUSED_PARAMETER")
     private suspend fun analyzeContent(
         book: Book,
         baseUrl: String,
@@ -124,7 +125,7 @@ object BookContent {
         val analyzeRule = AnalyzeRule(book, bookSource)
         analyzeRule.setContent(body, baseUrl)
         analyzeRule.setCoroutineContext(coroutineContext)
-        val rUrl = analyzeRule.setRedirectUrl(redirectUrl)
+        analyzeRule.setRedirectUrl(redirectUrl)
         analyzeRule.chapter = chapter
         analyzeRule.nextChapterUrl = nextChapterUrl
         val nextUrlList = arrayListOf<String>()

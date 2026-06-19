@@ -125,6 +125,14 @@ class WebServer(port: Int) : NanoWSD("127.0.0.1", port) {
                 ?: return newFixedLengthResponse(Response.Status.BAD_REQUEST, "application/json",
                     """{"ok":false,"error":"Missing keyword"}""")
             val mode = req.get("mode")?.asString ?: "http"
+            val debugDirStr = req.get("debugDir")?.asString  // 可选：调试产物输出目录
+
+            // 安全边界：debugDir 必须已存在且是目录（由 Node 端预先 mkdir）
+            val debugDir: java.io.File? = if (debugDirStr != null) {
+                val dir = java.io.File(debugDirStr)
+                if (!dir.exists() || !dir.isDirectory) null  // 不满足安全条件则忽略
+                else dir
+            } else null
 
             val sourceJsonElement = req.get("sourceJson")
             if (sourceJsonElement != null) {
@@ -144,7 +152,7 @@ class WebServer(port: Int) : NanoWSD("127.0.0.1", port) {
             // 每次创建独立 DebugService，避免并发串状态
             val runService = DebugService()
             val steps = runBlocking(Dispatchers.IO) {
-                runService.runFull(source, keyword, mode)
+                runService.runFull(source, keyword, mode, debugDir)
             }
 
             // Build compact steps

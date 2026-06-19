@@ -1,5 +1,6 @@
 package io.legado.validator.debug
 
+import com.google.gson.Gson
 import io.legado.validator.analyzeRule.AnalyzeUrl
 import io.legado.validator.analyzeRule.AnalyzeRule
 import io.legado.validator.analyzeRule.RuleData
@@ -57,7 +58,10 @@ class DebugService {
         var needsReview = this.needsAppReview
         var reviewRsn = this.reviewReason
         // 检查当前步骤的 AnalyzeUrl 是否有 webView:true
-        if (WebBook.lastAnalyzeUrl?.hasWebView == true) {
+        // 但如果 Android Probe 已成功渲染 WebView（有 webViewHtmlPreview 或 probeAvailable），
+        // 则不追加 "无法执行 WebView" 警告——Probe 已经执行了。
+        val probeDidRender = probeAvailable == true || !webViewHtmlPreview.isNullOrBlank()
+        if (WebBook.lastAnalyzeUrl?.hasWebView == true && !probeDidRender) {
             if (allWarnings.none { it.feature == "webView" }) {
                 allWarnings.add(DebugStep.CompatibilityWarning(
                     "webView", "URL 包含 webView:true，validator 无法执行 WebView 渲染"
@@ -73,11 +77,14 @@ class DebugService {
         )
     }
 
-    suspend fun runFull(source: BookSource, keyword: String, mode: String = "http"): List<DebugStep> {
+    private var debugDir: java.io.File? = null
+
+    suspend fun runFull(source: BookSource, keyword: String, mode: String = "http", debugDir: java.io.File? = null): List<DebugStep> {
+        this.debugDir = debugDir
         steps.clear()
         val book = Book()
         val warnings = collectWarnings(source)
-        val sourceDomain = try { java.net.URL(source.bookSourceUrl).host.lowercase() } catch (_: Exception) { "" }
+        val sourceDomain = try { java.net.URI(source.bookSourceUrl).toURL().host.lowercase() } catch (_: Exception) { "" }
         val sessionMode = if (sourceDomain.isNotEmpty() && io.legado.validator.web.CookieStore.getCookie(sourceDomain) != null) "authenticated" else "anonymous"
 
         // Step 1: Search
@@ -111,17 +118,56 @@ class DebugService {
         listener?.invoke(tocStep)
         if (tocStep.status == "error") return steps.toList()
 
+        @Suppress("UNCHECKED_CAST")
         val chapters = tocStep.extracted["chapters"] as? List<BookChapter> ?: emptyList()
 
         // Step 4: Content (first 2 chapters)
-        for (ch in chapters.take(2)) {
+        chLoop@ for ((ci, ch) in chapters.take(2).withIndex()) {
+            val cIdx = ci + 1  // 1-based for artifact naming
             val contentStep = if (actualMode == "android") {
-                runContentAndroid(source, book, ch)
+                runContentAndroid(source, book, ch, cIdx)
             } else {
-                runContent(source, book, ch, actualMode)
+                runContent(source, book, ch, actualMode, cIdx)
             }.withWarnings(warnings).copy(sessionMode = sessionMode)
             steps.add(contentStep)
             listener?.invoke(contentStep)
+        }
+
+        // ── 正文去重 post-check ──
+        val contentSteps = steps.filter { it.phase == "content" && it.status == "success" }
+        if (contentSteps.size >= 2) {
+            val c1 = contentSteps[0]
+            val c2 = contentSteps[1]
+            val p1 = c1.preview ?: ""
+            val p2 = c2.preview ?: ""
+            if (p1.isNotBlank() && p1 == p2) {
+                // 更新第二个 content step，添加去重错误
+                val dedupEvidence = c2.evidence.toMutableMap()
+                dedupEvidence["contentHash"] = java.security.MessageDigest.getInstance("SHA-256")
+                    .digest(p1.toByteArray()).take(8).joinToString("") { "%02x".format(it) }
+                dedupEvidence["chapter1Title"] = c1.extracted["chapterTitle"]?.toString() ?: ""
+                dedupEvidence["chapter2Title"] = c2.extracted["chapterTitle"]?.toString() ?: ""
+                val dedupMeta = ErrorCodeRegistry.get(ErrorCode.CONTENT_DUPLICATE_BETWEEN_CHAPTERS)
+                val updated = c2.copy(
+                    status = "error",
+                    error = dedupMeta?.messageTemplate ?: "两章正文内容完全相同",
+                    errorCode = ErrorCode.CONTENT_DUPLICATE_BETWEEN_CHAPTERS.name,
+                    subphase = dedupMeta?.subphase?.name?.lowercase(),
+                    failedField = dedupMeta?.failedField,
+                    allowedFixes = dedupMeta?.allowedFixes ?: emptyList(),
+                    forbiddenFixes = dedupMeta?.forbiddenFixes ?: emptyList(),
+                    evidence = dedupEvidence
+                )
+                // Replace the second content step
+                val idx = steps.indexOf(c2)
+                if (idx >= 0) {
+                    val mutableSteps = steps.toMutableList()
+                    mutableSteps[idx] = updated
+                    steps.clear()
+                    steps.addAll(mutableSteps)
+                }
+                listener?.invoke(updated)
+            }
         }
 
         return steps.toList()
@@ -210,18 +256,35 @@ class DebugService {
                             else -> "搜索结果为空 (HTTP ${res.code}, 列表大小:0)"
                         }
                     } else "搜索结果为空"
+                    val sErrorCode = when {
+                        errorMsg.contains(Regex("403|Forbidden|404|503", RegexOption.IGNORE_CASE)) ->
+                            ErrorCode.HTTP_BLOCKED.name
+                        else -> ErrorCode.SEARCH_EMPTY.name
+                    }
+                    val sMeta = try { ErrorCodeRegistry.get(ErrorCode.valueOf(sErrorCode)) } catch (_: Exception) { null }
                     DebugStep(
                         phase = "search", status = "error",
                         request = reqInfo, response = resInfo,
-                        error = errorMsg
+                        error = errorMsg,
+                        errorCode = sErrorCode,
+                        subphase = sMeta?.subphase?.name?.lowercase(),
+                        failedField = sMeta?.failedField,
+                        allowedFixes = sMeta?.allowedFixes ?: emptyList(),
+                        forbiddenFixes = sMeta?.forbiddenFixes ?: emptyList()
                     )
                 }
             } catch (e: WebViewNotSupportedException) {
+                val wvMeta = ErrorCodeRegistry.get(ErrorCode.ANDROID_PROBE_UNAVAILABLE)
                 DebugStep(
                     phase = "search", status = "error",
                     request = buildRequestInfo(),
                     response = buildResponseInfo(WebBook.lastResponse),
                     error = e.message,
+                    errorCode = ErrorCode.ANDROID_PROBE_UNAVAILABLE.name,
+                    subphase = wvMeta?.subphase?.name?.lowercase(),
+                    failedField = wvMeta?.failedField,
+                    allowedFixes = wvMeta?.allowedFixes ?: emptyList(),
+                    forbiddenFixes = wvMeta?.forbiddenFixes ?: emptyList(),
                     needsAppReview = true,
                     reviewReason = e.message
                 )
@@ -230,7 +293,8 @@ class DebugService {
                     phase = "search", status = "error",
                     request = buildRequestInfo(),
                     response = buildResponseInfo(WebBook.lastResponse),
-                    error = "${e::class.simpleName}: ${e.message}"
+                    error = "${e::class.simpleName}: ${e.message}",
+                    errorCode = ErrorCode.HTTP_BLOCKED.name
                 )
             }
         }
@@ -368,7 +432,7 @@ class DebugService {
                         "name" to result.name,
                         "author" to result.author,
                         "coverUrl" to result.coverUrl,
-                        "intro" to result.intro?.take(200),
+                        "intro" to result.intro.take(200),
                         "tocUrl" to result.tocUrl
                     )
                 )
@@ -429,22 +493,108 @@ class DebugService {
         }
     }
 
-    private suspend fun runContent(source: BookSource, book: Book, chapter: BookChapter, mode: String = "http"): DebugStep {
+    private suspend fun runContent(source: BookSource, book: Book, chapter: BookChapter, mode: String = "http", cIdx: Int = 0): DebugStep {
         return withContext(Dispatchers.IO) {
             try {
                 WebBook.clearState()
                 val content = WebBook.getContentAwait(source, book, chapter)
                 val res = WebBook.lastResponse
+                val body = res?.body ?: ""
+                val htmlKind = classifyHtml(body)
+
+                // ── 调试产物 ──
+                val artifacts = mutableMapOf<String, String>()
+                val req = buildRequestInfo()
+                writeDebugArtifact("content", cIdx, "request.json", Gson().toJson(req))?.let { artifacts["request.json"] = it }
+                writeDebugArtifact("content", cIdx, "response.raw.html", body)?.let { artifacts["response.raw.html"] = it }
+                writeDebugArtifact("content", cIdx, "rule-hits.json", Gson().toJson(toRuleHits(BookContent.lastRuleHits)))?.let { artifacts["rule-hits.json"] = it }
+                writeDebugArtifact("content", cIdx, "extracted.txt", content)?.let { artifacts["extracted.txt"] = it }
+
+                // ── 错误归因 ──
+                val errorCode: String? = when {
+                    content.isBlank() && htmlKind == "normal_reader_html" && body.length > 0 ->
+                        ErrorCode.CONTENT_SELECTOR_EMPTY.name
+                    htmlKind == "csr_shell" -> ErrorCode.CONTENT_IS_CSR_SHELL.name
+                    htmlKind == "login_page" -> ErrorCode.CONTENT_IS_LOGIN_PAGE.name
+                    htmlKind == "captcha_page" -> ErrorCode.CONTENT_IS_CAPTCHA_PAGE.name
+                    htmlKind == "vip_lock_page" -> ErrorCode.CONTENT_IS_VIP_LOCK_PAGE.name
+                    else -> null
+                }
+                val resolvedCode = errorCode?.let { code -> try { ErrorCode.valueOf(code) } catch (_: Exception) { null } }
+                val meta = resolvedCode?.let { ErrorCodeRegistry.get(it) }
+
+                // ── 正文质量检查 ──
+                var qualityCode: String? = null
+                var qualitySeverity = false
+                var isLikelyNoticeOrLock = false
+                var titleFoundInContent: Boolean? = null
+                if (!content.isBlank() && content.length < 100) {
+                    qualityCode = ErrorCode.CONTENT_TOO_SHORT.name
+                    val noticeKeywords = listOf("公告", "通知", "请假", "停更", "VIP", "付费", "订阅")
+                    isLikelyNoticeOrLock = noticeKeywords.any { content.contains(it, ignoreCase = true) }
+                    if (isLikelyNoticeOrLock) qualitySeverity = true
+                }
+                var mismatchCode: String? = null
+                if (!content.isBlank() && chapter.title.isNotBlank()) {
+                    val titleClean = chapter.title.replace(Regex("""^\d+[\.\、\s]+"""), "").take(4)
+                    if (titleClean.length >= 2 && !content.contains(titleClean, ignoreCase = true)) {
+                        mismatchCode = ErrorCode.CONTENT_CHAPTER_MISMATCH.name
+                        titleFoundInContent = false
+                    } else {
+                        titleFoundInContent = true
+                    }
+                }
+
+                val fullEvidence = buildContentEvidence(body, content, artifacts).toMutableMap()
+                if (!content.isBlank()) {
+                    fullEvidence["contentPreview"] = content.take(100)
+                }
+                fullEvidence["chapterTitle"] = chapter.title
+                if (isLikelyNoticeOrLock) fullEvidence["isLikelyNoticeOrLock"] = true
+                if (titleFoundInContent != null) fullEvidence["titleFoundInContent"] = titleFoundInContent
+
+                val status = when {
+                    content.isBlank() -> "error"
+                    htmlKind in listOf("csr_shell", "login_page", "captcha_page", "vip_lock_page") -> "error"
+                    qualitySeverity -> "error"  // CONTENT_TOO_SHORT with isLikelyNoticeOrLock
+                    else -> "success"
+                }
+                val finalErrorCode = when {
+                    errorCode != null -> errorCode
+                    qualityCode != null -> qualityCode
+                    mismatchCode != null -> mismatchCode
+                    else -> null
+                }
+                val resolvedFinalCode = finalErrorCode?.let { code -> try { ErrorCode.valueOf(code) } catch (_: Exception) { null } }
+                val finalMeta = resolvedFinalCode?.let { ErrorCodeRegistry.get(it) } ?: meta
+                val errorMsg = when {
+                    htmlKind == "csr_shell" -> ErrorCodeRegistry.CONTENT_IS_CSR_SHELL_META.messageTemplate
+                    htmlKind == "login_page" -> ErrorCodeRegistry.CONTENT_IS_LOGIN_PAGE_META.messageTemplate
+                    htmlKind == "captcha_page" -> ErrorCodeRegistry.CONTENT_IS_CAPTCHA_PAGE_META.messageTemplate
+                    htmlKind == "vip_lock_page" -> ErrorCodeRegistry.CONTENT_IS_VIP_LOCK_PAGE_META.messageTemplate
+                    content.isBlank() -> "正文为空"
+                    qualityCode != null -> ErrorCodeRegistry.CONTENT_TOO_SHORT_META.messageTemplate
+                    else -> null
+                }
+
                 DebugStep(
-                    phase = "content", status = "success", mode = mode,
-                    request = buildRequestInfo(),
+                    phase = "content", status = status, mode = mode,
+                    request = req,
                     response = buildResponseInfo(res),
                     ruleHits = toRuleHits(BookContent.lastRuleHits),
                     extracted = mapOf(
                         "chapterTitle" to chapter.title,
                         "contentLength" to content.length
                     ),
-                    preview = content.take(500)
+                    preview = content.take(500),
+                    error = errorMsg,
+                    errorCode = if (status == "error" || mismatchCode != null) finalErrorCode else null,
+                    subphase = finalMeta?.subphase?.name?.lowercase(),
+                    failedField = finalMeta?.failedField,
+                    allowedFixes = finalMeta?.allowedFixes ?: emptyList(),
+                    forbiddenFixes = finalMeta?.forbiddenFixes ?: emptyList(),
+                    evidence = fullEvidence,
+                    debugArtifacts = artifacts.ifEmpty { null }
                 )
             } catch (e: WebViewNotSupportedException) {
                 DebugStep(
@@ -456,11 +606,32 @@ class DebugService {
                     reviewReason = e.message
                 )
             } catch (e: Exception) {
+                val res = WebBook.lastResponse
+                val body = res?.body ?: ""
+                val htmlKind = classifyHtml(body)
+                val excErrorCode = when {
+                    htmlKind == "csr_shell" -> ErrorCode.CONTENT_IS_CSR_SHELL.name
+                    htmlKind == "login_page" -> ErrorCode.CONTENT_IS_LOGIN_PAGE.name
+                    htmlKind == "captcha_page" -> ErrorCode.CONTENT_IS_CAPTCHA_PAGE.name
+                    htmlKind == "vip_lock_page" -> ErrorCode.CONTENT_IS_VIP_LOCK_PAGE.name
+                    body.isNotBlank() && htmlKind == "normal_reader_html" -> ErrorCode.CONTENT_SELECTOR_EMPTY.name
+                    else -> null
+                }
+                val excMeta = excErrorCode?.let { code -> try { ErrorCodeRegistry.get(ErrorCode.valueOf(code)) } catch (_: Exception) { null } }
+                val excArtifacts = mutableMapOf<String, String>()
+                writeDebugArtifact("content", cIdx, "response.raw.html", body)?.let { excArtifacts["response.raw.html"] = it }
                 DebugStep(
                     phase = "content", status = "error", mode = mode,
                     request = buildRequestInfo(),
-                    response = buildResponseInfo(WebBook.lastResponse),
-                    error = "${e::class.simpleName}: ${e.message}"
+                    response = buildResponseInfo(res),
+                    error = "${e::class.simpleName}: ${e.message}",
+                    errorCode = excErrorCode,
+                    subphase = excMeta?.subphase?.name?.lowercase(),
+                    failedField = excMeta?.failedField,
+                    allowedFixes = excMeta?.allowedFixes ?: emptyList(),
+                    forbiddenFixes = excMeta?.forbiddenFixes ?: emptyList(),
+                    evidence = mapOf("htmlLength" to body.length, "htmlKind" to htmlKind, "contentLength" to 0),
+                    debugArtifacts = excArtifacts.ifEmpty { null }
                 )
             }
         }
@@ -560,21 +731,20 @@ class DebugService {
         }
     }
 
-    private suspend fun runContentAndroid(source: BookSource, book: Book, chapter: BookChapter): DebugStep {
+    private suspend fun runContentAndroid(source: BookSource, book: Book, chapter: BookChapter, cIdx: Int = 0): DebugStep {
         return withContext(Dispatchers.IO) {
             val probeInfo = AndroidProbeService.probeCheck()
             if (!probeInfo.available) {
                 return@withContext DebugStep(
                     phase = "content", status = "error", mode = "android",
                     error = "Android Probe 不可用: ${probeInfo.error}",
+                    errorCode = ErrorCode.ANDROID_PROBE_UNAVAILABLE.name,
                     probeAvailable = false
                 )
             }
             try {
                 val contentRule = source.getContentRule()
                 val webJs = contentRule.webJs
-                // 剥离 URL options（如 ,{"webView":true}）——匹配 Legado AnalyzeUrl 行为
-                // JsonPath 模板生成的 URL 会把 options 当作 URL 字面量，probe 需要纯 URL
                 val cleanUrl = chapter.url.replace(Regex(",\\{[^}]*\\}$"), "")
                 val probeReq = ProbeRenderRequest(
                     url = cleanUrl,
@@ -587,53 +757,160 @@ class DebugService {
                 )
                 val probeRes = AndroidProbeService.render(probeReq)
                 if (!probeRes.ok) {
+                    val pError = probeRes.error ?: "Probe render failed"
+                    val pErrorCode = when {
+                        pError.contains("timeout", ignoreCase = true) -> ErrorCode.WEBVIEW_RENDER_TIMEOUT
+                        pError.contains("unavailable", ignoreCase = true) -> ErrorCode.ANDROID_PROBE_UNAVAILABLE
+                        pError.contains("ACCESS_DENIED", ignoreCase = true) || pError.contains("ERR_", ignoreCase = true) ->
+                            ErrorCode.HTTP_BLOCKED
+                        pError.contains("login", ignoreCase = true) -> ErrorCode.COOKIE_REQUIRED
+                        else -> ErrorCode.ANDROID_PROBE_UNAVAILABLE
+                    }
+                    val pMeta = ErrorCodeRegistry.get(pErrorCode)
                     return@withContext DebugStep(
                         phase = "content", status = "error", mode = "android",
                         request = DebugStep.RequestInfo(url = cleanUrl, method = "GET", headers = source.getHeaderMap(), body = null),
-                        error = probeRes.error ?: "Probe render failed",
+                        error = pError,
+                        errorCode = pErrorCode.name,
+                        subphase = pMeta?.subphase?.name?.lowercase(),
+                        failedField = pMeta?.failedField,
+                        allowedFixes = pMeta?.allowedFixes ?: emptyList(),
+                        forbiddenFixes = pMeta?.forbiddenFixes ?: emptyList(),
                         probeAvailable = true,
                         probeDevice = probeInfo.device?.serial,
-                            androidWebViewVersion = probeInfo.webViewVersion,
-                            webViewHtmlPreview = probeRes.html?.take(2000),
+                        androidWebViewVersion = probeInfo.webViewVersion,
+                        webViewHtmlPreview = probeRes.html?.take(2000),
                         webViewScreenshotBase64 = probeRes.screenshotBase64
                     )
                 }
+                val probeHtml = probeRes.html ?: ""
+                val htmlKind = classifyHtml(probeHtml)
+
+                // ── 调试产物 ──
+                val artifacts = mutableMapOf<String, String>()
+                val reqInfo = DebugStep.RequestInfo(url = cleanUrl, method = "GET", headers = source.getHeaderMap(), body = null)
+                writeDebugArtifact("content", cIdx, "request.json", Gson().toJson(reqInfo))?.let { artifacts["request.json"] = it }
+                writeDebugArtifact("content", cIdx, "response.rendered.html", probeHtml)?.let { artifacts["response.rendered.html"] = it }
+                if (probeRes.screenshotBase64 != null) {
+                    try {
+                        val screenshotBytes = java.util.Base64.getDecoder().decode(probeRes.screenshotBase64)
+                        writeDebugArtifactBinary("content", cIdx, "screenshot.png", screenshotBytes)?.let { artifacts["screenshot.png"] = it }
+                    } catch (_: Exception) { }
+                }
+
                 val analyzeRule = AnalyzeRule(book, source)
-                analyzeRule.setContent(probeRes.html ?: "", cleanUrl)
+                analyzeRule.setContent(probeHtml, cleanUrl)
                 val content = analyzeRule.setFieldName("content").getString(contentRule.content)
+                writeDebugArtifact("content", cIdx, "rule-hits.json", Gson().toJson(toRuleHits(analyzeRule.ruleHits)))?.let { artifacts["rule-hits.json"] = it }
+                writeDebugArtifact("content", cIdx, "extracted.txt", content)?.let { artifacts["extracted.txt"] = it }
+
                 val jsErrMsg = probeRes.jsError
-                val status = if (content.isBlank()) "error" else "success"
-                val error = when {
-                    content.isBlank() && jsErrMsg != null -> "webJs 执行错误: $jsErrMsg"
-                    content.isBlank() -> "正文为空"
+                val contentBlank = content.isBlank()
+
+                // ── 错误归因 ──
+                val errorCode: String? = when {
+                    htmlKind == "csr_shell" -> ErrorCode.CONTENT_IS_CSR_SHELL.name
+                    htmlKind == "login_page" -> ErrorCode.CONTENT_IS_LOGIN_PAGE.name
+                    htmlKind == "captcha_page" -> ErrorCode.CONTENT_IS_CAPTCHA_PAGE.name
+                    htmlKind == "vip_lock_page" -> ErrorCode.CONTENT_IS_VIP_LOCK_PAGE.name
+                    contentBlank && htmlKind == "normal_reader_html" && probeHtml.length > 0 ->
+                        ErrorCode.CONTENT_SELECTOR_EMPTY.name
+                    contentBlank && jsErrMsg != null -> ErrorCode.WEBJS_EXEC_ERROR.name
+                    contentBlank && probeRes.ok -> ErrorCode.WEBJS_RETURN_EMPTY.name
+                    else -> null
+                }
+
+                val resolvedCode = errorCode?.let { code -> try { ErrorCode.valueOf(code) } catch (_: Exception) { null } }
+                val meta = resolvedCode?.let { ErrorCodeRegistry.get(it) }
+
+                // ── 正文质量检查（先收集标志，后合并到 evidence） ──
+                var qualityCode: String? = null
+                var qualitySeverity = false  // true = change status to error
+                var isLikelyNoticeOrLock = false
+                var titleFoundInContent: Boolean? = null
+                if (!content.isBlank() && content.length < 100) {
+                    qualityCode = ErrorCode.CONTENT_TOO_SHORT.name
+                    val noticeKeywords = listOf("公告", "通知", "请假", "停更", "VIP", "付费", "订阅")
+                    isLikelyNoticeOrLock = noticeKeywords.any { content.contains(it, ignoreCase = true) }
+                    if (isLikelyNoticeOrLock) qualitySeverity = true
+                }
+                var mismatchCode: String? = null
+                if (!content.isBlank() && chapter.title.isNotBlank()) {
+                    val titleClean = chapter.title.replace(Regex("""^\d+[\.\、\s]+"""), "").take(4)
+                    if (titleClean.length >= 2 && !content.contains(titleClean, ignoreCase = true)) {
+                        mismatchCode = ErrorCode.CONTENT_CHAPTER_MISMATCH.name
+                        titleFoundInContent = false
+                    } else {
+                        titleFoundInContent = true
+                    }
+                }
+
+                val status = when {
+                    contentBlank -> "error"
+                    htmlKind in listOf("csr_shell", "login_page", "captcha_page", "vip_lock_page") -> "error"
+                    qualitySeverity -> "error"
+                    else -> "success"
+                }
+                val finalErrorCode = when {
+                    errorCode != null -> errorCode
+                    qualityCode != null -> qualityCode
+                    mismatchCode != null -> mismatchCode
+                    else -> null
+                }
+                val resolvedFinalCode = finalErrorCode?.let { code -> try { ErrorCode.valueOf(code) } catch (_: Exception) { null } }
+                val finalMeta = resolvedFinalCode?.let { ErrorCodeRegistry.get(it) } ?: meta
+                val errorMsg = when {
+                    htmlKind == "csr_shell" -> ErrorCodeRegistry.CONTENT_IS_CSR_SHELL_META.messageTemplate
+                    htmlKind == "login_page" -> ErrorCodeRegistry.CONTENT_IS_LOGIN_PAGE_META.messageTemplate
+                    htmlKind == "captcha_page" -> ErrorCodeRegistry.CONTENT_IS_CAPTCHA_PAGE_META.messageTemplate
+                    htmlKind == "vip_lock_page" -> ErrorCodeRegistry.CONTENT_IS_VIP_LOCK_PAGE_META.messageTemplate
+                    contentBlank && jsErrMsg != null -> "webJs 执行错误: $jsErrMsg"
+                    contentBlank -> "正文为空"
                     jsErrMsg != null -> "webJs 警告: $jsErrMsg"
                     else -> null
                 }
+
+                val fullEvidence = buildContentEvidence(probeHtml, content, artifacts).toMutableMap()
+                if (!content.isBlank()) {
+                    fullEvidence["contentPreview"] = content.take(100)
+                }
+                fullEvidence["chapterTitle"] = chapter.title
+                if (isLikelyNoticeOrLock) fullEvidence["isLikelyNoticeOrLock"] = true
+                if (titleFoundInContent != null) fullEvidence["titleFoundInContent"] = titleFoundInContent
+
                 DebugStep(
                     phase = "content",
                     status = status,
                     mode = "android",
-                    request = DebugStep.RequestInfo(url = cleanUrl, method = "GET", headers = source.getHeaderMap(), body = null),
+                    request = reqInfo,
                     response = DebugStep.ResponseInfo(
                         code = 200,
                         contentType = "text/html",
-                        bodyPreview = probeRes.html?.take(2000) ?: "",
-                        bodyLength = probeRes.html?.length ?: 0
+                        bodyPreview = probeHtml.take(2000),
+                        bodyLength = probeHtml.length
                     ),
-                    error = error,
+                    error = errorMsg,
+                    errorCode = if (status == "error" || mismatchCode != null) finalErrorCode else null,
+                    subphase = finalMeta?.subphase?.name?.lowercase(),
+                    failedField = finalMeta?.failedField,
+                    allowedFixes = finalMeta?.allowedFixes ?: emptyList(),
+                    forbiddenFixes = finalMeta?.forbiddenFixes ?: emptyList(),
                     ruleHits = toRuleHits(analyzeRule.ruleHits),
                     extracted = mapOf("chapterTitle" to chapter.title, "contentLength" to content.length),
                     preview = content.take(500),
+                    evidence = fullEvidence,
+                    debugArtifacts = artifacts.ifEmpty { null },
                     probeAvailable = true,
                     probeDevice = probeInfo.device?.serial,
                     androidWebViewVersion = probeInfo.webViewVersion,
-                    webViewHtmlPreview = probeRes.html?.take(2000),
+                    webViewHtmlPreview = probeHtml.take(2000),
                     webViewScreenshotBase64 = probeRes.screenshotBase64
                 )
             } catch (e: Exception) {
                 DebugStep(
                     phase = "content", status = "error", mode = "android",
                     error = "${e::class.simpleName}: ${e.message}",
+                    errorCode = if (e is WebViewNotSupportedException) ErrorCode.ANDROID_PROBE_UNAVAILABLE.name else null,
                     probeAvailable = true
                 )
             }
@@ -642,6 +919,112 @@ class DebugService {
 
     fun cancel() {
         scope.coroutineContext.cancelChildren()
+    }
+
+    // ── 调试产物 ────────────────────────────────────────────────────────────────
+
+    private fun writeDebugArtifact(phase: String, index: Int?, kind: String, content: String): String? {
+        val dir = debugDir ?: return null
+        val filename = if (index != null) "$phase-$index-$kind" else "$phase-$kind"
+        val file = java.io.File(dir, filename)
+        return try {
+            // 安全边界：确保结果路径在 debugDir 内部
+            if (!file.canonicalPath.startsWith(dir.canonicalPath + java.io.File.separator)
+                && file.canonicalPath != dir.canonicalPath) {
+                null  // 路径穿越拒绝
+            } else {
+                file.parentFile?.mkdirs()
+                file.writeText(content, Charsets.UTF_8)
+                filename  // 返回相对路径
+            }
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    private fun writeDebugArtifactBinary(phase: String, index: Int?, kind: String, content: ByteArray): String? {
+        val dir = debugDir ?: return null
+        val filename = if (index != null) "$phase-$index-$kind" else "$phase-$kind"
+        val file = java.io.File(dir, filename)
+        return try {
+            if (!file.canonicalPath.startsWith(dir.canonicalPath + java.io.File.separator)
+                && file.canonicalPath != dir.canonicalPath) {
+                null
+            } else {
+                file.parentFile?.mkdirs()
+                file.writeBytes(content)
+                filename
+            }
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    // ── HTML 分类 ──────────────────────────────────────────────────────────────
+
+    /** 对原始/渲染后的 HTML 做页面分类，用于归因安全 */
+    private fun classifyHtml(html: String?): String {
+        if (html.isNullOrBlank()) return "empty"
+        val lower = html.lowercase()
+
+        // CSR 空壳检测
+        val csrShells = listOf(
+            "import.meta.url", "__nuxt", "__vite", "vite_is_modern",
+            "window.__nuxt__", """<div id="__nuxt">""", """<div id="app"></div>""",
+            """id="__next"""", "_next/static", "webpackJsonp"
+        )
+        if (csrShells.any { lower.contains(it, ignoreCase = true) }) return "csr_shell"
+
+        // 登录页检测
+        // 大型页面（>25KB）即使含登录表单也优先判定为 reader_page——登录表单常出现在页头/页脚模板中
+        val loginPatterns = listOf("login", "signin", "log-in", "sign-in")
+        val loginFormPatterns = listOf(
+            """<input[^>]*type=["']?password""",
+            """name=["']?password""",
+            """id=["']?password"""
+        )
+        val hasLoginKeyword = loginPatterns.any { lower.contains(it) }
+        val hasLoginForm = loginFormPatterns.any {
+            Regex(it, RegexOption.IGNORE_CASE).containsMatchIn(html)
+        }
+        if (hasLoginKeyword && hasLoginForm) {
+            // Small page with login form → genuine login page
+            if (html.length < 25000) return "login_page"
+            // Large page: strip tags and check for substantial visible text
+            val stripped = html.replace(Regex("""<(script|style|noscript)[^>]*>.*?</\1>""", RegexOption.IGNORE_CASE), "")
+                .replace(Regex("<[^>]+>"), " ").replace(Regex("\\s+"), " ").trim()
+            // Login pages are dominated by form inputs; reader pages have long text passages
+            if (stripped.length < 3000) return "login_page"
+            // Large page with substantial text → reader page with incidental login elements
+            // Fall through to normal_reader_html
+        }
+
+        // 验证码页检测
+        val captchaPatterns = listOf(
+            "captcha", "turnstile", "challenges.cloudflare.com",
+            "recaptcha", "verify you are a human", "are you a robot"
+        )
+        if (captchaPatterns.any { lower.contains(it) }) return "captcha_page"
+
+        // VIP/付费锁章检测
+        val vipPatterns = listOf(
+            "vip", "订阅", "付费", "解锁", "订阅本章",
+            "余额不足", "充值", "购买", "本章为 vip", "本章为付费"
+        )
+        if (vipPatterns.any { lower.contains(it) }) return "vip_lock_page"
+
+        return "normal_reader_html"
+    }
+
+    // ── 构建 evidence ──────────────────────────────────────────────────────────
+
+    private fun buildContentEvidence(html: String?, content: String, artifacts: MutableMap<String, String>): Map<String, Any?> {
+        val htmlKind = classifyHtml(html)
+        return mapOf(
+            "htmlLength" to (html?.length ?: 0),
+            "contentLength" to content.length,
+            "htmlKind" to htmlKind
+        ) + artifacts.mapKeys { "debugArtifacts.${it.key}" }
     }
 }
 
@@ -654,8 +1037,7 @@ fun determineFinalStatus(steps: List<DebugStep>, source: BookSource? = null): St
     val hasLoginVertex = source != null && (
         !source.loginUrl.isNullOrBlank() ||
         source.enabledCookieJar == true ||
-        (!source.header.isNullOrBlank() && source.header!!.contains("Authorization", ignoreCase = true)) ||
-        !source.getContentRule().webJs.isNullOrBlank()
+        (!source.header.isNullOrBlank() && source.header!!.contains("Authorization", ignoreCase = true))
     )
 
     return when {

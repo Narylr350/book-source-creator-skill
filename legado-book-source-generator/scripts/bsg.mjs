@@ -1029,13 +1029,20 @@ function cmdRecordValidation(args) {
     if (fileExists(reportPath)) {
       try {
         const report = JSON.parse(fs.readFileSync(reportPath, "utf-8"));
+        const contentSteps = (report.steps || []).filter((s) => s.phase === "content");
+
+        // P11: 优先使用 errorCode 检测 CSR 空壳
+        const csrShellByCode = contentSteps.some((s) => s.errorCode === "CONTENT_IS_CSR_SHELL");
+        // 保留字符串 fallback（兼容旧 validator）
         const preview = report.summary?.contentPreview || "";
         const csrShells = [
           "import.meta.url", "__nuxt", "__vite", "vite_is_modern",
           "window.__NUXT__", "<div id=\"__nuxt\"></div>", "<div id=\"app\"></div>",
           "id=\"__next\"", "_next/static", "webpackJsonp",
         ];
-        if (csrShells.some((s) => preview.includes(s))) {
+        const csrShellByString = csrShells.some((s) => preview.includes(s));
+
+        if (csrShellByCode || csrShellByString) {
           // Override: this is a CSR shell, not real content
           const bookSourcePath2 = path.join(state.workingDir, "outputs", state.siteSlug, "book-source.json");
           if (fileExists(bookSourcePath2)) {
@@ -1045,11 +1052,14 @@ function cmdRecordValidation(args) {
               const jsonStr = JSON.stringify(source);
               const hasWVonChapter = /chapterUrl[^}]*"webView"\s*:\s*true/i.test(jsonStr);
               const hasWVonContent = source.ruleContent?.webView === true;
+              const detectionSource = csrShellByCode
+                ? "validator errorCode: CONTENT_IS_CSR_SHELL"
+                : `contentPreview 包含 ${csrShells.filter((s) => preview.includes(s)).join(" / ")}（字符串 fallback）`;
               const csrWarning = [
                 "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
                 "⛔ 假阳性检测 — content 返回了 CSR 空壳",
                 "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
-                `contentPreview 包含 ${csrShells.filter((s) => preview.includes(s)).join(" / ")}，这是前端框架 JS 壳，不是正文。`,
+                `检测方式: ${detectionSource}，这是前端框架 JS 壳，不是正文。`,
                 hasWVonChapter
                   ? "✅ chapterUrl 已配 webView:true。可能是 Android Probe 超时，检查 webJs 是否需要轮询等待。"
                   : hasWVonContent
@@ -1211,15 +1221,37 @@ function cmdRecordValidation(args) {
     v.status = "completed";
     nextAction = "deliver";
   } else if (status === "failed") {
-    // Convergence detection: extract error signature from validator report
+    // Convergence detection: use structured errorCode signature (P11)
     let errorSig = status;
     const reportPath = path.join(runDir, "validator-report.json");
     if (fileExists(reportPath)) {
       try {
         const report = JSON.parse(fs.readFileSync(reportPath, "utf-8"));
-        const contentStep = (report.steps || []).find((s) => s.phase === "content");
-        const failedHits = (contentStep?.ruleHits || []).filter((r) => !r.success).map((r) => r.field).sort().join(",");
-        errorSig = (contentStep?.error || "unknown") + "|" + failedHits;
+        // Find the first failed step for convergence signature
+        const failedStep = (report.steps || []).find((s) => s.status === "error");
+        if (failedStep) {
+          const phase = failedStep.phase || "unknown";
+          const eCode = failedStep.errorCode || (failedStep.error || "unknown").slice(0, 40);
+          const field = failedStep.failedField || "";
+          const reqUrl = failedStep.request?.url || "";
+          const reqUrlHash = reqUrl
+            ? crypto.createHash("sha256").update(reqUrl).digest("hex").slice(0, 12)
+            : "no-url";
+          let chapterUrlHash = "";
+          // For content phase, also include chapter URL in signature
+          if (phase === "content") {
+            // Try to find content steps with different chapter URLs
+            const contentSteps = (report.steps || []).filter((s) => s.phase === "content");
+            if (contentSteps.length >= 2) {
+              const url1 = contentSteps[0].request?.url || "";
+              const url2 = contentSteps[1].request?.url || "";
+              if (url1 !== url2) {
+                chapterUrlHash = "|ch:" + crypto.createHash("sha256").update(url1 + url2).digest("hex").slice(0, 8);
+              }
+            }
+          }
+          errorSig = `${phase}|${eCode}|${field}|${reqUrlHash}${chapterUrlHash}`;
+        }
       } catch { /* keep raw status as sig */ }
     }
 
@@ -1340,6 +1372,14 @@ function cmdDeliverCheck(state, runDir) {
   state.phases.deliver.status = "completed";
   saveRunState(runDir, state);
 
+  // Check if validator is still running — remind to stop
+  const pidFile = path.join(SKILL_ROOT, ".validator-pid");
+  let cleanupReminder = null;
+  if (fs.existsSync(pidFile)) {
+    const vPid = fs.readFileSync(pidFile, "utf-8").trim();
+    cleanupReminder = `⚠ 别忘了关 validator: node scripts/bsg.mjs validator-stop (PID: ${vPid})`;
+  }
+
   return {
     ok: true,
     finalStatus,
@@ -1350,6 +1390,7 @@ function cmdDeliverCheck(state, runDir) {
       ? Object.entries(state.loginFeatures).filter(([, v]) => v).map(([k]) => k)
       : [],
     deliverable: path.join(state.workingDir, "outputs", state.siteSlug, "book-source.json"),
+    ...(cleanupReminder ? { cleanupReminder } : {}),
   };
 }
 
@@ -1378,6 +1419,28 @@ async function checkValidator() {
 }
 
 function findValidatorPid() {
+  // Primary: read saved PID from .validator-pid file (set by validator-start)
+  try {
+    const pidFile = path.join(SKILL_ROOT, ".validator-pid");
+    if (fs.existsSync(pidFile)) {
+      const savedPid = parseInt(fs.readFileSync(pidFile, "utf-8").trim());
+      // Verify the process still exists
+      try {
+        if (process.platform === "win32") {
+          execSync(`tasklist /FI "PID eq ${savedPid}" /NH`, { encoding: "utf-8", timeout: 3000 });
+          return savedPid;
+        } else {
+          execSync(`kill -0 ${savedPid}`, { timeout: 3000 });
+          return savedPid;
+        }
+      } catch {
+        // Process no longer exists, clean up stale file
+        fs.unlinkSync(pidFile);
+      }
+    }
+  } catch { /* fall through to netstat */ }
+
+  // Fallback: scan port 1111 via netstat
   try {
     if (process.platform === "win32") {
       const out = execSync('netstat -aon | findstr :1111 | findstr LISTENING', {
@@ -1441,6 +1504,10 @@ async function cmdValidatorStart(args) {
     const up = await checkValidator();
     const pid = child.pid;
 
+    // Save PID to a global file (not run-specific) so validator-stop always works
+    const pidFile = path.join(SKILL_ROOT, ".validator-pid");
+    fs.writeFileSync(pidFile, String(pid), "utf-8");
+
     return {
       ok: true,
       running: up,
@@ -1449,9 +1516,9 @@ async function cmdValidatorStart(args) {
       startedBySession: true,
       visibleWindow: true,
       message: up
-        ? `Validator 已启动 (PID: ${pid}, ${VALIDATOR_URL})。窗口可见，关闭窗口或 Ctrl+C 停止。`
+        ? `Validator 已启动 (PID: ${pid}, ${VALIDATOR_URL})。窗口可见，用完后运行 validator-stop 关闭。`
         : `Validator 进程已创建 (PID: ${pid}) 但尚未就绪，请等待几秒后重试。`,
-      stopMethod: "关窗口 / 双击 stop.bat / taskkill /PID " + pid + " /F",
+      stopReminder: "完成后运行: node scripts/bsg.mjs validator-stop",
     };
   } catch (e) {
     return fail(`启动 validator 失败: ${e.message}`);
@@ -1460,6 +1527,11 @@ async function cmdValidatorStart(args) {
 
 async function cmdValidatorStop() {
   const pid = findValidatorPid();
+
+  // Clean up PID file regardless
+  const pidFile = path.join(SKILL_ROOT, ".validator-pid");
+  try { if (fs.existsSync(pidFile)) fs.unlinkSync(pidFile); } catch { /* ignore */ }
+
   if (!pid) {
     return { ok: true, message: "未找到运行中的 validator (端口 1111)。" };
   }

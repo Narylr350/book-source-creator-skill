@@ -101,6 +101,7 @@ object BookChapterList {
         return list
     }
 
+    @Suppress("UNUSED_PARAMETER")
     private suspend fun analyzeChapterList(
         book: Book,
         baseUrl: String,
@@ -198,7 +199,12 @@ object BookChapterList {
         if (relativeUrl.isBlank()) return ""
         if (relativeUrl.startsWith("http://") || relativeUrl.startsWith("https://")) return relativeUrl
         return try {
-            URL(URL(baseUrl), relativeUrl).toString()
+            runCatching {
+                java.net.URI.create(baseUrl).resolve(relativeUrl).toURL().toString()
+            }.getOrElse {
+                @Suppress("DEPRECATION")
+                java.net.URL(java.net.URL(baseUrl), relativeUrl).toString()
+            }
         } catch (e: Exception) {
             relativeUrl
         }

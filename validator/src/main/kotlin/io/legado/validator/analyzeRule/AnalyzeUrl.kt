@@ -152,8 +152,16 @@ class AnalyzeUrl(
         // 相对 URL 拼接（JS 执行结果也需要拼接，与 legado 行为一致）
         if (!mUrl.startsWith("http://") && !mUrl.startsWith("https://") && baseUrl.isNotEmpty()) {
             mUrl = try {
-                java.net.URL(java.net.URL(baseUrl), mUrl).toString()
-            } catch (e: Exception) { mUrl }
+                // Strip JSON options suffix (,{...}) before resolution
+                val cleanPart = mUrl.replace(Regex(",\\{[^}]*\\}$"), "")
+                java.net.URI.create(baseUrl).resolve(cleanPart).toURL().toString()
+            } catch (_: Exception) {
+                // Fallback: URI is stricter than old URL() for template placeholders ({{key}})
+                try {
+                    @Suppress("DEPRECATION")
+                    java.net.URL(java.net.URL(baseUrl), mUrl.replace(Regex(",\\{[^}]*\\}$"), "")).toString()
+                } catch (_: Exception) { mUrl }
+            }
         }
 
         // 解析 ;post 语法
@@ -180,7 +188,7 @@ class AnalyzeUrl(
         // 注入 CookieStore 中的 Cookie（如果 header 中没有手动设置）
         if (!headerMap.containsKey("Cookie") && !headerMap.containsKey("cookie")) {
             try {
-                val domain = java.net.URL(url).host.lowercase()
+                val domain = java.net.URI.create(url).toURL().host.lowercase()
                 io.legado.validator.web.CookieStore.getCookie(domain)?.let {
                     headerMap["Cookie"] = it
                 }
@@ -188,6 +196,7 @@ class AnalyzeUrl(
         }
     }
 
+    @Suppress("UNUSED_PARAMETER")
     suspend fun getStrResponseAwait(
         jsStr: String? = null,
         sourceRegex: String? = null,
@@ -206,6 +215,7 @@ class AnalyzeUrl(
         }
     }
 
+    @Suppress("UNUSED_PARAMETER")
     fun getStrResponse(
         jsStr: String? = null,
         sourceRegex: String? = null,

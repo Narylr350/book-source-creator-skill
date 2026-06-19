@@ -57,7 +57,7 @@ object HttpHelper {
                 if (enableCookieJar) {
                     val requestBuilder = request.newBuilder()
                     requestBuilder.removeHeader("CookieJar")
-                    val domain = try { java.net.URL(request.url.toString()).host.lowercase() } catch (_: Exception) { "" }
+                    val domain = try { java.net.URI.create(request.url.toString()).toURL().host.lowercase() } catch (_: Exception) { "" }
                     val storedCookie = io.legado.validator.web.CookieStore.getCookie(domain)
                     if (!storedCookie.isNullOrEmpty()) {
                         val existingCookie = request.header("Cookie")
@@ -76,7 +76,7 @@ object HttpHelper {
                 if (enableCookieJar) {
                     val setCookies = response.headers("Set-Cookie")
                     if (setCookies.isNotEmpty()) {
-                        val domain = try { java.net.URL(request.url.toString()).host.lowercase() } catch (_: Exception) { "" }
+                        val domain = try { java.net.URI.create(request.url.toString()).toURL().host.lowercase() } catch (_: Exception) { "" }
                         if (domain.isNotEmpty()) {
                             val cookieValues = setCookies.map { it.split(";").first().trim() }
                             val newCookie = cookieValues.joinToString("; ")

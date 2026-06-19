@@ -32,11 +32,13 @@ async function checkValidator() {
   }
 }
 
-async function runDebug(sourceJson, sourceUrl, keyword, mode = 'http') {
+async function runDebug(sourceJson, sourceUrl, keyword, mode = 'http', debugDir = null) {
+  const body = { sourceJson, sourceUrl, keyword, mode };
+  if (debugDir) body.debugDir = debugDir;
   const res = await fetch(`${VALIDATOR_URL}/api/debug/run`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ sourceJson, sourceUrl, keyword, mode }),
+    body: JSON.stringify(body),
     signal: AbortSignal.timeout(120000)
   });
   return res.json();
@@ -128,6 +130,8 @@ async function main() {
   const outputIdx = args.indexOf('--output');
   const modeIdx = args.findIndex(a => ['http', 'browser', 'android'].includes(a));
   const mode = modeIdx >= 0 ? args[modeIdx] : 'http';
+  const debugDirIdx = args.indexOf('--debug-dir');
+  const debugDir = debugDirIdx >= 0 ? args[debugDirIdx + 1] : null;
   const outputDir = outputIdx >= 0 ? args[outputIdx + 1] : null;
   const cookieArg = args.find(a => a.startsWith('--cookie='));
   const cookieFile = cookieArg ? cookieArg.split('=')[1] : null;
@@ -181,9 +185,15 @@ async function main() {
     process.exit(1);
   }
   
+  // 创建 debugDir（如果指定）
+  if (debugDir) {
+    mkdirSync(debugDir, { recursive: true });
+    console.error(`调试产物目录: ${debugDir}`);
+  }
+
   // 调用 validator
   console.error(`验证中: ${sourceUrl} keyword="${keyword}" mode=${mode}`);
-  const result = await runDebug(sourceJson, sourceUrl, keyword, mode);
+  const result = await runDebug(sourceJson, sourceUrl, keyword, mode, debugDir);
   
   // 判定状态
   const { status, reason, phase, ruleHits } = determineStatus(result);

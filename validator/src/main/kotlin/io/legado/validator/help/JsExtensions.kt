@@ -120,7 +120,7 @@ interface JsExtensions {
     }
 
     fun toURL(urlStr: String): Map<String, Any?> {
-        val url = java.net.URL(urlStr)
+        val url = java.net.URI.create(urlStr).toURL()
         return mapOf(
             "host" to url.host,
             "origin" to "${url.protocol}://${url.host}${if (url.port > 0) ":${url.port}" else ""}",
@@ -134,7 +134,7 @@ interface JsExtensions {
 
     fun toURL(url: String, baseUrl: String?): Map<String, Any?> {
         val resolved = if (!baseUrl.isNullOrEmpty()) {
-            java.net.URL(java.net.URL(baseUrl), url).toString()
+            java.net.URI.create(baseUrl).resolve(url).toURL().toString()
         } else {
             url
         }
@@ -268,7 +268,7 @@ interface JsExtensions {
     // 用于 header JS (如 java.getCookie('https://novalpie.cc')) 和 webJs 等场景
 
     fun getCookie(tag: String): String {
-        val domain = try { java.net.URL(tag).host.lowercase() } catch (_: Exception) { tag.lowercase() }
+        val domain = try { java.net.URI.create(tag).toURL().host.lowercase() } catch (_: Exception) { tag.lowercase() }
         return io.legado.validator.web.CookieStore.getCookie(domain) ?: ""
     }
     fun getCookie(tag: String, key: String?): String {

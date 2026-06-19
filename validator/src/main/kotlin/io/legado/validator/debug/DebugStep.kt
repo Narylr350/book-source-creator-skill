@@ -26,7 +26,15 @@ data class DebugStep(
     val webViewHtmlPreview: String? = null,
     val webViewScreenshotBase64: String? = null,
     // P10 会话模式
-    val sessionMode: String = "anonymous"   // "anonymous" | "authenticated"
+    val sessionMode: String = "anonymous",   // "anonymous" | "authenticated"
+    // ── 诊断升级 (P11) ──
+    val errorCode: String? = null,           // ErrorCode 名 (如 "CONTENT_SELECTOR_EMPTY")
+    val subphase: String? = null,            // "fetch" | "render" | "webjs" | "selector" | "quality"
+    val failedField: String? = null,         // "ruleContent.content" 等
+    val allowedFixes: List<String> = emptyList(),
+    val forbiddenFixes: List<String> = emptyList(),
+    val evidence: Map<String, Any?> = emptyMap(),
+    val debugArtifacts: Map<String, String>? = null  // kind → 相对路径
 ) {
     data class RequestInfo(val url: String, val method: String, val headers: Map<String, String>, val body: String?)
     data class ResponseInfo(val code: Int, val contentType: String?, val bodyPreview: String, val bodyLength: Int)

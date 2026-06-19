@@ -29,6 +29,7 @@ object BookInfo {
         analyzeBookInfo(book, body, analyzeRule, bookSource, baseUrl, redirectUrl, canReName)
     }
 
+    @Suppress("UNUSED_PARAMETER")
     suspend fun analyzeBookInfo(
         book: Book,
         body: String,
@@ -153,7 +154,12 @@ object BookInfo {
         if (relativeUrl.isBlank()) return ""
         if (relativeUrl.startsWith("http://") || relativeUrl.startsWith("https://")) return relativeUrl
         return try {
-            URL(URL(baseUrl), relativeUrl).toString()
+            runCatching {
+                java.net.URI.create(baseUrl).resolve(relativeUrl).toURL().toString()
+            }.getOrElse {
+                @Suppress("DEPRECATION")
+                java.net.URL(java.net.URL(baseUrl), relativeUrl).toString()
+            }
         } catch (e: Exception) {
             relativeUrl
         }

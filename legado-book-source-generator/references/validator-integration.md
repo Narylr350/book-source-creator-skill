@@ -30,7 +30,7 @@ validator/
 ```bash
 curl -X POST http://localhost:1111/api/debug/run \
   -H "Content-Type: application/json" \
-  -d '{"sourceJson": "<书源JSON>", "sourceUrl": "https://...", "keyword": "关键词", "mode": "http"}'
+  -d '{"sourceJson": "<书源JSON>", "sourceUrl": "https://...", "keyword": "关键词", "mode": "http", "debugDir": "runs/<slug>/debug"}'
 ```
 
 参数：
@@ -38,50 +38,169 @@ curl -X POST http://localhost:1111/api/debug/run \
 - `sourceUrl`：书源的 bookSourceUrl
 - `keyword`：搜索关键词
 - `mode`：`http` | `browser` | `android`
+- `debugDir`（可选）：调试产物输出目录。必须已存在，validator 只写入该目录内部。产物文件名固定格式：`<phase>[-<index>]-<kind>`。失败时记入 `evidence.artifactWriteError`。
 
-返回结构见 `validator-report.json`（包含 phases、steps、ruleHits、bodyPreview）。
+返回结构见 `validator-report.json`（包含 phases、steps、errorCode、evidence、debugArtifacts）。
 
-### POST /api/debug/smoke
+## 调试产物
 
-批量验证：跑全部回归 case，返回汇总报告。
+当 `debugDir` 提供时，每个验证阶段保存以下文件：
 
-```bash
-curl -X POST http://localhost:1111/api/debug/smoke \
-  -H "Content-Type: application/json" \
-  -d '{}'
-```
+| Kind | 说明 |
+|------|------|
+| `request.json` | 请求信息（URL、headers、body） |
+| `response.raw.html` | HTTP 原始响应源码 |
+| `response.rendered.html` | WebView/浏览器渲染后的 DOM |
+| `rule-hits.json` | 规则命中详情 |
+| `extracted.json` / `extracted.txt` | 提取结果 |
+| `screenshot.png` | WebView 截图（仅 WebView 阶段） |
+
+report 中 `debugArtifacts` 使用相对路径引用这些文件。
+
+## errorCode 参考
+
+Validator 返回结构化错误码（`DebugStep.errorCode`），每个 code 绑定 fix 边界。
+
+### 通用 (1)
+
+| Code | 说明 | phase |
+|------|------|-------|
+| `HTTP_BLOCKED` | HTTP 层面被拦截（403/Cloudflare/Turnstile） | 任意 |
+
+### 搜索 (4)
+
+| Code | 说明 | failedField |
+|------|------|-------------|
+| `SEARCH_EMPTY` | 搜索返回空结果 | searchUrl |
+| `SEARCH_SELECTOR_EMPTY` | ruleSearch.bookList 匹配 0 节点 | ruleSearch.bookList |
+| `BOOK_URL_EMPTY` | 搜索结果存在但 bookUrl 为空 | ruleSearch.bookUrl |
+| `BOOK_URL_MALFORMED` | bookUrl 不是有效详情页 URL | ruleSearch.bookUrl |
+
+### 详情 (2)
+
+| Code | 说明 | failedField |
+|------|------|-------------|
+| `DETAIL_SELECTOR_EMPTY` | 详情规则未匹配 | ruleBookInfo |
+| `DETAIL_TOC_URL_EMPTY` | 未提取目录 URL | ruleBookInfo.tocUrl |
+
+### 目录 (2)
+
+| Code | 说明 | failedField |
+|------|------|-------------|
+| `TOC_EMPTY` | 容器匹配但章节数为 0 | ruleToc.chapterList |
+| `TOC_SELECTOR_EMPTY` | chapterList 完全没匹配 | ruleToc.chapterList |
+
+### 章节 URL (3)
+
+| Code | 说明 | failedField |
+|------|------|-------------|
+| `CHAPTER_URL_EMPTY` | chapterUrl 为空 | ruleToc.chapterUrl |
+| `CHAPTER_URL_MALFORMED` | chapterUrl 格式错误 | ruleToc.chapterUrl |
+| `CHAPTER_URL_MISSING_WEBVIEW` | CSR 站点缺 webView:true | ruleToc.chapterUrl |
+
+### Android Probe (1)
+
+| Code | 说明 |
+|------|------|
+| `ANDROID_PROBE_UNAVAILABLE` | 设备未连接或 Probe 未启动 |
+
+### 正文获取/选择器 (4)
+
+| Code | 说明 | failedField |
+|------|------|-------------|
+| `CONTENT_SELECTOR_EMPTY` | HTML 正常但 content 空 | ruleContent.content |
+| `CONTENT_TOO_SHORT` | 内容 < 100 字符 | ruleContent.content |
+| `CONTENT_DUPLICATE_BETWEEN_CHAPTERS` | 两章完全相同 | ruleContent.content |
+| `CONTENT_CHAPTER_MISMATCH` | 内容不包含章节标题（quality warning） | — |
+
+### 正文页面分类 (4)
+
+| Code | 说明 | 处置 |
+|------|------|------|
+| `CONTENT_IS_LOGIN_PAGE` | 正文页是登录页 | BLOCKED，需登录 |
+| `CONTENT_IS_CAPTCHA_PAGE` | 正文页是验证码页 | BLOCKED，不可自动绕过 |
+| `CONTENT_IS_VIP_LOCK_PAGE` | 正文页提示 VIP/付费 | BLOCKED，需付费账号 |
+| `CONTENT_IS_CSR_SHELL` | 正文页是前端空壳 | FIXABLE，需 WebView |
+
+### WebView/WebJs (3)
+
+| Code | 说明 | failedField |
+|------|------|-------------|
+| `WEBVIEW_RENDER_TIMEOUT` | WebView 渲染超时 | respondTime |
+| `WEBJS_EXEC_ERROR` | webJs 执行异常 | ruleContent.webJs |
+| `WEBJS_RETURN_EMPTY` | webJs 返回空 | ruleContent.webJs |
+
+### 登录态 (2)
+
+| Code | 说明 | 协作 |
+|------|------|------|
+| `COOKIE_REQUIRED` | 需 Cookie 但未注入 | validator 基础判断 + bsg 上下文 |
+| `COOKIE_PRESENT_BUT_UNAUTHORIZED` | Cookie 存在但 401/403 | validator 判断 |
+
+### 兜底 (1)
+
+| Code | 说明 |
+|------|------|
+| `APP_REVIEW_REQUIRED` | validator 无法分类，需 App 实测 |
 
 ## 状态判定
 
 | 状态 | 含义 | Skill 动作 |
 |------|------|-----------|
-| `passed` | 全链路 success + 无登录态特征，或已完成登录态验证 | 交付书源 |
-| `anonymous_candidate` | 匿名全链路 success，但站点有 loginUrl/enabledCookieJar/Authorization/webJs/webView | 不能标可用，需登录态/App 复核 |
-| `failed` | 某阶段 error，有可修证据 | AI 自动回修 |
+| `passed` | 全链路 success + 无登录态特征 | 交付书源 |
+| `anonymous_candidate` | 匿名全链路 success，但站点有 loginUrl/enabledCookieJar/Authorization | 不能标可用，需登录态复核 |
+| `failed` | 某阶段 error，有可修证据（含 errorCode） | AI 根据 allowedFixes 自动回修 |
 | `needs_app_review` | needsAppReview=true 或命中 App-only 行为 | 停止自动修，标记需复核 |
-| `validator_limitation` | validator 不支持的规则能力 | validator 无法验证该能力；预期需要 App/WebView 复核 |
-| `failed_unresolved` | 同一错误连续 5 次未修复（收敛失败） | 标记未解决，需人工检查 |
+| `validator_limitation` | validator 不支持的规则能力 | validator 无法验证该能力 |
+| `failed_unresolved` | 同一错误签名连续 5 次未修复 | 收敛失败，需人工检查 |
 
-## 判定逻辑
+## 判定逻辑（Validator 端）
+
+登录态特征仅包含 loginUrl、enabledCookieJar、Authorization（不包含 webJs——webJs 只说明 render 策略，不说明 auth）。
 
 ```
-if 全 phases == "success" AND 无登录态特征 (loginUrl/enabledCookieJar/Authorization/webJs/webView):
+if 全 phases == "success" AND 无登录态特征:
     status = "passed"
 elif 全 phases == "success" AND 有登录态特征:
     status = "anonymous_candidate"
 elif step.needsAppReview == true:
     status = "needs_app_review"
-elif step.error 含 "Cloudflare|Turnstile|验证码|登录|WebView":
+elif step.errorCode == CONTENT_IS_CAPTCHA_PAGE:
     status = "needs_app_review"
-elif step.error 含 "已知限制|不支持|@js 动态 URL":
+elif step.errorCode == CONTENT_IS_LOGIN_PAGE (且 Cookie 未注入):
+    status = "failed"  // bsg 追加 COOKIE_REQUIRED
+elif step.errorCode in (CONTENT_SELECTOR_EMPTY, WEBJS_*, CONTENT_TOO_SHORT, ...):
+    status = "failed"  // AI 可修
+elif step.errorCode == ANDROID_PROBE_UNAVAILABLE:
     status = "validator_limitation"
-elif step.ruleHits 有字段失败:
-    status = "failed"  // AI 可修
-elif step.error 含 URL/编码/规则错误:
-    status = "failed"  // AI 可修
 else:
-    status = "needs_app_review"  // 保守判定
+    status = "failed" 或 "needs_app_review"（保守判定）
 ```
+
+## bs-validator 协作
+
+- **validator** 输出基础 errorCode + evidence + allowedFixes/forbiddenFixes + debugArtifacts
+- **bsg.mjs** 消费 errorCode 做收敛检测（签名: `phase|errorCode|failedField|requestUrlHash`），根据上下文追加限制（如 COOKIE_REQUIRED）
+- **AI** 根据 allowedFixes 小范围修书源
+
+收敛签名在正文阶段追加 chapter URL hash，避免不同章节的同一 code 被过度合并。
+
+## evidence 字段参考
+
+每个 errorCode 要求特定的 evidence keys，但第一版不强校验。常见 evidence 字段：
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `htmlLength` | int | 响应 HTML 长度 |
+| `contentLength` | int | 提取的正文长度 |
+| `htmlKind` | string | HTML 分类: normal_reader_html / csr_shell / login_page / captcha_page / vip_lock_page / empty |
+| `httpStatus` | int | HTTP 状态码 |
+| `blockType` | string | 阻断类型: cloudflare / turnstile / captcha / auth |
+| `contentPreview` | string | 正文前 100 字符 |
+| `chapterTitle` | string | 章节标题 |
+| `isLikelyNoticeOrLock` | bool | 短内容是否为公告/锁章 |
+| `titleFoundInContent` | bool | 章节标题是否在正文中出现 |
+| `artifactWriteError` | string | debug 产物写入失败原因（如有） |
 
 ## 手动验证（脚本故障时）
 
@@ -93,17 +212,13 @@ curl -X POST http://localhost:1111/api/source/import \
   -H "Content-Type: application/json" \
   -d @outputs/<slug>/book-source.json
 
-# 运行验证
+# 运行验证（含 debug 产物）
 curl -X POST http://localhost:1111/api/debug/run \
   -H "Content-Type: application/json" \
-  -d '{"sourceUrl":"https://...","keyword":"关键词","mode":"http"}'
+  -d '{"sourceUrl":"https://...","keyword":"关键词","mode":"http","debugDir":"runs/<slug>/debug"}'
 ```
 
-结果判断：`phases` 全部 `success` → 通过。`content` 阶段 `error` + bodyPreview 是 JS 壳 → CSR，需 WebView。
-
 ## 前置检查
-
-调用 validator 前，先检查是否运行：
 
 ```bash
 curl -s http://localhost:1111/api/sources >nul 2>&1 && echo Running || echo Not running
@@ -111,12 +226,10 @@ curl -s http://localhost:1111/api/sources >nul 2>&1 && echo Running || echo Not 
 
 **禁止用 `/health` 探测（该端点不存在，返回 404）。只用 `/api/sources`。**
 
-已有服务则复用，不重复启动。
-
 ## Android Probe / adb
 
-使用 `mode=android` 处理 `webView:true` / `webJs` 时需要 adb 和已连接 Android 设备/模拟器。
+使用 `mode=android` 处理 `webView:true` / `webJs` 时需要 adb 和已连接 Android 设备。
 
-- 缺 adb：运行 `validator/setup-adb.bat`，脚本会从 Google 官方地址下载 Windows Platform-Tools 到 `validator/tools/platform-tools/`
+- 缺 adb：运行 `validator/setup-adb.bat`
 - 安装并启动 Probe：运行 `validator/setup-android-probe.bat`
-- 找不到设备：返回 `validator_limitation` / `Android Probe 不可用: No Android devices connected`
+- 找不到设备：返回 `validator_limitation` / `Android Probe 不可用`
