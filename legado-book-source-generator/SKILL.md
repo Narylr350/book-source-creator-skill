@@ -30,7 +30,11 @@ init → advance → advance → advance → advance → record-validation → a
 
 ## Probe 阶段
 
-`init` → `nextAction: "probe_site"`。从 HTTP fetch 开始——它最快。发现 CSR 空壳、登录墙、验证码、或正文需要 JS 渲染时，自动切到 Browser MCP。不要在 init 之前决定——Probe 阶段本身就是用来发现这些的。
+`init` → `nextAction: "probe_site"`。**必须用 Browser MCP。** HTTP fetch 只用于辅助——拿 API 响应、拿 JSON 数据。页面结构和 DOM 永远用 Browser MCP snapshot。
+
+四条链路（搜索 → 详情 → 目录 → 正文）每条至少 snapshot 一次。正文至少取两个章节。
+
+HTTP fetch 单独永远不够——它看不到 DOM、不执行 JS、不渲染 CSR 页面。
 
 ## 用户交互
 
