@@ -1,5 +1,6 @@
 #!/usr/bin/env node
-/* global process, AbortSignal */
+/* eslint-env node */
+/* global AbortSignal */
 
 /**
  * bsg.mjs ― Legado 书源生成工作流状态机
@@ -26,7 +27,7 @@ import { initializeRunBundle } from "./lib/output-bundle.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const SKILL_ROOT = path.resolve(__dirname, "..");
-const VALIDATOR_URL = process.env.VALIDATOR_URL || "http://localhost:1111";
+const VALIDATOR_URL = process.env.VALIDATOR_URL || /* eslint-disable-next-line @typescript-eslint/no-unused-vars */ "http://localhost:1111";
 
 // ── helpers ────────────────────────────────────────────────────────────────
 
@@ -35,9 +36,9 @@ function isInSkillInstallDir(cwd) {
   const dir = norm(cwd);
   const blocked = [
     norm(path.join(SKILL_ROOT)),
-    norm(path.join(process.env.HOME || "", ".claude", "skills")),
-    norm(path.join(process.env.HOME || "", ".codex", "skills")),
-    norm(path.join(process.env.HOME || "", ".agents", "skills")),
+    norm(path.join(process.env["HOME"] || "", ".claude", "skills")),
+    norm(path.join(process.env["HOME"] || "", ".codex", "skills")),
+    norm(path.join(process.env["HOME"] || "", ".agents", "skills")),
   ];
   return blocked.some((b) => dir === b || dir.startsWith(b + path.sep));
 }
@@ -51,7 +52,7 @@ function signState(state) {
 
 function loadRunState(runDir) {
   const p = path.join(runDir, "run-state.json");
-  if (!fs.existsSync(p)) return null;
+  if (!fileExists(p)) return null;
   const raw = fs.readFileSync(p, "utf-8");
   const state = JSON.parse(raw);
   if (state._signature) {
@@ -119,8 +120,9 @@ function loadAndVerify(runDir) {
   return { state, error: null };
 }
 
+/** @deprecated Use try { fs.statSync } catch instead */
 function fileExists(filePath) {
-  return fs.existsSync(filePath);
+  try { fs.statSync(filePath); return true; } catch { return false; }
 }
 
 function parseArg(args, flag) {
@@ -151,7 +153,7 @@ function checkEnvironment() {
     const javaOut = execSync("java -version 2>&1", { encoding: "utf-8", timeout: 5000 });
     const javaMatch = javaOut.match(/version "(\d+)/);
     const javaVer = javaMatch ? javaMatch[1] : "unknown";
-    const javaOk = javaMatch ? parseInt(javaMatch[1]) >= 17 : false;
+    const javaOk = javaMatch ? parseInt(javaMatch[1], 10) >= 17 : false;
     results.push({
       tool: "Java",
       ok: javaOk,
@@ -1367,7 +1369,7 @@ function cmdDeliverCheck(state, runDir) {
   // Check if validator is still running — remind to stop
   const pidFile = path.join(SKILL_ROOT, ".validator-pid");
   let cleanupReminder = null;
-  if (fs.existsSync(pidFile)) {
+  if (fileExists(pidFile)) {
     const vPid = fs.readFileSync(pidFile, "utf-8").trim();
     cleanupReminder = `⚠ 别忘了关 validator: node scripts/bsg.mjs validator-stop (PID: ${vPid})`;
   }
@@ -1414,7 +1416,7 @@ function findValidatorPid() {
   // Primary: read saved PID from .validator-pid file (set by validator-start)
   try {
     const pidFile = path.join(SKILL_ROOT, ".validator-pid");
-    if (fs.existsSync(pidFile)) {
+    if (fileExists(pidFile)) {
       const savedPid = parseInt(fs.readFileSync(pidFile, "utf-8").trim());
       // Verify the process still exists
       try {
@@ -1441,10 +1443,10 @@ function findValidatorPid() {
       }).trim();
       if (!out) return null;
       const m = out.match(/(\d+)\s*$/m);
-      return m ? parseInt(m[1]) : null;
+      return m ? parseInt(m[1], 10) : null;
     } else {
       const out = execSync("lsof -ti :1111", { encoding: "utf-8", timeout: 5000 }).trim();
-      return out ? parseInt(out) : null;
+      return out ? parseInt(out, 10) : null;
     }
   } catch {
     return null;
@@ -1453,10 +1455,10 @@ function findValidatorPid() {
 
 function getValidatorJar() {
   const jarPath = path.join(SKILL_ROOT, "validator", "app", "legado-source-validator.jar");
-  if (!fs.existsSync(jarPath)) {
+  if (!fileExists(jarPath)) {
     // Try release layout
     const alt = path.join(SKILL_ROOT, "app", "legado-source-validator.jar");
-    if (fs.existsSync(alt)) return alt;
+    if (fileExists(alt)) return alt;
     return null;
   }
   return jarPath;
@@ -1527,7 +1529,7 @@ async function cmdValidatorStop() {
 
   // Clean up PID file regardless
   const pidFile = path.join(SKILL_ROOT, ".validator-pid");
-  try { if (fs.existsSync(pidFile)) fs.unlinkSync(pidFile); } catch { /* ignore */ }
+  try { if (fileExists(pidFile)) fs.unlinkSync(pidFile); } catch { /* ignore */ }
 
   if (!pid) {
     return { ok: true, message: "未找到运行中的 validator (端口 1111)。" };
