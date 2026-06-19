@@ -50,6 +50,15 @@ async function writeRequiredDeliverFiles(tmpDir, runDir) {
   }]), "utf8");
 }
 
+async function writeAssessmentAndRecord(runDir, lines) {
+  const normalized = [...lines];
+  if (!normalized.some((line) => /登录需求[：:]/.test(line))) {
+    normalized.splice(1, 0, "- 登录需求: 否");
+  }
+  await fs.writeFile(path.join(runDir, "assessment.md"), normalized.join("\n"), "utf8");
+  return runBsg(["record-assessment", "--run", runDir]);
+}
+
 describe("bsg workflow user-action gates", () => {
   let tmpDir;
 
@@ -61,9 +70,73 @@ describe("bsg workflow user-action gates", () => {
     await fs.rm(tmpDir, { recursive: true, force: true });
   });
 
+  it("refuses to advance assessment before record-assessment passes", async () => {
+    const runDir = await initRun(tmpDir);
+    await fs.writeFile(path.join(runDir, "assessment.md"), [
+      "- 评级: 可生成",
+      "- 登录需求: 否",
+      "- 风险标签: 无风险",
+    ].join("\n"), "utf8");
+
+    await assert.rejects(
+      () => execFileAsync("node", [BSG, "advance", "--run", runDir], { encoding: "utf8" }),
+      (err) => {
+        const result = JSON.parse(err.stdout);
+        assert.match(result.error, /record-assessment/);
+        return true;
+      },
+    );
+  });
+
+  it("accepts a completed no-risk assessment without treating template headings as paid content", async () => {
+    const runDir = await initRun(tmpDir);
+    const result = await writeAssessmentAndRecord(runDir, [
+      "- 目标站点: Example",
+      "- 站点 URL: https://example.com",
+      "- 登录需求: 否",
+      "- 用户选择: 待用户确认",
+      "- 当前分析会话: 匿名",
+      "- 评级: 可生成",
+      "- 风险标签: 无风险",
+      "- 官方规则对照: 已完成",
+      "- 辅助文档对照: 已完成",
+      "",
+      "## 风险与阻塞",
+      "",
+      "- 反爬或验证码: 无",
+      "- 会员限制: 无",
+      "- 动态签名或加密: 无",
+      "- 支付限制: 无",
+      "- 其他阻塞点: 无",
+      "- `P15(WebView)` 是否已排除: 是",
+      "- 更低复杂度回退是否已排除: 是",
+    ]);
+
+    assert.equal(result.ok, true);
+    assert.equal(result.signals.protectedContent, false);
+  });
+
+  it("rejects assessment that keeps template risk labels", async () => {
+    const runDir = await initRun(tmpDir);
+    await fs.writeFile(path.join(runDir, "assessment.md"), [
+      "- 评级: 可生成",
+      "- 登录需求: 否",
+      "- 风险标签: （可多选）无风险 / WebView 依赖 / 需登录态 / 有反爬风险 / 加密正文",
+    ].join("\n"), "utf8");
+
+    await assert.rejects(
+      () => execFileAsync("node", [BSG, "record-assessment", "--run", runDir], { encoding: "utf8" }),
+      (err) => {
+        const result = JSON.parse(err.stdout);
+        assert.match(result.error, /风险标签/);
+        return true;
+      },
+    );
+  });
+
   it("records pending android action when WebView assessment has no Android decision", async () => {
     const runDir = await initRun(tmpDir);
-    await fs.writeFile(path.join(runDir, "assessment.md"), "- 评级: 可生成\n- 风险标签: WebView 依赖\n", "utf8");
+    await writeAssessmentAndRecord(runDir, ["- 评级: 可生成", "- 风险标签: WebView 依赖"]);
 
     const result = await runBsg(["advance", "--run", runDir], {
       env: {
@@ -80,7 +153,7 @@ describe("bsg workflow user-action gates", () => {
 
   it("blocks record-validation while android user action is pending", async () => {
     const runDir = await initRun(tmpDir);
-    await fs.writeFile(path.join(runDir, "assessment.md"), "- 评级: 可生成\n- 风险标签: WebView 依赖\n", "utf8");
+    await writeAssessmentAndRecord(runDir, ["- 评级: 可生成", "- 风险标签: WebView 依赖"]);
     await runBsg(["advance", "--run", runDir], {
       env: {
         ...process.env,
@@ -100,7 +173,7 @@ describe("bsg workflow user-action gates", () => {
 
   it("allows assessment to continue after user confirms Android is unavailable", async () => {
     const runDir = await initRun(tmpDir);
-    await fs.writeFile(path.join(runDir, "assessment.md"), "- 评级: 可生成\n- 风险标签: WebView 依赖\n", "utf8");
+    await writeAssessmentAndRecord(runDir, ["- 评级: 可生成", "- 风险标签: WebView 依赖"]);
     await runBsg(["advance", "--run", runDir], {
       env: {
         ...process.env,
@@ -125,15 +198,171 @@ describe("bsg workflow user-action gates", () => {
     const runDir = await initRun(tmpDir);
     await fs.writeFile(path.join(runDir, "assessment.md"), [
       "- 评级: 可生成",
+      "- 登录需求: 是",
       "- 风险标签: 需登录态",
       "- 用户选择: 不登录分析",
     ].join("\n"), "utf8");
 
     await assert.rejects(
-      () => execFileAsync("node", [BSG, "advance", "--run", runDir], { encoding: "utf8" }),
+      () => execFileAsync("node", [BSG, "record-assessment", "--run", runDir], { encoding: "utf8" }),
       (err) => {
         const result = JSON.parse(err.stdout);
         assert.match(result.error, /不要编用户选择|no_account/);
+        return true;
+      },
+    );
+  });
+
+  it("rejects assessment that hides VIP login risk as no login and no risk", async () => {
+    const runDir = await initRun(tmpDir);
+    await fs.writeFile(path.join(runDir, "assessment.md"), [
+      "- 评级: 可生成",
+      "- 登录需求: 否（浏览免费章节无需登录，VIP章节需登录+订阅）",
+      "- 用户选择: 登录分析 / 不登录分析",
+      "- 当前分析会话: 匿名 / 已登录 / 登录失败",
+      "- 风险标签: 无风险",
+      "- 会员限制: VIP章节需订阅",
+    ].join("\n"), "utf8");
+
+    await assert.rejects(
+      () => execFileAsync("node", [BSG, "record-assessment", "--run", runDir], { encoding: "utf8" }),
+      (err) => {
+        const result = JSON.parse(err.stdout);
+        assert.match(result.error, /需登录态|无风险|VIP|订阅/);
+        return true;
+      },
+    );
+  });
+
+  it("requires user login decision when assessment mentions VIP subscription", async () => {
+    const runDir = await initRun(tmpDir);
+    await writeAssessmentAndRecord(runDir, [
+      "- 评级: 可生成",
+      "- 登录需求: 部分需要（VIP章节需登录+订阅）",
+      "- 用户选择: 登录分析 / 不登录分析",
+      "- 当前分析会话: 匿名 / 已登录 / 登录失败",
+      "- 风险标签: 需登录态",
+      "- 会员限制: VIP章节需订阅",
+    ]);
+
+    const result = await runBsg(["advance", "--run", runDir], {
+      env: {
+        ...process.env,
+        BSG_TEST_ADB_DEVICES_OUTPUT: "List of devices attached\n",
+      },
+    });
+
+    assert.equal(result.requiredUserAction, "login_required");
+    assert.equal(result.reason, "login_required");
+  });
+
+  it("does not accept Browser cookies as login when adb is online", async () => {
+    const runDir = await initRun(tmpDir);
+    await writeAssessmentAndRecord(runDir, [
+      "- 评级: 可生成",
+      "- 登录需求: 是",
+      "- 用户选择: 登录分析 / 不登录分析",
+      "- 当前分析会话: 匿名 / 已登录 / 登录失败",
+      "- 风险标签: 需登录态",
+    ]);
+    await fs.writeFile(path.join(runDir, "cookies.json"), JSON.stringify({
+      "www.example.com": "a=b; c=d",
+    }), "utf8");
+
+    const result = await runBsg(["advance", "--run", runDir], {
+      env: {
+        ...process.env,
+        BSG_TEST_ADB_DEVICES_OUTPUT: "List of devices attached\nABC123\tdevice\n",
+      },
+    });
+
+    assert.equal(result.requiredUserAction, "login_required");
+    assert.equal(result.android?.state, "device_ready");
+  });
+
+  it("does not treat Browser cookies as login without an explicit user decision", async () => {
+    const runDir = await initRun(tmpDir);
+    await writeAssessmentAndRecord(runDir, [
+      "- 评级: 可生成",
+      "- 登录需求: 是",
+      "- 用户选择: 登录分析 / 不登录分析",
+      "- 当前分析会话: 匿名 / 已登录 / 登录失败",
+      "- 风险标签: 需登录态",
+    ]);
+    await fs.writeFile(path.join(runDir, "cookies.json"), JSON.stringify({
+      "www.example.com": "a=b; c=d",
+    }), "utf8");
+
+    const result = await runBsg(["advance", "--run", runDir], {
+      env: {
+        ...process.env,
+        BSG_TEST_ADB_DEVICES_OUTPUT: "List of devices attached\n",
+      },
+    });
+
+    assert.equal(result.requiredUserAction, "login_required");
+    assert.equal(result.adbAvailable, false);
+  });
+
+  it("does not resolve Browser login completion without a valid cookies file", async () => {
+    const runDir = await initRun(tmpDir);
+    await writeAssessmentAndRecord(runDir, [
+      "- 评级: 可生成",
+      "- 登录需求: 是",
+      "- 用户选择: 登录分析 / 不登录分析",
+      "- 当前分析会话: 匿名 / 已登录 / 登录失败",
+      "- 风险标签: 需登录态",
+    ]);
+    await runBsg(["advance", "--run", runDir], {
+      env: {
+        ...process.env,
+        BSG_TEST_ADB_DEVICES_OUTPUT: "List of devices attached\n",
+      },
+    });
+
+    await assert.rejects(
+      () => execFileAsync("node", [BSG, "resolve-user-action", "--run", runDir, "--action", "login_completed"], {
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          BSG_TEST_ADB_DEVICES_OUTPUT: "List of devices attached\n",
+        },
+      }),
+      (err) => {
+        const result = JSON.parse(err.stdout);
+        assert.match(result.error, /cookies\.json|Cookie/);
+        return true;
+      },
+    );
+  });
+
+  it("does not resolve Probe login completion without Probe cookies when adb is online", async () => {
+    const runDir = await initRun(tmpDir);
+    await writeAssessmentAndRecord(runDir, [
+      "- 评级: 可生成",
+      "- 登录需求: 是",
+      "- 用户选择: 登录分析 / 不登录分析",
+      "- 当前分析会话: 匿名 / 已登录 / 登录失败",
+      "- 风险标签: 需登录态",
+    ]);
+    await runBsg(["advance", "--run", runDir], {
+      env: {
+        ...process.env,
+        BSG_TEST_ADB_DEVICES_OUTPUT: "List of devices attached\nABC123\tdevice\n",
+      },
+    });
+
+    await assert.rejects(
+      () => execFileAsync("node", [BSG, "resolve-user-action", "--run", runDir, "--action", "login_completed"], {
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          BSG_TEST_ADB_DEVICES_OUTPUT: "List of devices attached\nABC123\tdevice\n",
+        },
+      }),
+      (err) => {
+        const result = JSON.parse(err.stdout);
+        assert.match(result.error, /Probe|cookie-check|Cookie/);
         return true;
       },
     );

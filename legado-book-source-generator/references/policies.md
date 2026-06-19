@@ -13,7 +13,7 @@
 | Probe 手机 WebView 登录 | 有 Android 设备，需站点 Cookie/Token | AI 打开 Probe `/login`，用户在手机网页里手动登录 |
 | 手机扫码登录 | App loginUi 配置了账号密码/扫码 | 用户在 Legado App 内操作 |
 | Token 手动输入 | 用户已知 Cookie/Token 字符串 | 用户粘贴，AI 写入 `--cookie=<file>` 参数 |
-| Browser MCP 提取 Cookie | 站点需桌面浏览器登录 | 用户通过 Browser MCP 登录 → AI 调用 `browser_network_requests` 提取 → 保存为 JSON 文件 → `--cookie=<file>` 喂给 validator |
+| Browser MCP 提取 Cookie | Android/Probe 不可用时的备选 | 用户通过 Browser MCP 登录 → AI 调用 `browser_network_requests` 提取 → 保存为 JSON 文件 → `--cookie=<file>` 喂给 validator |
 
 **Probe 手机 WebView 登录用户提示模板：**
 
@@ -29,18 +29,18 @@
 如果手机没有弹出页面、页面打不开、验证码过不去、没有账号，直接告诉我具体情况。
 ```
 
-用户回复完成后，再检查 `http://127.0.0.1:18888/cookie-check`；确认有目标域 Cookie 后再记录 `resolve-user-action --action login_completed`。
+用户回复完成后，再检查 `http://127.0.0.1:18888/cookie-check`；确认有目标域 Cookie 后再记录 `resolve-user-action --action login_completed`。adb 在线时脚本会强制校验 Probe Cookie，Browser Cookie 不能替代。
 
 **Browser MCP 提取流程:**
-1. 用户打开目标站点登录页，在 Browser MCP 中完成登录（账号密码/扫码）
+1. 仅在 Android/Probe 不可用时使用。用户打开目标站点登录页，在 Browser MCP 中完成登录（账号密码/扫码）
 2. AI 通过 `browser_network_requests` 找到 API 请求的 Cookie 或 Authorization header（注意：HttpOnly cookie 无法通过 `document.cookie` 获取，必须从网络请求头提取）
-3. AI 将凭据保存为 `{"domain": "cookie_string"}` JSON 格式
+3. AI 将凭据保存为 `{"www.example.com": "cookie_string"}` JSON 格式；或保存为 `{"domain":"www.example.com","cookie":"cookie_string"}`
 4. 保存到 `runs/<site-slug>/cookies.json`
 5. 调用 `node scripts/validate-with-validator.mjs <source> <keyword> --cookie=runs/<site-slug>/cookies.json`
 
 ## 风险升级
 
-- 用户选择不登录分析：后续所有评估和生成提高风险等级。
+- 用户通过 `resolve-user-action --action no_account` 表示无法登录：后续所有评估和生成提高风险等级。
 - 登录无法完成：只允许继续做评估或探索性结果，明确写出高风险原因。
 
 ## 实测优先

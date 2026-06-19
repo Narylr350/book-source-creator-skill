@@ -245,7 +245,7 @@ tag.a@href@js:result+',{\"webView\":true}'
 
 基于官方规则，生成阶段优先按下面顺序判断：
 
-1. 是否需要先让用户选择登录分析还是不登录分析
+1. 是否检测到登录/VIP/订阅/付费限制；如检测到，必须通过状态机触发 `requiredUserAction`
 2. 是否能用稳定 API / JSON 直接完成
 3. 是否能用稳定 HTML 直接完成
 4. 是否应优先切到 `WebView`

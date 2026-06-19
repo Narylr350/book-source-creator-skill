@@ -10,5 +10,5 @@ interface:
     3. references/analysis-workflow.md - fixed analysis structure
     4. references/policies.md - hard blocking rules and risk judgment
 
-    Follow the mandatory sequence: login check → assessment → analysis → JSON generation → validation.
-    Do not skip steps. Do not generate book-source.json before completing the assessment.
+    Follow bsg.mjs nextAction exactly: init → probe → assessment → record-assessment → analysis → JSON generation → validation.
+    Do not show an assessment summary or ask the user to choose login/no-login until record-assessment passes.

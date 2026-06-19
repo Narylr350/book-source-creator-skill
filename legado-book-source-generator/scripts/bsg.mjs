@@ -17,6 +17,7 @@
  *   node scripts/bsg.mjs status --run <dir>
  *   node scripts/bsg.mjs advance --run <dir>
  *   node scripts/bsg.mjs check --run <dir>
+ *   node scripts/bsg.mjs record-assessment --run <dir>
  *   node scripts/bsg.mjs set-login-features --run <dir> [--flags <json>]
  *   node scripts/bsg.mjs record-validation --run <dir> --status <status> [--report <file>]
  *   node scripts/bsg.mjs deliver --run <dir>
@@ -235,6 +236,133 @@ function reportUsedAndroidMode(reportPath) {
   }
 }
 
+function checkProbeCookies() {
+  try {
+    const raw = process.env.BSG_TEST_PROBE_COOKIE_CHECK != null
+      ? process.env.BSG_TEST_PROBE_COOKIE_CHECK
+      : execSync("curl -s http://localhost:18888/cookie-check 2>&1", { encoding: "utf-8", timeout: 3000 });
+    const parsed = JSON.parse(raw);
+    return { ok: parsed.hasCookies === true, parsed };
+  } catch (e) {
+    return { ok: false, error: String(e.message || e) };
+  }
+}
+
+function readLineValue(text, label) {
+  const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const match = text.match(new RegExp(`${escaped}[：:]\\s*([^\\n\\r]+)`));
+  return match ? match[1].trim() : "";
+}
+
+function stripAssessmentLabels(content) {
+  return content
+    .split(/\r?\n/)
+    .map((line) => line.replace(/^\s*-?\s*`?[^`：:]{1,40}`?\s*[：:]\s*/, "").trim())
+    .filter(Boolean)
+    .join("\n");
+}
+
+function isEmptyOrTemplateValue(value, templatePattern) {
+  return value === "" || templatePattern.test(value);
+}
+
+function isNegativeRiskStatement(value) {
+  const text = value.trim();
+  if (!/^(无|否|不需要|无需|未发现|无明显)/.test(text)) return false;
+  return !/(但|需登录|需要登录|登录后|登录态|Cookie|Authorization|401|403|VIP章节|付费章节|会员章节|需订阅|需要订阅|需付费|需要付费|购买|支付|锁章)/i.test(text);
+}
+
+function hasProtectedContentSignal(text) {
+  return text
+    .split(/\r?\n/)
+    .some((line) => {
+      const value = line.trim();
+      if (!value || isNegativeRiskStatement(value)) return false;
+      return /VIP|付费|订阅|会员|支付|锁章|登录后|需登录|需要登录|登录态|Cookie|Authorization|401|403/i.test(value);
+    });
+}
+
+function analyzeAssessmentContent(content) {
+  const loginDemand = readLineValue(content, "登录需求");
+  const riskLabels = readLineValue(content, "风险标签");
+  const memberLimit = readLineValue(content, "会员限制");
+  const paymentLimit = readLineValue(content, "支付限制");
+  const expectedFailure = readLineValue(content, "失败原因");
+  const bodyValues = stripAssessmentLabels(content);
+  const riskText = [bodyValues, loginDemand, memberLimit, paymentLimit, expectedFailure].join("\n");
+
+  const protectedContent = hasProtectedContentSignal(riskText);
+  const explicitNoLogin = /^(否|无|不需要|无需)(?:[（(]|$)/.test(loginDemand);
+  const explicitNoRisk = /无风险/.test(riskLabels);
+  const hasLoginRiskLabel = /需登录态/.test(riskLabels);
+  const hasPaymentRisk = hasProtectedContentSignal([memberLimit, paymentLimit, expectedFailure].join("\n"));
+
+  return {
+    loginDemand,
+    riskLabels,
+    protectedContent,
+    explicitNoLogin,
+    explicitNoRisk,
+    hasLoginRiskLabel,
+    hasPaymentRisk,
+    hasWebView: /WebView\s*依赖/i.test(content),
+    hasEncryptedContent: /加密正文/i.test(content),
+  };
+}
+
+function validateAssessmentConsistency(signals) {
+  if (isEmptyOrTemplateValue(signals.loginDemand, /登录分析|不登录分析|匿名\s*\/|已登录\s*\/|登录失败/)) {
+    return "assessment.md 的登录需求未填写成明确结论。必须写“否 / 是 / 部分需要”，不能保留模板选项。";
+  }
+  if (isEmptyOrTemplateValue(signals.riskLabels, /（可多选）|无风险\s*\/\s*WebView|登录态\s*\/|反爬风险\s*\//)) {
+    return "assessment.md 的风险标签未填写成明确结论。必须写实际风险标签，不能保留模板选项。";
+  }
+  if (!signals.protectedContent) return null;
+  if (signals.explicitNoLogin) {
+    return "assessment.md 提到 VIP/付费/订阅/登录态等受限内容，但登录需求写成了否。应写“部分需要/是”，并保留用户选择为待确认。";
+  }
+  if (signals.explicitNoRisk) {
+    return "assessment.md 提到 VIP/付费/订阅/登录态等受限内容，但风险标签写成无风险。应至少标记“需登录态”；涉及 VIP/订阅时在支付/会员限制中说明。";
+  }
+  return null;
+}
+
+function loadAndValidateAssessment(runDir, state) {
+  const assessPath = path.join(runDir, "assessment.md");
+  if (!fileExists(assessPath)) {
+    return { ok: false, error: "assessment.md 不存在，请先完成评估。" };
+  }
+
+  const content = fs.readFileSync(assessPath, "utf-8");
+  const ratingMatch = content.match(/评级[：:]\s*(可生成|不建议生成)/);
+  if (!ratingMatch) {
+    return { ok: false, error: "assessment 评级未设置。assessment.md 中必须有 '评级: 可生成 / 不建议生成'。" };
+  }
+
+  const signals = analyzeAssessmentContent(content);
+  const assessmentError = validateAssessmentConsistency(signals);
+  if (assessmentError) return { ok: false, error: assessmentError };
+
+  const userChoiceMatch = content.match(/用户选择[：:]\s*([^\n\r]+)/);
+  if (userChoiceMatch) {
+    const choice = userChoiceMatch[1].trim();
+    const isPlaceholder = choice.includes("/") || choice.includes("或") || choice.includes("待") || choice === "";
+    if (!isPlaceholder) {
+      const loginDecision = state.userDecisions?.login;
+      const saysNoLogin = /不登录|无账号|匿名/.test(choice);
+      const saysLogin = /登录分析|已登录|登录完成/.test(choice) && !saysNoLogin;
+      if (saysNoLogin && loginDecision !== "no_account") {
+        return { ok: false, error: "assessment.md 写了用户选择为不登录/无账号，但 run-state.json 没有 resolve-user-action --action no_account 记录。不要编用户选择。" };
+      }
+      if (saysLogin && loginDecision !== "completed") {
+        return { ok: false, error: "assessment.md 写了用户选择为登录/已登录，但 run-state.json 没有 resolve-user-action --action login_completed 记录。不要编用户选择。" };
+      }
+    }
+  }
+
+  return { ok: true, rating: ratingMatch[1], signals, content };
+}
+
 // ── phase ordering ─────────────────────────────────────────────────────────
 
 const PHASE_ORDER = ["probe", "assess", "analyze", "generate", "validate", "deliver"];
@@ -384,7 +512,7 @@ function cmdStatus(args) {
   let nextAction = null;
   if (!inProgress && pending.length > 0) {
     const next = pending[0];
-    nextAction = next === "assess" ? "write_assessment"
+    nextAction = next === "assess" ? "record_assessment"
       : next === "analyze" ? "write_analysis"
       : next === "generate" ? "generate_json"
       : next === "validate" ? "run_validator"
@@ -460,7 +588,7 @@ function startPhase(phase, state, runDir) {
   saveRunState(runDir, state);
 
   const actions = {
-    assess:  { nextAction: "write_assessment", message: "写 assessment.md，评级必须是 4 种之一。完成后 advance。" },
+    assess:  { nextAction: "record_assessment", message: "写 assessment.md 后必须先运行 record-assessment。record-assessment 通过前不要展示评估摘要，也不要 advance。" },
     analyze: { nextAction: "write_analysis",   message: "按 search→detail→toc→content 顺序分析，写 analysis.md。完成后 advance。" },
     generate:{ nextAction: "generate_json",     message: "生成 book-source.json 到 outputs/<slug>/。完成后 advance。" },
     validate:{ nextAction: "run_validator",     message: "运行 validator，保存 validator-report.json。完成后 record-validation。" },
@@ -482,40 +610,18 @@ function completePhase(phase, state, runDir) {
   }
 
   if (phase === "assess") {
-    const rating = state.phases.assess.rating;
-    const assessPath = path.join(runDir, "assessment.md");
-    if (!fileExists(assessPath)) {
-      return fail("assessment.md 不存在，请先完成评估。");
-    }
-    if (!rating) {
-      // Try to detect rating from the file
-      const content = fs.readFileSync(assessPath, "utf-8");
-      const m = content.match(/评级[：:]\s*(可生成|不建议生成)/);
-      if (m) state.phases.assess.rating = m[1];
-      else return fail("assessment 评级未设置。assessment.md 中必须有 '评级: 可生成 / 不建议生成'。");
+    if (state.phases.assess.recorded !== true) {
+      return fail("assessment.md 尚未通过 record-assessment 记录。先运行: node scripts/bsg.mjs record-assessment --run <run-dir>。通过前不要展示评估摘要。");
     }
 
-    // Auto-detect risk labels
-    const assessContent = fs.readFileSync(assessPath, "utf-8");
-    const userChoiceMatch = assessContent.match(/用户选择[：:]\s*([^\n\r]+)/);
-    if (userChoiceMatch) {
-      const choice = userChoiceMatch[1].trim();
-      const isPlaceholder = choice.includes("/") || choice.includes("或") || choice === "";
-      if (!isPlaceholder) {
-        const loginDecision = state.userDecisions?.login;
-        const saysNoLogin = /不登录|无账号|匿名/.test(choice);
-        const saysLogin = /登录分析|已登录|登录完成/.test(choice) && !saysNoLogin;
-        if (saysNoLogin && loginDecision !== "no_account") {
-          return fail("assessment.md 写了用户选择为不登录/无账号，但 run-state.json 没有 resolve-user-action --action no_account 记录。不要编用户选择。");
-        }
-        if (saysLogin && loginDecision !== "completed") {
-          return fail("assessment.md 写了用户选择为登录/已登录，但 run-state.json 没有 resolve-user-action --action login_completed 记录。不要编用户选择。");
-        }
-      }
-    }
-    if (/WebView\s*依赖/i.test(assessContent)) state.loginFeatures.hasWebView = true;
-    if (/需登录态/i.test(assessContent)) state.loginFeatures.hasEnabledCookieJar = true;
-    if (/加密正文/i.test(assessContent)) { state.loginFeatures.hasWebView = true; state.loginFeatures.hasWebJs = true; }
+    // Auto-detect and validate risk labels
+    const assessment = loadAndValidateAssessment(runDir, state);
+    if (!assessment.ok) return fail(assessment.error);
+    const assessmentSignals = assessment.signals;
+    state.phases.assess.rating = assessment.rating;
+    if (assessmentSignals.hasWebView) state.loginFeatures.hasWebView = true;
+    if (assessmentSignals.hasLoginRiskLabel || assessmentSignals.protectedContent) state.loginFeatures.hasEnabledCookieJar = true;
+    if (assessmentSignals.hasEncryptedContent) { state.loginFeatures.hasWebView = true; state.loginFeatures.hasWebJs = true; }
 
     if (state.phases.assess.rating === "不建议生成" && state.userDecisions?.ratingBlocked !== "continue") {
       const message = `评估评级为"不建议生成"，需要用户决定是否继续。`;
@@ -535,63 +641,44 @@ function completePhase(phase, state, runDir) {
       };
     }
 
-    // Login required but user hasn't logged in → block
+    // Login-required sites must pass through an explicit user decision.
     if (state.loginFeatures.hasEnabledCookieJar || state.loginFeatures.hasAuthorization) {
-      // Check login state from ALL sources, not just Probe
-      let loggedIn = false;
-      let loginMethod = null;
+      const android = diagnoseAndroid();
+      const adbOk = android.state === "device_ready";
 
-      // Source 1: Android Probe cookies
-      if (checkAdb()) {
-        try {
-          const probeCheck = execSync("curl -s http://localhost:18888/cookie-check 2>&1", { encoding: "utf-8", timeout: 3000 });
-          const parsed = JSON.parse(probeCheck);
-          if (parsed.hasCookies === true) {
-            loggedIn = true;
-            loginMethod = "probe";
-          }
-        } catch { /* probe not available */ }
-      }
-
-      // Source 2: cookies.json in run directory (Browser MCP login)
-      if (!loggedIn) {
-        const cookieFile = path.join(runDir, "cookies.json");
-        if (fileExists(cookieFile)) {
-          const cookieShape = validateCookieFileShape(cookieFile);
-          if (cookieShape.ok) {
-            loggedIn = true;
-            loginMethod = "browser_mcp_cookies";
-          }
-        }
-      }
-
-      if (loggedIn) {
-        state.loginFeatures._loginVerified = true;
-        state.loginFeatures._loginMethod = loginMethod;
-        saveRunState(runDir, state);
-        // Fall through to normal completion
-      } else if (state.userDecisions?.login === "no_account") {
+      if (state.userDecisions?.login === "no_account") {
         state.loginFeatures._loginDeclined = true;
         saveRunState(runDir, state);
       } else if (state.userDecisions?.login === "completed") {
+        if (adbOk) {
+          const probeCookies = checkProbeCookies();
+          if (!probeCookies.ok) {
+            return fail("Android 设备在线时，已完成登录状态必须来自 Probe /cookie-check。请重新运行登录流程，不要用 Browser Cookie 或口头确认绕过。");
+          }
+          state.loginFeatures._loginMethod = "probe";
+        } else {
+          const cookieFile = path.join(runDir, "cookies.json");
+          const cookieShape = validateCookieFileShape(cookieFile);
+          if (!cookieShape.ok) {
+            return fail(`Browser Cookie 路径必须先保存有效 runs/<slug>/cookies.json 后才能记录登录完成: ${cookieShape.reason}`);
+          }
+          state.loginFeatures._loginMethod = "browser_mcp_cookies";
+        }
         state.loginFeatures._loginVerified = true;
-        state.loginFeatures._loginMethod = state.loginFeatures._loginMethod || "user_confirmed";
         saveRunState(runDir, state);
       } else {
-        const android = diagnoseAndroid();
-        const adbOk = android.state === "device_ready";
         const message = [
           "站点需要登录态（enabledCookieJar / Authorization），但尚未完成登录。",
           "",
           adbOk
-            ? "两种登录方式（优先 Probe）："
+            ? "Android 设备已在线，必须使用 Probe 原生登录："
             : "登录方式：",
           "",
           adbOk
             ? "方式1（推荐）：Probe 原生登录 — POST http://localhost:18888/login 打开手机网页登录页 → 用户在手机上输入账号密码并完成验证码/短信/扫码 → 看到已登录状态后回复 → /cookie-check 确认"
             : "",
           adbOk
-            ? "方式2（备选）：Browser MCP 登录 — 打开登录页 → 完成登录 → browser_network_requests 提取 Cookie → 保存 runs/<slug>/cookies.json"
+            ? "Browser MCP 登录不是当前默认路径；如需改用浏览器，必须先断开/声明 Android 不可用，再按 Browser Cookie 路径继续。"
             : "Browser MCP 登录 — 打开登录页 → 完成登录 → browser_network_requests 提取 Cookie → 保存 runs/<slug>/cookies.json",
           "",
           "如果没有该站账号，回复「无账号」——书源标为 anonymous_candidate。",
@@ -898,7 +985,7 @@ function moveToNext(fromPhase, state, runDir) {
       "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
       loggedInViaProbe
         ? "用户已通过 Android Probe 登录 → validate 阶段必须用 mode=android，不要退回 HTTP+Cookie。"
-        : "用户已在 Browser MCP 登录 → 必须提取 Cookie 注入 validator，否则正文鉴权失败。",
+        : "Android/Probe 不可用时，必须先让用户完成 Browser 登录并提取 Cookie 注入 validator，否则正文鉴权失败。",
       "",
       loggedInViaProbe
         ? "1. 确认 validator/setup-android-probe.bat 已启动并通过 /ping"
@@ -917,7 +1004,7 @@ function moveToNext(fromPhase, state, runDir) {
   }
 
   const actions = {
-    assess:  { nextAction: "write_assessment", message: "写 assessment.md 到 runs/<slug>/。评级必须是 4 种之一。完成后 advance。" },
+    assess:  { nextAction: "record_assessment", message: "写 assessment.md 到 runs/<slug>/ 后运行 record-assessment。record-assessment 通过前不要展示评估摘要或 advance。" },
     analyze: { nextAction: "write_analysis",   message: "按 search→detail→toc→content 顺序分析 4 条链路。双样本。完成后 advance。" },
     generate:{
       nextAction: "generate_json",
@@ -1063,6 +1150,43 @@ function detectAuthFromAnalysis(runDir) {
     message: detected.length > 0
       ? `从 analysis.md 自动检测到登录/Auth 特征: ${detected.join(", ")}。请运行 set-login-features 记录。`
       : null,
+  };
+}
+
+// ── record-assessment ──────────────────────────────────────────────────────
+
+function cmdRecordAssessment(args) {
+  const runDir = parseArg(args, "--run");
+  if (!runDir) return fail("用法: node scripts/bsg.mjs record-assessment --run {dir}");
+
+  const { state, error } = loadAndVerify(runDir);
+  if (error) return fail(error);
+
+  const current = PHASE_ORDER[currentPhaseIndex(state)];
+  if (current !== "assess" || state.phases.assess.status !== "in_progress") {
+    return fail("record-assessment 只能在 assess 阶段 in_progress 时运行。请按 init/advance 状态机推进。");
+  }
+
+  const assessment = loadAndValidateAssessment(runDir, state);
+  if (!assessment.ok) return fail(assessment.error);
+
+  state.phases.assess.rating = assessment.rating;
+  state.phases.assess.recorded = true;
+  state.phases.assess.recordedAt = new Date().toISOString();
+  saveRunState(runDir, state);
+
+  return {
+    ok: true,
+    nextAction: "advance",
+    rating: assessment.rating,
+    signals: {
+      protectedContent: assessment.signals.protectedContent,
+      hasLoginRiskLabel: assessment.signals.hasLoginRiskLabel,
+      hasPaymentRisk: assessment.signals.hasPaymentRisk,
+      hasWebView: assessment.signals.hasWebView,
+      hasEncryptedContent: assessment.signals.hasEncryptedContent,
+    },
+    message: "assessment.md 已通过一致性检查并记录。现在运行 advance；如返回 requiredUserAction，先让用户确认。",
   };
 }
 
@@ -1299,9 +1423,24 @@ function cmdResolveUserAction(args) {
     state.userDecisions.login = "no_account";
     state.loginFeatures._loginDeclined = true;
   } else if (action === "login_completed") {
+    const pendingAndroid = pending.details?.android;
+    const android = diagnoseAndroid();
+    const adbOnline = pending.details?.adbAvailable === true || pendingAndroid?.state === "device_ready" || android.state === "device_ready";
+    if (adbOnline) {
+      const probeCookies = checkProbeCookies();
+      if (!probeCookies.ok) {
+        return fail("Android 设备在线时，login_completed 必须先通过 Probe /cookie-check 确认 Cookie。请运行 validator/setup-android-probe.bat，手机登录完成后再重试。");
+      }
+      state.loginFeatures._loginMethod = "probe";
+    } else {
+      const cookieShape = validateCookieFileShape(path.join(runDir, "cookies.json"));
+      if (!cookieShape.ok) {
+        return fail(`Browser Cookie 路径必须先保存有效 runs/<slug>/cookies.json 后才能记录 login_completed: ${cookieShape.reason}`);
+      }
+      state.loginFeatures._loginMethod = "browser_mcp_cookies";
+    }
     state.userDecisions.login = "completed";
     state.loginFeatures._loginVerified = true;
-    state.loginFeatures._loginMethod = "user_confirmed";
   } else if (action === "continue_after_rating_block") {
     state.userDecisions.ratingBlocked = "continue";
   }
@@ -1544,7 +1683,7 @@ function cmdRecordValidation(args) {
         cookieShape.reason === "missing"
           ? "enabledCookieJar=true 但 runs/<slug>/cookies.json 不存在。"
           : cookieShape.reason,
-        "用户已在 Browser MCP 登录 → 必须先提取 Cookie 注入 validator：",
+        "Android/Probe 不可用时，必须先让用户完成 Browser 登录并提取 Cookie 注入 validator：",
         "1. browser_network_requests 找 API 请求的 Cookie/Authorization header",
         "2. 保存 {\"www.example.com\": \"cookie_string\"} 到 runs/<slug>/cookies.json",
         "3. 重新验证: validate-with-validator.mjs ... --cookie=runs/<slug>/cookies.json",
@@ -1930,6 +2069,7 @@ function printUsage() {
       "  node scripts/bsg.mjs status --run {dir}",
       "  node scripts/bsg.mjs advance --run {dir}",
       "  node scripts/bsg.mjs check --run {dir}",
+      "  node scripts/bsg.mjs record-assessment --run {dir}",
       "  node scripts/bsg.mjs set-login-features --run {dir} [--flags <json>]",
       "  node scripts/bsg.mjs resolve-user-action --run {dir} --action <action>",
       "  node scripts/bsg.mjs record-validation --run {dir} --status <status> [--report <file>]",
@@ -1964,6 +2104,9 @@ async function main(argv) {
     case "check":
       result = cmdCheck(args);
       break;
+    case "record-assessment":
+      result = cmdRecordAssessment(args);
+      break;
     case "set-login-features":
       result = cmdSetLoginFeatures(args);
       break;
@@ -1987,7 +2130,7 @@ async function main(argv) {
       break;
     default:
       result = fail(
-        `未知命令: ${command}。可用: init, status, advance, check, set-login-features, resolve-user-action, android-status, record-validation, deliver, validator-start, validator-stop`
+        `未知命令: ${command}。可用: init, status, advance, check, record-assessment, set-login-features, resolve-user-action, android-status, record-validation, deliver, validator-start, validator-stop`
       );
   }
 

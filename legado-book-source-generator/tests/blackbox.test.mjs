@@ -99,8 +99,8 @@ describe("CLI: scaffold-run", () => {
     await execFileAsync("node", [HELPER, "scaffold-run", tmpDir, "https://example.com"]);
 
     const content = await fs.readFile(path.join(tmpDir, "example-com", "assessment.md"), "utf8");
-    assert.ok(content.includes("用户选择"), "应包含用户选择字段");
-    assert.ok(content.includes("当前分析会话"), "应包含当前分析会话字段");
+    assert.ok(content.includes("- 用户选择: 待用户确认"), "用户选择不应预设为登录/不登录");
+    assert.ok(content.includes("- 当前分析会话: 匿名 / 已登录 / 登录失败 / 待确认"), "应包含当前分析会话字段");
     assert.ok(content.includes("官方规则对照"), "应包含官方规则对照字段");
     assert.ok(content.includes("辅助文档对照"), "应包含辅助文档对照字段");
     assert.ok(content.includes("## 结论"), "应包含结论章节");

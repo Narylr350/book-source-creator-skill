@@ -6,17 +6,19 @@
 
 - 先匿名访问 search/detail/toc/content 四条链路，只判断站点结构、接口路径、是否有反爬、是否需要 WebView。
 - 检查登录入口、会员限制、匿名降级、登录后能力变化。
-- 如果用户选择登录分析，引导其在 Browser MCP 中完成登录，再继续。
+- 如果站点需要登录态且 Android 设备在线，必须使用 Probe 原生登录；Android 不可用时才使用 Browser MCP Cookie 路径。
 
 ## 2. 可生成性评估
 
-- 先输出 `assessment.md` 到 `runs/<site-slug>/`。
+- 先输出 `assessment.md` 到 `runs/<site-slug>/`，然后运行 `bsg.mjs record-assessment --run <run-dir>`。
+- `record-assessment` 通过前不要展示评估摘要，不要询问用户选择，不要继续 `advance`。
 - 评级只能是以下两种之一：
   - `可生成` — 加风险标签（无风险 / WebView 依赖 / 需登录态 / 有反爬风险 / 加密正文，可多选）
   - `不建议生成` — 付费墙、全站验证码、纯 App 无 Web 端
-- 评级为"可生成"：继续自动生成，不等用户确认。
+- 评级为"可生成"：若 `record-assessment` / `advance` 没有返回 `requiredUserAction`，继续自动生成。
 - 评级为"不建议生成"：停下来等用户决策。
 - 评估至少覆盖：登录依赖、搜索链路、详情链路、目录链路、正文链路、反爬/验证码/会员/签名/加密/付费限制。
+- VIP、付费、订阅、会员、登录态、Cookie、Authorization、401/403 不能写成 `登录需求: 否` 或 `风险标签: 无风险`。
 - 若准备写 `不建议生成`，必须同时写出：为什么 WebView 不适用、为什么更简单的直接提取不适用、哪条链路已经被实测证伪。
 
 使用 `references/assessment-template.md` 作为输出模板。
