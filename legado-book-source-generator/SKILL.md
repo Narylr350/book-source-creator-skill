@@ -80,19 +80,28 @@ HTTP fetch 单独永远不够——它看不到 DOM、不执行 JS、不渲染 C
 
 ## Android WebView Probe
 
-loginFeatures 含 webView 或 webJs 时，用 mode=android 验证正文。
+**什么时候必须用：** 正文页是 CSR（`__nuxt` / `__next` / `<div id="app">`）、需要 WebView 渲染、或者 HTTP fetch 拿到的是 JS 空壳。
 
-执行序列：
-1. `bsg.mjs validator-start`
-2. `validator/setup-adb.bat`
-3. `validator/setup-android-probe.bat`
-4. **如果站点需要登录态且 Cookie 来自桌面浏览器（环境不一致）**：
-   - `POST http://localhost:18888/login {"url":"登录页URL"}` → 手机屏幕显示登录页
-   - 用户在手机上手动登录，登录完成后点底部绿色"✓ 完成登录"
-   - `GET http://localhost:18888/cookie-check?domain=xxx` 确认 Cookie 已注入
-   - CookieManager 自动共享给后续 `/render`——环境一致，不掉验证码
-5. `validate-with-validator.mjs <source> <keyword> android --output runs/<slug>/`
+**Probe 阶段发现 CSR 正文时，立即停下来问用户：**
 
-Android Probe 不可用时标 `validator_limitation`，不标 passed。
+> "这个站的正文需要 WebView 渲染（CSR 页面），Android 设备或模拟器能大幅提高验证精度。你有 Android 设备（或模拟器）可以用吗？"
+
+**用户说"有"：**
+1. `adb devices` — 确认设备已连接。没连上？等用户插 USB + 确认授权。
+2. `bsg.mjs validator-start`
+3. `validator/setup-adb.bat` — 安装 adb
+4. `validator/setup-android-probe.bat` — 安装 + 启动 Probe APK
+5. `curl http://localhost:18888/ping` — 确认 Probe 在线
+6. validate 阶段用 `mode=android`
+
+**用户说"没有"：**
+- 继续生成，但 validate 阶段用 `mode=http`
+- 正文失败标 `validator_limitation`，**不标 passed**
+- 交付时明确告知用户：此书源需在 Legado App 内实测正文
+
+**不要做的事：**
+- 不问用户直接跑 setup 脚本
+- setup 失败后悄悄跳过，标 passed
+- 假设用户没有设备就不问
 
 手机设置指南见 `docs/SETUP.md`（含各品牌 USB 调试步骤）。
