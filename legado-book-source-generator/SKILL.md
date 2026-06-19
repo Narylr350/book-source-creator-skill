@@ -30,14 +30,18 @@ init → advance → advance → advance → advance → record-validation → a
 
 ## 快速路径（`--fast`）
 
-Probe 阶段用 HTTP fetch（不用 Browser MCP）探测 4 条链路。若**全部**满足，下次 init 可以加 `--fast` 跳过 Browser MCP：
+**init 之前允许做一件事：匿名 HTTP fetch 站点首页。**
 
-1. 搜索/详情/目录/正文 HTTP 直接返回可见文本（不是 CSR 空壳）
-2. 无 Cloudflare / 验证码
-3. 无登录需求
-4. 无 `webView` / `webJs` / CSR 依赖
+首页出现以下任一特征 → `init` 不加 `--fast`，走完整 Browser MCP 路径：
 
-`--fast` 只是跳过 Browser MCP，**init 仍然必须首先执行**。不满足条件时走完整路径（Browser MCP 探测）。
+- 返回空内容或 CSR 空壳（`__nuxt` / `__next` / `<div id="app">`）
+- 包含 Cloudflare / Turnstile / 验证码
+- 重定向到登录页
+- 页面主体是 JS 加载的（无可见文本）
+
+首页干净（可见文本、无拦截、无登录）→ `init --fast`。`--fast` 只意味着 probe 阶段用 HTTP fetch 代替 Browser MCP，**它完全不影响 validate 阶段——validate 仍然会运行 validator 验证真实链路。**
+
+首页不确定 → 不加 `--fast`，走完整路径。不要为了省时间猜错——加 `--fast` 后漏掉的登录墙或验证码会导致后面白做。
 
 ## 用户交互
 
