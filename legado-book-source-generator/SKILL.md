@@ -32,16 +32,18 @@ init → advance → advance → advance → advance → record-validation → a
 
 **init 之前允许做一件事：匿名 HTTP fetch 站点首页。**
 
-首页出现以下任一特征 → `init` 不加 `--fast`，走完整 Browser MCP 路径：
+出现以下任一特征 → **不加 `--fast`**，走完整 Browser MCP 路径：
 
 - 返回空内容或 CSR 空壳（`__nuxt` / `__next` / `<div id="app">`）
 - 包含 Cloudflare / Turnstile / 验证码
-- 重定向到登录页
+- 重定向到 /login 或 /signin
 - 页面主体是 JS 加载的（无可见文本）
+- 响应中含有 `<input type="password"`（登录表单）
+- 页面有 `login` / `signin` / `signup` 链接且描述为"登录""注册"
 
-首页干净（可见文本、无拦截、无登录）→ `init --fast`。`--fast` 只意味着 probe 阶段用 HTTP fetch 代替 Browser MCP，**它完全不影响 validate 阶段——validate 仍然会运行 validator 验证真实链路。**
+**全部不满足** → `init --fast`。`--fast` 只意味着 probe 阶段用 HTTP fetch 代替 Browser MCP，不影响 validate。
 
-首页不确定 → 不加 `--fast`，走完整路径。不要为了省时间猜错——加 `--fast` 后漏掉的登录墙或验证码会导致后面白做。
+**不确定 → 不加。** 不要看 trafilatura 提取的纯文本判断——它会把登录表单和拦截元素过滤掉。看原始 HTML 响应体。
 
 ## 用户交互
 
