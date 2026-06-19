@@ -111,6 +111,12 @@ function freshRunState(siteUrl, siteSlug, mode, workingDir) {
       hasWebJs: false,
       hasWebView: false,
     },
+    pendingUserAction: null,
+    userDecisions: {
+      androidDevice: null,
+      login: null,
+    },
+    userActionHistory: [],
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   };
@@ -137,6 +143,96 @@ function parseArg(args, flag) {
   const idx = args.indexOf(flag);
   if (idx < 0) return null;
   return args[idx + 1] || null;
+}
+
+function getPendingUserAction(state) {
+  return state.pendingUserAction && state.pendingUserAction.resolved !== true
+    ? state.pendingUserAction
+    : null;
+}
+
+function setPendingUserAction(state, type, reason, message, details = {}) {
+  const existing = getPendingUserAction(state);
+  if (existing && existing.type === type && existing.reason === reason) return existing;
+  state.pendingUserAction = {
+    type,
+    reason,
+    message,
+    details,
+    resolved: false,
+    createdAt: new Date().toISOString(),
+  };
+  return state.pendingUserAction;
+}
+
+function pendingUserActionResponse(action) {
+  return {
+    ok: true,
+    nextAction: "stop",
+    requiredUserAction: action.type,
+    message: action.message,
+    reason: action.reason,
+    pendingUserAction: action,
+  };
+}
+
+function blockForPendingUserAction(state) {
+  const action = getPendingUserAction(state);
+  if (!action) return null;
+  return pendingUserActionResponse(action);
+}
+
+function validateCookieFileShape(cookieFile) {
+  if (!fileExists(cookieFile)) {
+    return { ok: false, reason: "missing" };
+  }
+  let parsed;
+  try {
+    parsed = JSON.parse(fs.readFileSync(cookieFile, "utf-8"));
+  } catch (e) {
+    return { ok: false, reason: `cookies.json 不是合法 JSON: ${e.message}` };
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    return { ok: false, reason: "cookies.json 必须是对象。" };
+  }
+
+  if (typeof parsed.domain === "string" && typeof parsed.cookie === "string") {
+    if (!parsed.domain.includes(".") || !parsed.cookie.includes("=")) {
+      return { ok: false, reason: "cookies.json 的 {domain,cookie} 格式无效。" };
+    }
+    return { ok: true, format: "domain_cookie" };
+  }
+
+  const entries = Object.entries(parsed);
+  if (entries.length === 0) {
+    return { ok: false, reason: "cookies.json 为空。" };
+  }
+  if (entries.length === 1 && entries[0][0] === "domain" && typeof entries[0][1] === "string" && entries[0][1].includes("=")) {
+    return {
+      ok: false,
+      reason: "cookies.json 写成了 {\"domain\":\"cookie_string\"}，缺少真实域名键。",
+    };
+  }
+  for (const [domain, value] of entries) {
+    if (!domain.includes(".") || typeof value !== "string" || !value.includes("=")) {
+      return {
+        ok: false,
+        reason: "cookies.json 应为 {\"www.example.com\":\"a=b; c=d\"}，或 {\"domain\":\"www.example.com\",\"cookie\":\"a=b; c=d\"}。",
+      };
+    }
+  }
+  return { ok: true, format: "domain_map" };
+}
+
+function reportUsedAndroidMode(reportPath) {
+  if (!fileExists(reportPath)) return false;
+  try {
+    const report = JSON.parse(fs.readFileSync(reportPath, "utf-8"));
+    if (report.mode === "android") return true;
+    return (report.steps || []).some((s) => s.mode === "android");
+  } catch {
+    return false;
+  }
 }
 
 // ── phase ordering ─────────────────────────────────────────────────────────
@@ -194,7 +290,7 @@ function checkEnvironment() {
       tool: "adb",
       ok: false,
       version: null,
-      message: "⚠️ 未找到 adb。Android Probe 不可用。安装: validator/setup-adb.bat",
+      message: "⚠️ 未找到 adb。Android Probe 不可用。运行 validator/setup-android-probe.bat，由脚本检测并安装 adb。",
     });
   }
 
@@ -302,6 +398,8 @@ function cmdStatus(args) {
     siteSlug: state.siteSlug,
     mode: state.mode,
     currentPhase,
+    pendingUserAction: getPendingUserAction(state),
+    userDecisions: state.userDecisions || {},
     completed,
     pending,
     inProgress: inProgress ? inProgress.phase : null,
@@ -319,6 +417,9 @@ function cmdAdvance(args) {
 
   const { state, error } = loadAndVerify(runDir);
   if (error) return fail(error);
+
+  const pendingBlock = blockForPendingUserAction(state);
+  if (pendingBlock) return pendingBlock;
 
   const idx = currentPhaseIndex(state);
   if (idx >= PHASE_ORDER.length) {
@@ -396,18 +497,41 @@ function completePhase(phase, state, runDir) {
 
     // Auto-detect risk labels
     const assessContent = fs.readFileSync(assessPath, "utf-8");
+    const userChoiceMatch = assessContent.match(/用户选择[：:]\s*([^\n\r]+)/);
+    if (userChoiceMatch) {
+      const choice = userChoiceMatch[1].trim();
+      const isPlaceholder = choice.includes("/") || choice.includes("或") || choice === "";
+      if (!isPlaceholder) {
+        const loginDecision = state.userDecisions?.login;
+        const saysNoLogin = /不登录|无账号|匿名/.test(choice);
+        const saysLogin = /登录分析|已登录|登录完成/.test(choice) && !saysNoLogin;
+        if (saysNoLogin && loginDecision !== "no_account") {
+          return fail("assessment.md 写了用户选择为不登录/无账号，但 run-state.json 没有 resolve-user-action --action no_account 记录。不要编用户选择。");
+        }
+        if (saysLogin && loginDecision !== "completed") {
+          return fail("assessment.md 写了用户选择为登录/已登录，但 run-state.json 没有 resolve-user-action --action login_completed 记录。不要编用户选择。");
+        }
+      }
+    }
     if (/WebView\s*依赖/i.test(assessContent)) state.loginFeatures.hasWebView = true;
     if (/需登录态/i.test(assessContent)) state.loginFeatures.hasEnabledCookieJar = true;
     if (/加密正文/i.test(assessContent)) { state.loginFeatures.hasWebView = true; state.loginFeatures.hasWebJs = true; }
 
-    if (state.phases.assess.rating === "不建议生成") {
+    if (state.phases.assess.rating === "不建议生成" && state.userDecisions?.ratingBlocked !== "continue") {
+      const message = `评估评级为"不建议生成"，需要用户决定是否继续。`;
+      const pending = setPendingUserAction(state, "rating_blocked", "rating_blocked", message, {
+        blockingPhase: "assess",
+        rating: state.phases.assess.rating,
+      });
+      saveRunState(runDir, state);
       return {
         ok: true,
         nextAction: "stop",
         requiredUserAction: "rating_blocked",
-        message: `评估评级为"不建议生成"，需要用户决定是否继续。`,
+        message,
         blockingPhase: "assess",
         rating: state.phases.assess.rating,
+        pendingUserAction: pending,
       };
     }
 
@@ -433,8 +557,11 @@ function completePhase(phase, state, runDir) {
       if (!loggedIn) {
         const cookieFile = path.join(runDir, "cookies.json");
         if (fileExists(cookieFile)) {
-          loggedIn = true;
-          loginMethod = "browser_mcp_cookies";
+          const cookieShape = validateCookieFileShape(cookieFile);
+          if (cookieShape.ok) {
+            loggedIn = true;
+            loginMethod = "browser_mcp_cookies";
+          }
         }
       }
 
@@ -443,14 +570,17 @@ function completePhase(phase, state, runDir) {
         state.loginFeatures._loginMethod = loginMethod;
         saveRunState(runDir, state);
         // Fall through to normal completion
-      } else {
-        const adbOk = checkAdb();
+      } else if (state.userDecisions?.login === "no_account") {
+        state.loginFeatures._loginDeclined = true;
         saveRunState(runDir, state);
-        return {
-          ok: true,
-          nextAction: "stop",
-          requiredUserAction: "login_required",
-        message: [
+      } else if (state.userDecisions?.login === "completed") {
+        state.loginFeatures._loginVerified = true;
+        state.loginFeatures._loginMethod = state.loginFeatures._loginMethod || "user_confirmed";
+        saveRunState(runDir, state);
+      } else {
+        const android = diagnoseAndroid();
+        const adbOk = android.state === "device_ready";
+        const message = [
           "站点需要登录态（enabledCookieJar / Authorization），但尚未完成登录。",
           "",
           adbOk
@@ -458,41 +588,64 @@ function completePhase(phase, state, runDir) {
             : "登录方式：",
           "",
           adbOk
-            ? "方式1（推荐）：Probe 原生登录 — POST http://localhost:18888/login → 手机登录 → /cookie-check 确认"
+            ? "方式1（推荐）：Probe 原生登录 — POST http://localhost:18888/login 打开手机网页登录页 → 用户在手机上输入账号密码并完成验证码/短信/扫码 → 看到已登录状态后回复 → /cookie-check 确认"
             : "",
           adbOk
             ? "方式2（备选）：Browser MCP 登录 — 打开登录页 → 完成登录 → browser_network_requests 提取 Cookie → 保存 runs/<slug>/cookies.json"
             : "Browser MCP 登录 — 打开登录页 → 完成登录 → browser_network_requests 提取 Cookie → 保存 runs/<slug>/cookies.json",
           "",
           "如果没有该站账号，回复「无账号」——书源标为 anonymous_candidate。",
-        ].filter(Boolean).join("\n"),
-        blockingPhase: "assess",
-        reason: "login_required",
-        adbAvailable: adbOk,
+        ].filter(Boolean).join("\n");
+        const pending = setPendingUserAction(state, "login_required", "login_required", message, {
+          blockingPhase: "assess",
+          adbAvailable: adbOk,
+          android,
+        });
+        saveRunState(runDir, state);
+        return {
+          ok: true,
+          nextAction: "stop",
+          requiredUserAction: "login_required",
+          message,
+          blockingPhase: "assess",
+          reason: "login_required",
+          adbAvailable: adbOk,
+          android,
+          pendingUserAction: pending,
       };
     }
     } // close outer login-features if
 
     // WebView/CSR detected during probe/assess → check Android device now
-    if ((state.loginFeatures.hasWebView || state.loginFeatures.hasWebJs) && !checkAdb()) {
+    if ((state.loginFeatures.hasWebView || state.loginFeatures.hasWebJs) && !checkAdb() && state.userDecisions?.androidDevice !== "unavailable") {
+      const android = diagnoseAndroid();
+      const message = [
+        "评估发现站点需要 WebView/CSR 渲染正文，但未检测到可用 Android 设备。",
+        "",
+        `当前 Android/adb 状态: ${android.state}。${android.message}`,
+        "",
+        "请确认：你是否有满足以下条件的设备？",
+        "  • Android 真机（已开启 USB 调试）或 Android 模拟器",
+        "  • 电脑通过 USB 数据线连接手机",
+        "  • 电脑可运行 validator/setup-android-probe.bat（脚本会检测并安装 adb）",
+        "",
+        "如果有，请连接设备并完成授权后，再运行 resolve-user-action --action android_device_ready。",
+        "如果没有 Android 设备，运行 resolve-user-action --action android_device_unavailable；后续正文验证只能标 needs_app_review / validator_limitation，不能标 passed。",
+      ].join("\n");
+      const pending = setPendingUserAction(state, "android_device_needed", "webview_requires_android", message, {
+        blockingPhase: "assess",
+        android,
+      });
       saveRunState(runDir, state);
       return {
         ok: true,
         nextAction: "stop",
         requiredUserAction: "android_device_needed",
-        message: [
-          "评估发现站点需要 WebView/CSR 渲染正文，但未检测到 Android 设备。",
-          "",
-          "请确认：你是否有满足以下条件的设备？",
-          "  • Android 真机（已开启 USB 调试）或 Android 模拟器",
-          "  • 电脑通过 USB 数据线连接手机",
-          "  • 电脑上有 adb（可运行 validator/setup-adb.bat 下载）",
-          "",
-          "如果有，请现在连接手机并在手机上确认 USB 调试授权（各品牌设置方法见 docs/SETUP.md），然后回复「已连接」。",
-          "如果没有 Android 设备，也可以继续——正文验证将标 needs_app_review，需在 Legado App 内手动测试。",
-        ].join("\n"),
+        message,
         blockingPhase: "assess",
         reason: "webview_requires_android",
+        android,
+        pendingUserAction: pending,
       };
     }
 
@@ -716,8 +869,7 @@ function moveToNext(fromPhase, state, runDir) {
       "⚠️  WebView/CSR 正文 — 必须用 Android Probe",
       "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
       "1. validator-start（窗口必须可见）",
-      "2. validator/setup-adb.bat（3 个镜像自动重试）",
-      "3. validator/setup-android-probe.bat",
+      "2. validator/setup-android-probe.bat（单入口：检测 adb、安装 APK、启动 Probe、检查 /ping）",
       "4. validate-with-validator.mjs ... android",
       "5. Android 不可用时: mode=http + 正文失败标 validator_limitation",
       "",
@@ -738,16 +890,25 @@ function moveToNext(fromPhase, state, runDir) {
   // If login features are set, add cookie extraction reminder
   const hasLoginFeatures = Object.values(state.loginFeatures).some((b) => b === true);
   if (hasLoginFeatures && state.loginFeatures.hasEnabledCookieJar) {
+    const loggedInViaProbe = state.loginFeatures._loginMethod === "probe";
     const cookieFlow = [
       "",
       "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
       "🔑 登录态验证 — 必须先注入 Cookie",
       "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
-      "用户已在 Browser MCP 登录 → 必须提取 Cookie 注入 validator，否则正文鉴权失败。",
+      loggedInViaProbe
+        ? "用户已通过 Android Probe 登录 → validate 阶段必须用 mode=android，不要退回 HTTP+Cookie。"
+        : "用户已在 Browser MCP 登录 → 必须提取 Cookie 注入 validator，否则正文鉴权失败。",
       "",
-      "1. browser_network_requests 找到 API 请求头的 Cookie 或 Authorization",
-      "2. 保存为 runs/<slug>/cookies.json: {\"domain\": \"full_cookie_string\"}",
-      "3. 传给 validator: --cookie=runs/<slug>/cookies.json",
+      loggedInViaProbe
+        ? "1. 确认 validator/setup-android-probe.bat 已启动并通过 /ping"
+        : "1. browser_network_requests 找到 API 请求头的 Cookie 或 Authorization",
+      loggedInViaProbe
+        ? "2. 运行 validate-with-validator.mjs ... android"
+        : "2. 保存为 runs/<slug>/cookies.json: {\"www.example.com\": \"full_cookie_string\"}",
+      loggedInViaProbe
+        ? "3. 保存 validator-report.json 后运行 record-validation"
+        : "3. 传给 validator: --cookie=runs/<slug>/cookies.json",
       "",
       "未注入 Cookie 的验证结果不能标 passed，只能标 anonymous_candidate。",
       "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
@@ -781,15 +942,102 @@ function moveToNext(fromPhase, state, runDir) {
 
 // ── adb / Android ───────────────────────────────────────────────────────────
 
-function checkAdb() {
+function parseAdbDevicesOutput(out) {
+  const lines = out.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  const deviceLines = lines.filter((l) => !l.startsWith("List of devices"));
+  const devices = deviceLines.map((line) => {
+    const parts = line.split(/\s+/);
+    return { serial: parts[0] || "", state: parts[1] || "unknown", raw: line };
+  }).filter((d) => d.serial);
+
+  if (devices.some((d) => d.state === "device")) {
+    return {
+      state: "device_ready",
+      devices,
+      message: "adb 已检测到在线 Android 设备。",
+      requiredUserAction: null,
+    };
+  }
+  if (devices.some((d) => d.state === "unauthorized")) {
+    return {
+      state: "unauthorized",
+      devices,
+      message: "Android 设备未授权。请在手机上确认 USB 调试授权。",
+      requiredUserAction: "authorize_usb_debugging",
+    };
+  }
+  if (devices.some((d) => d.state === "offline")) {
+    return {
+      state: "offline",
+      devices,
+      message: "Android 设备处于 offline。请重插 USB、解锁手机，必要时重启 adb。",
+      requiredUserAction: "reconnect_android_device",
+    };
+  }
+  return {
+    state: "no_device",
+    devices,
+    message: "未检测到 Android 真机或模拟器。",
+    requiredUserAction: "confirm_android_device_available",
+  };
+}
+
+function diagnoseAndroid() {
+  if (process.env.BSG_TEST_ADB_DEVICES_OUTPUT != null) {
+    return {
+      adbFound: true,
+      adbPath: "test-env",
+      ...parseAdbDevicesOutput(process.env.BSG_TEST_ADB_DEVICES_OUTPUT),
+    };
+  }
+  if (process.env.BSG_TEST_ADB_ERROR) {
+    return {
+      adbFound: true,
+      adbPath: "test-env",
+      state: "protocol_error",
+      devices: [],
+      message: process.env.BSG_TEST_ADB_ERROR,
+      requiredUserAction: "reconnect_android_device",
+    };
+  }
+
   try {
     const out = execSync("adb devices", { encoding: "utf-8", timeout: 5000 });
-    // Look for a device line that isn't the header and has "device" status
-    const lines = out.split("\n").filter((l) => l.trim() && !l.startsWith("List"));
-    return lines.some((l) => l.includes("\tdevice") || l.includes("device"));
-  } catch {
-    return false;
+    return { adbFound: true, adbPath: "adb", ...parseAdbDevicesOutput(out) };
+  } catch (e) {
+    const message = String(e.stderr || e.stdout || e.message || "");
+    if (/not recognized|not found|ENOENT/i.test(message)) {
+      return {
+        adbFound: false,
+        adbPath: null,
+        state: "adb_missing",
+        devices: [],
+        message: "未找到 adb。请确认是否要运行 validator/setup-android-probe.bat，由脚本检测并安装 adb。",
+        requiredUserAction: "install_adb",
+      };
+    }
+    return {
+      adbFound: true,
+      adbPath: "adb",
+      state: "protocol_error",
+      devices: [],
+      message: message || "adb devices 执行失败。",
+      requiredUserAction: "reconnect_android_device",
+    };
   }
+}
+
+function checkAdb() {
+  return diagnoseAndroid().state === "device_ready";
+}
+
+function cmdAndroidStatus() {
+  const android = diagnoseAndroid();
+  return {
+    ok: true,
+    android,
+    requiredUserAction: android.requiredUserAction,
+  };
 }
 
 // ── auth detection from analysis ────────────────────────────────────────────
@@ -1013,6 +1261,70 @@ function cmdSetLoginFeatures(args) {
   };
 }
 
+// ── resolve-user-action ────────────────────────────────────────────────────
+
+function cmdResolveUserAction(args) {
+  const runDir = parseArg(args, "--run");
+  const action = parseArg(args, "--action");
+  if (!runDir || !action) {
+    return fail("用法: node scripts/bsg.mjs resolve-user-action --run {dir} --action <android_device_ready|android_device_unavailable|login_completed|no_account|continue_after_rating_block>");
+  }
+
+  const { state, error } = loadAndVerify(runDir);
+  if (error) return fail(error);
+
+  const pending = getPendingUserAction(state);
+  if (!pending) return fail("当前没有待用户确认的动作。");
+
+  const validActions = {
+    android_device_needed: ["android_device_ready", "android_device_unavailable"],
+    login_required: ["login_completed", "no_account"],
+    rating_blocked: ["continue_after_rating_block"],
+  };
+  const allowed = validActions[pending.type] || [];
+  if (!allowed.includes(action)) {
+    return fail(`当前待处理动作为 ${pending.type}，不能用 ${action} 解除。可选: ${allowed.join(", ")}`);
+  }
+
+  state.userDecisions = state.userDecisions || {};
+  if (action === "android_device_unavailable") {
+    state.userDecisions.androidDevice = "unavailable";
+  } else if (action === "android_device_ready") {
+    const android = diagnoseAndroid();
+    if (android.state !== "device_ready") {
+      return fail(`Android 设备尚未可用: ${android.state}。${android.message}`);
+    }
+    state.userDecisions.androidDevice = "ready";
+  } else if (action === "no_account") {
+    state.userDecisions.login = "no_account";
+    state.loginFeatures._loginDeclined = true;
+  } else if (action === "login_completed") {
+    state.userDecisions.login = "completed";
+    state.loginFeatures._loginVerified = true;
+    state.loginFeatures._loginMethod = "user_confirmed";
+  } else if (action === "continue_after_rating_block") {
+    state.userDecisions.ratingBlocked = "continue";
+  }
+
+  state.userActionHistory = state.userActionHistory || [];
+  state.userActionHistory.push({
+    type: pending.type,
+    reason: pending.reason,
+    action,
+    resolvedAt: new Date().toISOString(),
+  });
+  state.pendingUserAction = { ...pending, resolved: true, action, resolvedAt: new Date().toISOString() };
+  saveRunState(runDir, state);
+
+  return {
+    ok: true,
+    resolved: pending.type,
+    action,
+    nextAction: "advance",
+    message: `已记录用户选择: ${action}。继续运行 advance。`,
+  };
+}
+
 // ── record-validation ──────────────────────────────────────────────────────
 
 function cmdRecordValidation(args) {
@@ -1032,11 +1344,16 @@ function cmdRecordValidation(args) {
   const { state, error } = loadAndVerify(runDir);
   if (error) return fail(error);
 
+  const pendingBlock = blockForPendingUserAction(state);
+  if (pendingBlock) {
+    return fail(`仍有待用户确认动作: ${pendingBlock.requiredUserAction}。请先运行 resolve-user-action。`);
+  }
+
   const v = state.phases.validate;
   v.attempts += 1;
   v.lastStatus = status;
 
-  const hasLoginFeatures = Object.values(state.loginFeatures).some((b) => b === true);
+  let hasLoginFeatures = Object.values(state.loginFeatures).some((b) => b === true);
   let shouldRetry = false;
   let finalStatus = null;
   let nextAction = "deliver";
@@ -1110,28 +1427,47 @@ function cmdRecordValidation(args) {
     }
   }
 
+  const reportPathForMode = path.join(runDir, "validator-report.json");
+  if (state.loginFeatures._loginMethod === "probe" && !reportUsedAndroidMode(reportPathForMode)) {
+    if (checkAdb()) {
+      androidWarning = [
+        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+        "⛔ Probe 登录后未用 Android 验证",
+        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+        "本轮登录态来自 Android Probe，但 validator-report.json 不是 mode=android。",
+        "这会把手机端登录环境降级成 HTTP+Cookie 验证，不能代表阅读 App/WebView 行为。",
+        "立即执行: validator/setup-android-probe.bat → validate-with-validator.mjs ... android → record-validation。",
+        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+      ].join("\n");
+    } else if (state.adbDetected) {
+      androidWarning = [
+        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+        "⚠️  Probe 登录后 Android 设备已断开",
+        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+        "本轮登录态来自 Android Probe，但现在 adb 找不到设备，不能退回 HTTP+Cookie 验证。",
+        "请重新插拔 USB 并在手机上确认 USB 调试授权。",
+        "然后运行: validator/setup-android-probe.bat → validate-with-validator.mjs ... android → record-validation。",
+        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+      ].join("\n");
+    }
+  }
+
   // Check: book source has webView/webJs → verify via Android Probe
   const bookSourcePath = path.join(state.workingDir, "outputs", state.siteSlug, "book-source.json");
-  if (fileExists(bookSourcePath) && (status === "failed" || status === "needs_app_review" || status === "validator_limitation")) {
+  if (fileExists(bookSourcePath)) {
     try {
       const bs = JSON.parse(fs.readFileSync(bookSourcePath, "utf-8"));
       const source = Array.isArray(bs) ? bs[0] : bs;
       const jsonStr = JSON.stringify(source);
-      const hasWV = jsonStr.includes('"webView":true') || jsonStr.includes("'webView':true");
+      const hasWV = /\\?["']webView\\?["']\s*:\s*true/.test(jsonStr);
       const hasWJ = source.ruleContent?.webJs;
       if (hasWV || hasWJ) {
         state.loginFeatures.hasWebView = hasWV;
         state.loginFeatures.hasWebJs = !!hasWJ;
+        hasLoginFeatures = Object.values(state.loginFeatures).some((b) => b === true);
         const adbOk = checkAdb();
         // Check if Android mode was actually used (not HTTP fallback)
-        let androidWasUsed = false;
-        const reportPathForMode = path.join(runDir, "validator-report.json");
-        if (fileExists(reportPathForMode)) {
-          try {
-            const report = JSON.parse(fs.readFileSync(reportPathForMode, "utf-8"));
-            androidWasUsed = report.mode === "android";
-          } catch { /* ignore */ }
-        }
+        let androidWasUsed = reportUsedAndroidMode(reportPathForMode);
 
         if (adbOk && !androidWasUsed) {
           // Device connected but AI didn't use it → BLOCK
@@ -1176,8 +1512,7 @@ function cmdRecordValidation(args) {
   if (androidWarning) {
     const actuallyUsedAndroid = (() => {
       const rp = path.join(runDir, "validator-report.json");
-      if (!fileExists(rp)) return false;
-      try { return JSON.parse(fs.readFileSync(rp, "utf-8")).mode === "android"; } catch { return false; }
+      return reportUsedAndroidMode(rp);
     })();
     if (!actuallyUsedAndroid) {
       if (checkAdb()) {
@@ -1200,15 +1535,18 @@ function cmdRecordValidation(args) {
   // Check: enabledCookieJar set but no cookies.json → likely forgot to inject
   if (state.loginFeatures.hasEnabledCookieJar && (status === "failed" || status === "needs_app_review")) {
     const cookieFile = path.join(runDir, "cookies.json");
-    if (!fileExists(cookieFile)) {
+    const cookieShape = validateCookieFileShape(cookieFile);
+    if (!cookieShape.ok) {
       cookieWarning = [
         "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
         "⛔ Cookie 未注入 — 拒绝通过",
         "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
-        "enabledCookieJar=true 但 runs/<slug>/cookies.json 不存在。",
+        cookieShape.reason === "missing"
+          ? "enabledCookieJar=true 但 runs/<slug>/cookies.json 不存在。"
+          : cookieShape.reason,
         "用户已在 Browser MCP 登录 → 必须先提取 Cookie 注入 validator：",
         "1. browser_network_requests 找 API 请求的 Cookie/Authorization header",
-        "2. 保存 {\"domain\": \"cookie_string\"} 到 runs/<slug>/cookies.json",
+        "2. 保存 {\"www.example.com\": \"cookie_string\"} 到 runs/<slug>/cookies.json",
         "3. 重新验证: validate-with-validator.mjs ... --cookie=runs/<slug>/cookies.json",
         "4. 再次运行 record-validation",
         "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
@@ -1332,6 +1670,11 @@ function cmdRecordValidation(args) {
 // ── deliver ────────────────────────────────────────────────────────────────
 
 function cmdDeliverCheck(state, runDir) {
+  const pending = getPendingUserAction(state);
+  if (pending) {
+    return fail(`仍有待用户确认动作: ${pending.type}。请先运行 resolve-user-action。`);
+  }
+
   // Check 5 files
   const requiredFiles = [
     "assessment.md",
@@ -1363,6 +1706,9 @@ function cmdDeliverCheck(state, runDir) {
   const v = state.phases.validate;
   const hasLoginFeatures = Object.values(state.loginFeatures).some((b) => b === true);
   let finalStatus;
+  if (!v.lastStatus) {
+    return fail("缺少验证状态。必须先运行 record-validation 记录真实 validator 结果，不能仅创建 validator-report.json。");
+  }
 
   if (v.lastStatus === "passed" && !hasLoginFeatures) {
     finalStatus = "passed";
@@ -1376,9 +1722,6 @@ function cmdDeliverCheck(state, runDir) {
     finalStatus = "validator_limitation";
   } else if (v.lastStatus === "failed") {
     finalStatus = "failed_unresolved";
-  } else {
-    // No validator run — should not happen if advance was used correctly
-    finalStatus = "unvalidated";
   }
 
   const STATUS_MESSAGES = {
@@ -1388,7 +1731,6 @@ function cmdDeliverCheck(state, runDir) {
     needs_app_review: "已生成 book-source.json，validator 检测到需 App 复核。",
     failed_unresolved: "已生成 book-source.json，同一错误连续 5 次未修复（收敛失败）。需人工检查。",
     validator_limitation: "已生成 book-source.json，validator 无法验证部分能力；预期需要 App/WebView 复核。当前不是 full pass，不能标可用。",
-    unvalidated: "已生成 book-source.json，但 validator 未运行。状态不确定。",
   };
 
   state.phases.deliver.status = "completed";
@@ -1589,8 +1931,10 @@ function printUsage() {
       "  node scripts/bsg.mjs advance --run {dir}",
       "  node scripts/bsg.mjs check --run {dir}",
       "  node scripts/bsg.mjs set-login-features --run {dir} [--flags <json>]",
+      "  node scripts/bsg.mjs resolve-user-action --run {dir} --action <action>",
       "  node scripts/bsg.mjs record-validation --run {dir} --status <status> [--report <file>]",
       "  node scripts/bsg.mjs deliver --run {dir}",
+      "  node scripts/bsg.mjs android-status",
       "  node scripts/bsg.mjs validator-start [--background]",
       "  node scripts/bsg.mjs validator-stop",
     ].join("\n")
@@ -1623,6 +1967,12 @@ async function main(argv) {
     case "set-login-features":
       result = cmdSetLoginFeatures(args);
       break;
+    case "resolve-user-action":
+      result = cmdResolveUserAction(args);
+      break;
+    case "android-status":
+      result = cmdAndroidStatus();
+      break;
     case "record-validation":
       result = cmdRecordValidation(args);
       break;
@@ -1637,7 +1987,7 @@ async function main(argv) {
       break;
     default:
       result = fail(
-        `未知命令: ${command}。可用: init, status, advance, check, set-login-features, record-validation, deliver, validator-start, validator-stop`
+        `未知命令: ${command}。可用: init, status, advance, check, set-login-features, resolve-user-action, android-status, record-validation, deliver, validator-start, validator-stop`
       );
   }
 

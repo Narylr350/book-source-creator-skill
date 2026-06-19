@@ -1,6 +1,6 @@
 # 教训：API + WebView 正文 + 登录态站点
 
-来源：黑盒实测（Android Probe + App 真机验证）
+来源：实测记录（Android Probe + App 真机验证）
 
 ## 必须做
 

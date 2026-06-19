@@ -20,14 +20,15 @@
 2. **登录/验证码** — 需要登录态或验证码
 3. **WebView/App-only** — 需要 WebView 但 Android Probe 不可用或验证失败
 4. **付费墙** — 内容需要付费
+5. **生成源含 WebView/WebJs 但未用 Android 验证** — 设备可用时必须用 `mode=android`；HTTP passed 不能作为可用结论
 
 以下情况标记 `validator_limitation`（不是 `needs_app_review`）：
 
-5. **validator 工具限制** — @js 动态 URL、相对路径未拼接、validator 不支持的规则能力
+6. **validator 工具限制** — @js 动态 URL、相对路径未拼接、validator 不支持的规则能力
 
 以下情况标记 `failed_unresolved`：
 
-6. **收敛失败** — 同一错误连续 5 次未修复（相同 error + 相同失败字段），判定为死循环，停止自动回修
+7. **收敛失败** — 同一错误连续 5 次未修复（相同 error + 相同失败字段），判定为死循环，停止自动回修
 
 ## 验收标准
 
@@ -38,6 +39,8 @@
 - content: status=success, contentLength >= 100
 
 不满足则不能标"可用"。
+
+验证结果必须通过 `bsg.mjs record-validation` 记录。不能用手工创建的 report/summary 代替。返回 `blockedBy=android_probe_not_used`、`android_device_disconnected`、`cookie_not_injected` 时按提示补用户动作或凭据后重跑 validator。
 
 ## 质量门槛
 

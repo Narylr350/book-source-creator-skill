@@ -4,6 +4,8 @@ import com.google.gson.Gson
 import com.google.gson.JsonObject
 import io.legado.validator.analyzeRule.AnalyzeUrl
 import io.legado.validator.debug.DebugStep
+import io.legado.validator.debug.classifyHtmlKind
+import io.legado.validator.debug.containsAppReviewChallenge
 import io.legado.validator.debug.determineFinalStatus
 import io.legado.validator.model.BookSource
 import io.legado.validator.webBook.WebBook
@@ -140,6 +142,47 @@ class P8RegressionTest {
             DebugStep("content", "success", sessionMode = "anonymous")
         )
         assertEquals("anonymous_candidate", determineFinalStatus(steps, source))
+    }
+
+    @Test
+    fun `anonymous login vertex failure needs app review`() {
+        val source = loadSource("novalpie-com.json")
+        val steps = listOf(
+            DebugStep("search", "error", errorCode = "SEARCH_EMPTY", sessionMode = "anonymous")
+        )
+        assertEquals("needs_app_review", determineFinalStatus(steps, source))
+    }
+
+    @Test
+    fun `app review search block controls final status`() {
+        val source = loadSource("69shuba-com.json")
+        val steps = listOf(
+            DebugStep(
+                "search",
+                "error",
+                errorCode = "APP_REVIEW_REQUIRED",
+                needsAppReview = true,
+                reviewReason = "Cloudflare Turnstile 验证页，需浏览器/App 复核"
+            )
+        )
+        assertEquals("needs_app_review", determineFinalStatus(steps, source))
+    }
+
+    @Test
+    fun `turnstile detection is not limited to first 500 chars`() {
+        val html = "x".repeat(800) + "https://challenges.cloudflare.com/turnstile/v0/api.js"
+        assertTrue(containsAppReviewChallenge(html))
+    }
+
+    @Test
+    fun `site verification meta is not captcha page`() {
+        val html = """
+            <html><head>
+              <meta name="baidu-site-verification" content="abc" />
+              <meta name="360-site-verification" content="def" />
+            </head><body><p class="chapter">正常正文内容</p></body></html>
+        """.trimIndent()
+        assertEquals("normal_reader_html", classifyHtmlKind(html))
     }
 
     @Test

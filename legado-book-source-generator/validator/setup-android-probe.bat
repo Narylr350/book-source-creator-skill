@@ -44,30 +44,52 @@ if errorlevel 1 (
 
 :adb_ready
 echo Checking devices...
+set DEVICE=
 for /f "skip=1 tokens=1,2" %%a in ('"%ADB%" devices') do (
     if "%%b"=="device" (
-        echo Found device: %%a
-        echo Installing APK...
-        "%ADB%" -s %%a install -r "%APK%"
-        if errorlevel 1 (
-            echo ERROR: Install failed
-            exit /b 1
-        )
-        echo Starting Probe...
-        "%ADB%" -s %%a shell am start -n io.legado.probe/.WebViewProbeActivity
-        echo Setting up port forward...
-        "%ADB%" -s %%a forward tcp:18888 tcp:18888
-        echo.
-        echo Android Probe is running on device %%a
-        echo Port forward: localhost:18888 ^> device:18888
-        echo.
-        echo To stop: "%ADB%" -s %%a shell am force-stop io.legado.probe
-        goto :done
+        if not defined DEVICE set DEVICE=%%a
     )
 )
 
-echo ERROR: No Android devices connected
+if not defined DEVICE (
+    echo ERROR: No Android devices connected
+    exit /b 1
+)
+
+echo Found device: %DEVICE%
+echo Clearing old port forward...
+"%ADB%" -s %DEVICE% forward --remove tcp:18888 >nul 2>&1
+echo Installing APK...
+"%ADB%" -s %DEVICE% install -r "%APK%"
+if errorlevel 1 (
+    echo ERROR: Install failed
+    exit /b 1
+)
+echo Starting Probe...
+"%ADB%" -s %DEVICE% shell am start -n io.legado.probe/.WebViewProbeActivity
+echo Setting up port forward...
+"%ADB%" -s %DEVICE% forward tcp:18888 tcp:18888
+if errorlevel 1 (
+    echo ERROR: Port forward failed
+    exit /b 1
+)
+echo Waiting for Probe /ping...
+for /l %%i in (1,1,20) do (
+    powershell -NoProfile -ExecutionPolicy Bypass -Command "try { $r = Invoke-WebRequest -UseBasicParsing -Uri 'http://127.0.0.1:18888/ping' -TimeoutSec 2; if ($r.StatusCode -eq 200) { exit 0 } } catch { exit 1 }"
+    if not errorlevel 1 goto :ready
+    timeout /t 1 /nobreak >nul
+)
+echo ERROR: Probe did not respond on http://127.0.0.1:18888/ping
+echo Try unlocking the phone, then run this script again. Do not manually adb install the APK.
 exit /b 1
+
+:ready
+echo.
+echo Android Probe is running on device %DEVICE%
+echo Port forward: localhost:18888 ^> device:18888
+echo Probe check: http://127.0.0.1:18888/ping OK
+echo.
+echo To stop: "%ADB%" -s %DEVICE% shell am force-stop io.legado.probe
 
 :done
 endlocal

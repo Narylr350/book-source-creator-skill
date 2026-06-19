@@ -17,6 +17,70 @@ import io.legado.validator.webBook.WebBook
 import kotlinx.coroutines.*
 import java.util.concurrent.ConcurrentLinkedQueue
 
+internal fun containsAppReviewChallenge(text: String): Boolean {
+    return text.contains("challenges.cloudflare.com/turnstile", ignoreCase = true)
+        || text.contains("turnstile.render", ignoreCase = true)
+        || text.contains("Just a moment", ignoreCase = true)
+        || containsCaptchaChallenge(text)
+        || text.contains("验证码", ignoreCase = true)
+}
+
+internal fun containsCaptchaChallenge(text: String): Boolean {
+    val patterns = listOf(
+        "recaptcha", "hcaptcha", "geetest", "verify you are a human", "are you a robot",
+        "人机验证", "安全验证", "滑块验证", "验证码"
+    )
+    if (patterns.any { text.contains(it, ignoreCase = true) }) return true
+    val captchaRegexes = listOf(
+        Regex("""(?i)(/|_|-|\b)captcha(\.php|\.jpg|\.png|/|_|-|\b)"""),
+        Regex("""(?i)(id|class|name)=["'][^"']*captcha[^"']*["']""")
+    )
+    return captchaRegexes.any { it.containsMatchIn(text) }
+}
+
+internal fun classifyHtmlKind(html: String?): String {
+    if (html.isNullOrBlank()) return "empty"
+    val lower = html.lowercase()
+
+    // CSR 空壳检测
+    val csrShells = listOf(
+        "import.meta.url", "__nuxt", "__vite", "vite_is_modern",
+        "window.__nuxt__", """<div id="__nuxt">""", """<div id="app"></div>""",
+        """id="__next"""", "_next/static", "webpackJsonp"
+    )
+    if (csrShells.any { lower.contains(it, ignoreCase = true) }) return "csr_shell"
+
+    // 登录页检测
+    // 大型页面（>25KB）即使含登录表单也优先判定为 reader_page——登录表单常出现在页头/页脚模板中
+    val loginPatterns = listOf("login", "signin", "log-in", "sign-in")
+    val loginFormPatterns = listOf(
+        """<input[^>]*type=["']?password""",
+        """name=["']?password""",
+        """id=["']?password"""
+    )
+    val hasLoginKeyword = loginPatterns.any { lower.contains(it) }
+    val hasLoginForm = loginFormPatterns.any {
+        Regex(it, RegexOption.IGNORE_CASE).containsMatchIn(html)
+    }
+    if (hasLoginKeyword && hasLoginForm) {
+        if (html.length < 25000) return "login_page"
+        val stripped = html.replace(Regex("""<(script|style|noscript)[^>]*>.*?</\1>""", RegexOption.IGNORE_CASE), "")
+            .replace(Regex("<[^>]+>"), " ").replace(Regex("\\s+"), " ").trim()
+        if (stripped.length < 3000) return "login_page"
+    }
+
+    if (containsCaptchaChallenge(html)) return "captcha_page"
+
+    // VIP/付费锁章检测
+    val vipPatterns = listOf(
+        "vip", "订阅", "付费", "解锁", "订阅本章",
+        "余额不足", "充值", "购买", "本章为 vip", "本章为付费"
+    )
+    if (vipPatterns.any { lower.contains(it) }) return "vip_lock_page"
+
+    return "normal_reader_html"
+}
+
 class DebugService {
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private val steps = ConcurrentLinkedQueue<DebugStep>()
@@ -202,17 +266,16 @@ class DebugService {
     private fun makeHttpError(res: StrResponse?, phase: String): String {
         if (res == null) return "${phase}失败: 无响应"
         val code = res.code
-        val snippet = res.body.take(500)
         val headers = res.headers
         return when {
             code == 403 && headers["Cf-Mitigated"]?.contains("challenge") == true ->
                 "HTTP 403 — Cloudflare 反爬拦截 (Cf-Mitigated: challenge)，需浏览器/App 复核"
-            snippet.contains("challenges.cloudflare.com/turnstile", ignoreCase = true)
-                || snippet.contains("turnstile.render", ignoreCase = true) ->
+            res.body.contains("challenges.cloudflare.com/turnstile", ignoreCase = true)
+                || res.body.contains("turnstile.render", ignoreCase = true) ->
                 "Cloudflare Turnstile 验证页，需浏览器/App 复核"
-            snippet.contains("Just a moment", ignoreCase = true) ->
+            res.body.contains("Just a moment", ignoreCase = true) ->
                 "Cloudflare challenge 页面，需浏览器/App 复核"
-            snippet.contains("captcha", ignoreCase = true) ->
+            res.body.contains("captcha", ignoreCase = true) ->
                 "需要验证码，需浏览器/App 复核"
             code == 403 -> "HTTP 403 Forbidden"
             code == 404 -> "HTTP 404 Not Found"
@@ -245,23 +308,26 @@ class DebugService {
                     )
                 } else {
                     val errorMsg = if (res != null) {
-                        val snippet = res.body.take(500)
                         when {
-                            snippet.contains("challenges.cloudflare.com/turnstile", ignoreCase = true)
-                                || snippet.contains("turnstile.render", ignoreCase = true) ->
+                            containsAppReviewChallenge(res.body) && res.body.contains("turnstile", ignoreCase = true) ->
                                 "Cloudflare Turnstile 验证页，需浏览器/App 复核"
-                            snippet.contains("Just a moment", ignoreCase = true) ->
+                            containsAppReviewChallenge(res.body) && res.body.contains("Just a moment", ignoreCase = true) ->
                                 "Cloudflare challenge 页面，需浏览器/App 复核"
+                            containsAppReviewChallenge(res.body) ->
+                                "需要验证码，需浏览器/App 复核"
                             res.code != 200 -> makeHttpError(res, "搜索")
                             else -> "搜索结果为空 (HTTP ${res.code}, 列表大小:0)"
                         }
                     } else "搜索结果为空"
                     val sErrorCode = when {
+                        errorMsg.contains(Regex("Cloudflare|Turnstile|challenge|验证码|captcha|App 复核", RegexOption.IGNORE_CASE)) ->
+                            ErrorCode.APP_REVIEW_REQUIRED.name
                         errorMsg.contains(Regex("403|Forbidden|404|503", RegexOption.IGNORE_CASE)) ->
                             ErrorCode.HTTP_BLOCKED.name
                         else -> ErrorCode.SEARCH_EMPTY.name
                     }
                     val sMeta = try { ErrorCodeRegistry.get(ErrorCode.valueOf(sErrorCode)) } catch (_: Exception) { null }
+                    val needsReview = sErrorCode == ErrorCode.APP_REVIEW_REQUIRED.name
                     DebugStep(
                         phase = "search", status = "error",
                         request = reqInfo, response = resInfo,
@@ -270,7 +336,9 @@ class DebugService {
                         subphase = sMeta?.subphase?.name?.lowercase(),
                         failedField = sMeta?.failedField,
                         allowedFixes = sMeta?.allowedFixes ?: emptyList(),
-                        forbiddenFixes = sMeta?.forbiddenFixes ?: emptyList()
+                        forbiddenFixes = sMeta?.forbiddenFixes ?: emptyList(),
+                        needsAppReview = needsReview,
+                        reviewReason = if (needsReview) errorMsg else null
                     )
                 }
             } catch (e: WebViewNotSupportedException) {
@@ -566,7 +634,7 @@ class DebugService {
                     else -> null
                 }
                 val resolvedFinalCode = finalErrorCode?.let { code -> try { ErrorCode.valueOf(code) } catch (_: Exception) { null } }
-                val finalMeta = resolvedFinalCode?.let { ErrorCodeRegistry.get(it) } ?: meta
+                val finalMeta = if (status == "error") resolvedFinalCode?.let { ErrorCodeRegistry.get(it) } ?: meta else null
                 val errorMsg = when {
                     htmlKind == "csr_shell" -> ErrorCodeRegistry.CONTENT_IS_CSR_SHELL_META.messageTemplate
                     htmlKind == "login_page" -> ErrorCodeRegistry.CONTENT_IS_LOGIN_PAGE_META.messageTemplate
@@ -588,7 +656,7 @@ class DebugService {
                     ),
                     preview = content.take(500),
                     error = errorMsg,
-                    errorCode = if (status == "error" || mismatchCode != null) finalErrorCode else null,
+                    errorCode = if (status == "error") finalErrorCode else null,
                     subphase = finalMeta?.subphase?.name?.lowercase(),
                     failedField = finalMeta?.failedField,
                     allowedFixes = finalMeta?.allowedFixes ?: emptyList(),
@@ -858,7 +926,7 @@ class DebugService {
                     else -> null
                 }
                 val resolvedFinalCode = finalErrorCode?.let { code -> try { ErrorCode.valueOf(code) } catch (_: Exception) { null } }
-                val finalMeta = resolvedFinalCode?.let { ErrorCodeRegistry.get(it) } ?: meta
+                val finalMeta = if (status == "error") resolvedFinalCode?.let { ErrorCodeRegistry.get(it) } ?: meta else null
                 val errorMsg = when {
                     htmlKind == "csr_shell" -> ErrorCodeRegistry.CONTENT_IS_CSR_SHELL_META.messageTemplate
                     htmlKind == "login_page" -> ErrorCodeRegistry.CONTENT_IS_LOGIN_PAGE_META.messageTemplate
@@ -890,7 +958,7 @@ class DebugService {
                         bodyLength = probeHtml.length
                     ),
                     error = errorMsg,
-                    errorCode = if (status == "error" || mismatchCode != null) finalErrorCode else null,
+                    errorCode = if (status == "error") finalErrorCode else null,
                     subphase = finalMeta?.subphase?.name?.lowercase(),
                     failedField = finalMeta?.failedField,
                     allowedFixes = finalMeta?.allowedFixes ?: emptyList(),
@@ -964,56 +1032,7 @@ class DebugService {
 
     /** 对原始/渲染后的 HTML 做页面分类，用于归因安全 */
     private fun classifyHtml(html: String?): String {
-        if (html.isNullOrBlank()) return "empty"
-        val lower = html.lowercase()
-
-        // CSR 空壳检测
-        val csrShells = listOf(
-            "import.meta.url", "__nuxt", "__vite", "vite_is_modern",
-            "window.__nuxt__", """<div id="__nuxt">""", """<div id="app"></div>""",
-            """id="__next"""", "_next/static", "webpackJsonp"
-        )
-        if (csrShells.any { lower.contains(it, ignoreCase = true) }) return "csr_shell"
-
-        // 登录页检测
-        // 大型页面（>25KB）即使含登录表单也优先判定为 reader_page——登录表单常出现在页头/页脚模板中
-        val loginPatterns = listOf("login", "signin", "log-in", "sign-in")
-        val loginFormPatterns = listOf(
-            """<input[^>]*type=["']?password""",
-            """name=["']?password""",
-            """id=["']?password"""
-        )
-        val hasLoginKeyword = loginPatterns.any { lower.contains(it) }
-        val hasLoginForm = loginFormPatterns.any {
-            Regex(it, RegexOption.IGNORE_CASE).containsMatchIn(html)
-        }
-        if (hasLoginKeyword && hasLoginForm) {
-            // Small page with login form → genuine login page
-            if (html.length < 25000) return "login_page"
-            // Large page: strip tags and check for substantial visible text
-            val stripped = html.replace(Regex("""<(script|style|noscript)[^>]*>.*?</\1>""", RegexOption.IGNORE_CASE), "")
-                .replace(Regex("<[^>]+>"), " ").replace(Regex("\\s+"), " ").trim()
-            // Login pages are dominated by form inputs; reader pages have long text passages
-            if (stripped.length < 3000) return "login_page"
-            // Large page with substantial text → reader page with incidental login elements
-            // Fall through to normal_reader_html
-        }
-
-        // 验证码页检测
-        val captchaPatterns = listOf(
-            "captcha", "turnstile", "challenges.cloudflare.com",
-            "recaptcha", "verify you are a human", "are you a robot"
-        )
-        if (captchaPatterns.any { lower.contains(it) }) return "captcha_page"
-
-        // VIP/付费锁章检测
-        val vipPatterns = listOf(
-            "vip", "订阅", "付费", "解锁", "订阅本章",
-            "余额不足", "充值", "购买", "本章为 vip", "本章为付费"
-        )
-        if (vipPatterns.any { lower.contains(it) }) return "vip_lock_page"
-
-        return "normal_reader_html"
+        return classifyHtmlKind(html)
     }
 
     // ── 构建 evidence ──────────────────────────────────────────────────────────
@@ -1039,10 +1058,12 @@ fun determineFinalStatus(steps: List<DebugStep>, source: BookSource? = null): St
         source.enabledCookieJar == true ||
         (!source.header.isNullOrBlank() && source.header!!.contains("Authorization", ignoreCase = true))
     )
+    val hasAnonymousLoginFailure = hasLoginVertex && isAnonymous && steps.any { it.status == "error" }
 
     return when {
         hasNeedsAppReview -> "needs_app_review"
         hasProbeUnavailable -> "validator_limitation"
+        hasAnonymousLoginFailure -> "needs_app_review"
         allPassed && isAnonymous && hasLoginVertex -> "anonymous_candidate"
         hasUnsupportedFeature && allPassed -> "validator_limitation"
         allPassed -> "passed"

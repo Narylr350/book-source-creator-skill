@@ -21,6 +21,7 @@
 
 import { readFileSync, writeFileSync, mkdirSync } from 'fs';
 import { join } from 'path';
+import { pathToFileURL } from 'url';
 
 const VALIDATOR_URL = process.env.VALIDATOR_URL || 'http://localhost:1111';
 
@@ -103,7 +104,7 @@ function determineStatus(result) {
   return { status: 'failed', reason: 'Unknown failure' };
 }
 
-function extractSummary(result) {
+export function extractSummary(result) {
   const summary = result.summary || {};
   const steps = result.steps || [];
   
@@ -114,8 +115,38 @@ function extractSummary(result) {
     contentPreview: (summary.contentPreview || '').slice(0, 200),
     phases: result.phases || {},
     ruleHitsCount: steps.reduce((acc, s) => acc + (s.ruleHits?.length || 0), 0),
-    failedFields: steps.flatMap(s => (s.ruleHits || []).filter(r => !r.success).map(r => r["field"]))
+    failedFields: steps
+      .filter(s => s.status === 'error')
+      .flatMap(s => (s.ruleHits || []).filter(r => !r.success).map(r => r["field"]))
   };
+}
+
+export function normalizeCookieFile(cookies) {
+  if (!cookies || typeof cookies !== 'object' || Array.isArray(cookies)) {
+    throw new Error('cookies.json 必须是对象');
+  }
+
+  if (typeof cookies.domain === 'string' && typeof cookies.cookie === 'string') {
+    if (!cookies.domain.includes('.') || !cookies.cookie.includes('=')) {
+      throw new Error('cookies.json 的 {domain,cookie} 格式无效');
+    }
+    return [{ domain: cookies.domain, cookie: cookies.cookie }];
+  }
+
+  const entries = Object.entries(cookies);
+  if (entries.length === 0) {
+    throw new Error('cookies.json 为空');
+  }
+  if (entries.length === 1 && entries[0][0] === 'domain' && typeof entries[0][1] === 'string' && entries[0][1].includes('=')) {
+    throw new Error('cookies.json 写成了 {"domain":"cookie_string"}，缺少真实域名键');
+  }
+
+  return entries.map(([domain, cookie]) => {
+    if (!domain.includes('.') || typeof cookie !== 'string' || !cookie.includes('=')) {
+      throw new Error('cookies.json 应为 {"www.example.com":"a=b; c=d"}，或 {"domain":"www.example.com","cookie":"a=b; c=d"}');
+    }
+    return { domain, cookie };
+  });
 }
 
 async function main() {
@@ -140,17 +171,18 @@ async function main() {
   // 加载 Cookie
   if (cookieFile) {
     try {
-      const cookies = JSON.parse(readFileSync(cookieFile, 'utf-8'));
-      for (const [domain, value] of Object.entries(cookies)) {
+      const cookieEntries = normalizeCookieFile(JSON.parse(readFileSync(cookieFile, 'utf-8')));
+      for (const { domain, cookie } of cookieEntries) {
         await fetch(`${VALIDATOR_URL}/api/cookie/set`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ domain, cookie: value })
+          body: JSON.stringify({ domain, cookie })
         });
       }
-      console.error(`已加载 ${Object.keys(cookies).length} 个域的 Cookie`);
+      console.error(`已加载 ${cookieEntries.length} 个域的 Cookie`);
     } catch (e) {
       console.error(`Cookie 文件加载失败: ${e.message}`);
+      process.exit(1);
     }
   }
   
@@ -260,7 +292,9 @@ async function main() {
   }
 }
 
-main().catch(e => {
-  console.error('执行失败:', e.message);
-  process.exit(1);
-});
+if (import.meta.url === pathToFileURL(process.argv[1] || '').href) {
+  main().catch(e => {
+    console.error('执行失败:', e.message);
+    process.exit(1);
+  });
+}

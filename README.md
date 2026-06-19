@@ -185,20 +185,6 @@ cd legado-book-source-generator
 npm test
 ```
 
-54 个测试，覆盖三层：
-
-| 层级 | 文件 | 覆盖内容 |
-|------|------|----------|
-| 单元测试 | `project-helper.test.mjs` | slug生成、JSON校验、脚手架输出 |
-| 单元测试 | `source-audit.test.mjs` | JS语法检查、占位检测、风险字段 |
-| 黑盒测试 | `blackbox.test.mjs` | CLI命令、交付物结构、文档契约 |
-
-黑盒测试不 import 内部函数，直接跑 `node scripts/project-helper.mjs ...` 验证：
-- `scaffold-output` 只生成 `book-source.json`
-- `scaffold-run` 只生成过程 md
-- `validate` 对合法/非法 JSON 返回正确退出码
-- 文档中不得把 md 放在 `outputs/` 下
-
 ## 样例
 
 | 样例 | 关键特征 |
