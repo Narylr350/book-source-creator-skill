@@ -413,18 +413,34 @@ function completePhase(phase, state, runDir) {
 
     // Login required but user hasn't logged in → block
     if (state.loginFeatures.hasEnabledCookieJar || state.loginFeatures.hasAuthorization) {
-      // Check if Probe already has login cookies (user logged in via /login)
-      let probeLoggedIn = false;
+      // Check login state from ALL sources, not just Probe
+      let loggedIn = false;
+      let loginMethod = null;
+
+      // Source 1: Android Probe cookies
       if (checkAdb()) {
         try {
           const probeCheck = execSync("curl -s http://localhost:18888/cookie-check 2>&1", { encoding: "utf-8", timeout: 3000 });
           const parsed = JSON.parse(probeCheck);
-          probeLoggedIn = parsed.hasCookies === true;
+          if (parsed.hasCookies === true) {
+            loggedIn = true;
+            loginMethod = "probe";
+          }
         } catch { /* probe not available */ }
       }
-      if (probeLoggedIn) {
-        // User already logged in via Probe → allow continue
-        state.loginFeatures._probeLoginVerified = true;
+
+      // Source 2: cookies.json in run directory (Browser MCP login)
+      if (!loggedIn) {
+        const cookieFile = path.join(runDir, "cookies.json");
+        if (fileExists(cookieFile)) {
+          loggedIn = true;
+          loginMethod = "browser_mcp_cookies";
+        }
+      }
+
+      if (loggedIn) {
+        state.loginFeatures._loginVerified = true;
+        state.loginFeatures._loginMethod = loginMethod;
         saveRunState(runDir, state);
         // Fall through to normal completion
       } else {
@@ -438,21 +454,18 @@ function completePhase(phase, state, runDir) {
           "站点需要登录态（enabledCookieJar / Authorization），但尚未完成登录。",
           "",
           adbOk
-            ? "检测到 Android 设备。优先用 Probe 原生登录（环境一致不掉验证码）："
-            : "未检测到 Android 设备。用 Browser MCP 桌面登录：",
+            ? "两种登录方式（优先 Probe）："
+            : "登录方式：",
           "",
           adbOk
-            ? "1. POST http://localhost:18888/login {\"url\":\"登录页URL\"} → 手机屏幕显示登录页"
-            : "1. 在 Browser MCP 中打开站点登录页，完成登录操作",
+            ? "方式1（推荐）：Probe 原生登录 — POST http://localhost:18888/login → 手机登录 → /cookie-check 确认"
+            : "",
           adbOk
-            ? "2. 用户在手机上完成登录，点底部 ✓ 完成登录"
-            : "2. 登录后回复「已登录」",
-          adbOk
-            ? "3. GET http://localhost:18888/cookie-check?domain=xxx 确认 Cookie"
-            : "3. AI 通过 browser_network_requests 提取 Cookie → 保存 cookies.json",
+            ? "方式2（备选）：Browser MCP 登录 — 打开登录页 → 完成登录 → browser_network_requests 提取 Cookie → 保存 runs/<slug>/cookies.json"
+            : "Browser MCP 登录 — 打开登录页 → 完成登录 → browser_network_requests 提取 Cookie → 保存 runs/<slug>/cookies.json",
           "",
           "如果没有该站账号，回复「无账号」——书源标为 anonymous_candidate。",
-        ].join("\n"),
+        ].filter(Boolean).join("\n"),
         blockingPhase: "assess",
         reason: "login_required",
         adbAvailable: adbOk,
