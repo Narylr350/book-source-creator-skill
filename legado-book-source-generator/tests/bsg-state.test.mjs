@@ -50,6 +50,18 @@ async function writeRequiredDeliverFiles(tmpDir, runDir) {
   }]), "utf8");
 }
 
+async function advanceToGenerate(tmpDir, runDir) {
+  await writeAssessmentAndRecord(runDir, [
+    "- 评级: 可生成",
+    "- 登录需求: 否",
+    "- 风险标签: 无风险",
+  ]);
+  await runBsg(["advance", "--run", runDir]);
+  await fs.writeFile(path.join(runDir, "analysis.md"), "# 网站分析\n", "utf8");
+  await runBsg(["advance", "--run", runDir]);
+  await fs.mkdir(path.join(tmpDir, "outputs", "example-com"), { recursive: true });
+}
+
 async function writeAssessmentAndRecord(runDir, lines) {
   const normalized = [...lines];
   if (!normalized.some((line) => /登录需求[：:]/.test(line))) {
@@ -487,5 +499,147 @@ describe("bsg workflow user-action gates", () => {
     assert.equal(result.status, "blocked");
     assert.equal(result.blockedBy, "cookie_not_injected");
     assert.match(result.message, /缺少真实域名键/);
+  });
+
+  it("blocks needs_app_review when report shows a hard toc rule error", async () => {
+    const runDir = await initRun(tmpDir);
+    await writeRequiredDeliverFiles(tmpDir, runDir);
+    await fs.writeFile(path.join(runDir, "validator-report.json"), JSON.stringify({
+      mode: "http",
+      phases: { search: "success", detail: "success", toc: "error" },
+      steps: [
+        { phase: "detail", status: "success", extracted: { tocUrl: "https://example.com/chapter-list/" } },
+        { phase: "toc", status: "error", request: { url: "https://example.com/chapter-list/" } },
+      ],
+    }), "utf8");
+
+    const result = await runBsg(["record-validation", "--run", runDir, "--status", "needs_app_review"]);
+
+    assert.equal(result.status, "blocked");
+    assert.equal(result.blockedBy, "hard_rule_error");
+    assert.match(result.message, /tocUrl|chapter-list|规则错误/);
+  });
+
+  it("blocks Probe login plus webView source when android report has no WebView render evidence", async () => {
+    const runDir = await initRun(tmpDir);
+    await writeRequiredDeliverFiles(tmpDir, runDir);
+    await fs.writeFile(path.join(runDir, "validator-report.json"), JSON.stringify({
+      mode: "android",
+      phases: { search: "success", detail: "success", toc: "success", content: "success" },
+      steps: [{
+        phase: "content",
+        status: "success",
+        mode: "android",
+        request: { headers: { Cookie: "a=b" } },
+      }],
+    }), "utf8");
+    const sourcePath = path.join(tmpDir, "outputs", "example-com", "book-source.json");
+    const source = JSON.parse(await fs.readFile(sourcePath, "utf8"));
+    source[0].ruleToc.chapterUrl = "{{$.url}},{\"webView\":true}";
+    await fs.writeFile(sourcePath, JSON.stringify(source), "utf8");
+    await runBsg(["set-login-features", "--run", runDir, "--flags", JSON.stringify({
+      hasEnabledCookieJar: true,
+      _loginMethod: "probe",
+    })]);
+
+    const result = await runBsg(["record-validation", "--run", runDir, "--status", "passed"]);
+
+    assert.equal(result.status, "blocked");
+    assert.equal(result.blockedBy, "android_webview_not_used");
+  });
+
+  it("accepts Probe login plus webView source when android content step has WebView render evidence", async () => {
+    const runDir = await initRun(tmpDir);
+    await writeRequiredDeliverFiles(tmpDir, runDir);
+    await fs.writeFile(path.join(runDir, "validator-report.json"), JSON.stringify({
+      mode: "android",
+      phases: { search: "success", detail: "success", toc: "success", content: "success" },
+      steps: [{
+        phase: "content",
+        status: "success",
+        mode: "android",
+        request: { headers: { Cookie: "a=b" } },
+        webViewHtmlPreview: "<html><body><div id=\"J_BookRead\">正文</div></body></html>",
+      }],
+    }), "utf8");
+    const sourcePath = path.join(tmpDir, "outputs", "example-com", "book-source.json");
+    const source = JSON.parse(await fs.readFile(sourcePath, "utf8"));
+    source[0].ruleToc.chapterUrl = "{{$.url}},{\"webView\":true}";
+    await fs.writeFile(sourcePath, JSON.stringify(source), "utf8");
+    await runBsg(["set-login-features", "--run", runDir, "--flags", JSON.stringify({
+      hasEnabledCookieJar: true,
+      _loginMethod: "probe",
+    })]);
+
+    const result = await runBsg(["record-validation", "--run", runDir, "--status", "passed"]);
+
+    assert.equal(result.status, "anonymous_candidate");
+    assert.equal(result.nextAction, "deliver");
+  });
+
+  it("blocks Probe login when android report stays anonymous with no cookie evidence", async () => {
+    const runDir = await initRun(tmpDir);
+    await writeRequiredDeliverFiles(tmpDir, runDir);
+    await fs.writeFile(path.join(runDir, "validator-report.json"), JSON.stringify({
+      mode: "android",
+      phases: { search: "success", detail: "success", toc: "success", content: "success" },
+      steps: [{
+        phase: "content",
+        status: "success",
+        mode: "android",
+        sessionMode: "anonymous",
+        request: { headers: { Cookie: "" } },
+      }],
+    }), "utf8");
+    await runBsg(["set-login-features", "--run", runDir, "--flags", JSON.stringify({
+      hasEnabledCookieJar: true,
+      _loginMethod: "probe",
+    })]);
+
+    const result = await runBsg(["record-validation", "--run", runDir, "--status", "passed"]);
+
+    assert.equal(result.status, "blocked");
+    assert.equal(result.blockedBy, "android_probe_cookie_not_used");
+    assert.match(result.message, /匿名|Cookie/);
+  });
+
+  it("record-validation generates validator-summary.md", async () => {
+    const runDir = await initRun(tmpDir);
+    await writeRequiredDeliverFiles(tmpDir, runDir);
+    await fs.rm(path.join(runDir, "validator-summary.md"), { force: true });
+    await fs.writeFile(path.join(runDir, "validator-report.json"), JSON.stringify({
+      mode: "http",
+      phases: { search: "success", detail: "success", toc: "success", content: "success" },
+      steps: [{ phase: "content", status: "success", mode: "http" }],
+    }), "utf8");
+
+    await runBsg(["record-validation", "--run", runDir, "--status", "passed"]);
+    const summary = await fs.readFile(path.join(runDir, "validator-summary.md"), "utf8");
+
+    assert.match(summary, /此文件由 record-validation 生成/);
+    assert.match(summary, /最终状态: passed/);
+  });
+
+  it("rejects ruleBookInfo.summary before leaving generate phase", async () => {
+    const runDir = await initRun(tmpDir);
+    await advanceToGenerate(tmpDir, runDir);
+    await fs.writeFile(path.join(tmpDir, "outputs", "example-com", "book-source.json"), JSON.stringify([{
+      bookSourceUrl: "https://example.com",
+      bookSourceName: "Example",
+      searchUrl: "https://example.com/search?q={{key}}",
+      ruleSearch: { bookList: "$.items", name: "$.title", bookUrl: "$.url" },
+      ruleBookInfo: { name: "$.title", summary: "$.summary" },
+      ruleToc: { chapterList: "$.chapters", chapterName: "$.title", chapterUrl: "$.url" },
+      ruleContent: { content: "$.content" },
+    }]), "utf8");
+
+    await assert.rejects(
+      () => execFileAsync("node", [BSG, "advance", "--run", runDir], { encoding: "utf8" }),
+      (err) => {
+        const result = JSON.parse(err.stdout);
+        assert.match(result.error, /ruleBookInfo\.summary|intro/);
+        return true;
+      },
+    );
   });
 });

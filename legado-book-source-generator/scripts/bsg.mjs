@@ -236,6 +236,112 @@ function reportUsedAndroidMode(reportPath) {
   }
 }
 
+function reportUsedAndroidWebView(reportPath) {
+  if (!fileExists(reportPath)) return false;
+  try {
+    const report = JSON.parse(fs.readFileSync(reportPath, "utf-8"));
+    return (report.steps || []).some((step) => {
+      if (step?.mode !== "android") return false;
+      if (step.phase !== "content") return false;
+      if (step.webViewHtmlPreview || step.webViewScreenshotBase64) return true;
+      const artifacts = step.debugArtifacts || {};
+      return Boolean(artifacts["response.rendered.html"] || artifacts["screenshot.png"]);
+    });
+  } catch {
+    return false;
+  }
+}
+
+function reportHasLoginSessionEvidence(reportPath) {
+  if (!fileExists(reportPath)) return false;
+  try {
+    const report = JSON.parse(fs.readFileSync(reportPath, "utf-8"));
+    if (report.sessionMode && report.sessionMode !== "anonymous") return true;
+    return (report.steps || []).some((step) => {
+      if (step.sessionMode && step.sessionMode !== "anonymous") return true;
+      const headers = step.request?.headers || {};
+      return Boolean(headers.Cookie || headers.cookie || headers.Authorization || headers.authorization);
+    });
+  } catch {
+    return false;
+  }
+}
+
+function reportHardRuleError(reportPath) {
+  if (!fileExists(reportPath)) return null;
+  try {
+    const report = JSON.parse(fs.readFileSync(reportPath, "utf-8"));
+    for (const step of report.steps || []) {
+      const phase = step?.phase || "";
+      const requestUrl = step?.request?.url || "";
+      const extracted = step?.extracted || {};
+      if (phase === "toc" && step.status === "error" && /\/chapter-list\/?(?:[?#]|$)/.test(requestUrl)) {
+        return "目录请求变成 /chapter-list/，这是 tocUrl/book id 规则错误，不是 App 复核或 validator 限制。";
+      }
+      if (phase === "detail" && /\/chapter-list\/?(?:[?#]|$)/.test(extracted.tocUrl || "")) {
+        return "详情阶段提取到的 tocUrl 缺少 book id，应修 ruleBookInfo.tocUrl，不应标 needs_app_review。";
+      }
+      if (phase === "detail" && step.status === "success") {
+        const missing = [];
+        if (Object.prototype.hasOwnProperty.call(extracted, "coverUrl") && !extracted.coverUrl) missing.push("coverUrl");
+        if (Object.prototype.hasOwnProperty.call(extracted, "intro") && !extracted.intro) missing.push("intro");
+        if (missing.length > 0) {
+          return `详情阶段 ${missing.join(", ")} 为空，这是选择器或字段名错误，不应包装成 App 复核。`;
+        }
+      }
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+function writeValidatorSummary(runDir, status, finalStatus, reportPath) {
+  const lines = [
+    "# 验证摘要",
+    "",
+    `- 记录状态: ${status}`,
+    `- 最终状态: ${finalStatus}`,
+  ];
+  if (reportPath && fileExists(reportPath)) {
+    try {
+      const report = JSON.parse(fs.readFileSync(reportPath, "utf-8"));
+      if (report.phases) lines.push(`- 阶段状态: ${JSON.stringify(report.phases)}`);
+      if (report.summary?.error) lines.push(`- 主要错误: ${report.summary.error}`);
+      lines.push(`- Android mode: ${reportUsedAndroidMode(reportPath) ? "有" : "无"}`);
+      lines.push(`- Android WebView 渲染证据: ${reportUsedAndroidWebView(reportPath) ? "有" : "无"}`);
+    } catch (e) {
+      lines.push(`- 报告读取失败: ${e.message}`);
+    }
+  }
+  lines.push("", "此文件由 record-validation 生成，不手写。");
+  fs.writeFileSync(path.join(runDir, "validator-summary.md"), lines.join("\n") + "\n", "utf-8");
+}
+
+function loadBookSource(runDir, state) {
+  const bookSourcePath = path.join(state.workingDir, "outputs", state.siteSlug, "book-source.json");
+  if (!fileExists(bookSourcePath)) {
+    return { ok: false, error: `book-source.json 不存在: ${bookSourcePath}。` };
+  }
+  try {
+    const sourceJson = fs.readFileSync(bookSourcePath, "utf-8");
+    const parsed = JSON.parse(sourceJson);
+    const sources = Array.isArray(parsed) ? parsed : [parsed];
+    return { ok: true, bookSourcePath, sourceJson, parsed, sources };
+  } catch (e) {
+    return { ok: false, error: `book-source.json 不是合法 JSON: ${e.message}` };
+  }
+}
+
+function validateBookSourceStructure(sources) {
+  for (const source of sources) {
+    if (source?.ruleBookInfo && Object.prototype.hasOwnProperty.call(source.ruleBookInfo, "summary")) {
+      return "ruleBookInfo.summary 不是阅读详情简介字段；应使用 ruleBookInfo.intro。";
+    }
+  }
+  return null;
+}
+
 function checkProbeCookies() {
   try {
     const raw = process.env.BSG_TEST_PROBE_COOKIE_CHECK != null
@@ -772,6 +878,11 @@ function completePhase(phase, state, runDir) {
     }
     if (parsed.length === 0) {
       return fail("book-source.json 是空数组，至少需要一个书源。");
+    }
+
+    const sourceStructureError = validateBookSourceStructure(parsed);
+    if (sourceStructureError) {
+      return fail(sourceStructureError);
     }
 
     // Check empty string fields
@@ -1488,6 +1599,28 @@ function cmdRecordValidation(args) {
     return fail(`仍有待用户确认动作: ${pendingBlock.requiredUserAction}。请先运行 resolve-user-action。`);
   }
 
+  const reportArg = parseArg(args, "--report");
+  const reportPathForMode = path.join(runDir, "validator-report.json");
+  if (reportArg) {
+    const reportSrc = path.resolve(reportArg);
+    if (!fileExists(reportSrc)) {
+      return fail(`--report 指定的 validator-report.json 不存在: ${reportSrc}`);
+    }
+    try {
+      JSON.parse(fs.readFileSync(reportSrc, "utf-8"));
+      if (path.resolve(reportSrc) !== path.resolve(reportPathForMode)) {
+        fs.copyFileSync(reportSrc, reportPathForMode);
+      }
+    } catch (e) {
+      return fail(`validator-report.json 不是合法 JSON: ${e.message}`);
+    }
+  }
+
+  const loadedSource = loadBookSource(runDir, state);
+  if (!loadedSource.ok) return fail(loadedSource.error);
+  const sourceStructureError = validateBookSourceStructure(loadedSource.sources);
+  if (sourceStructureError) return fail(sourceStructureError);
+
   const v = state.phases.validate;
   v.attempts += 1;
   v.lastStatus = status;
@@ -1499,10 +1632,40 @@ function cmdRecordValidation(args) {
   let cookieWarning = null;
   let androidWarning = null;
   let convergenceBlock = null;
+  let hardRuleBlock = null;
+
+  if (["passed", "needs_app_review", "validator_limitation", "degraded"].includes(status)) {
+    const hardRuleError = reportHardRuleError(reportPathForMode);
+    if (hardRuleError) {
+      hardRuleBlock = [
+        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+        "⛔ validator 报告包含明确规则错误",
+        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+        hardRuleError,
+        "请修正书源规则并重新验证，不要把规则错误标成 needs_app_review 或 validator_limitation。",
+        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+      ].join("\n");
+    }
+  }
+
+  if (hardRuleBlock) {
+    v.attempts -= 1;
+    v.lastStatus = "failed";
+    saveRunState(runDir, state);
+    writeValidatorSummary(runDir, status, "blocked:hard_rule_error", reportPathForMode);
+    return {
+      ok: true,
+      status: "blocked",
+      blockedBy: "hard_rule_error",
+      shouldRetry: true,
+      nextAction: "fix_rules_and_retry",
+      message: hardRuleBlock,
+    };
+  }
 
   // Check: content "success" but is actually CSR shell → fake pass
   if (status === "passed") {
-    const reportPath = path.join(runDir, "validator-report.json");
+    const reportPath = reportPathForMode;
     if (fileExists(reportPath)) {
       try {
         const report = JSON.parse(fs.readFileSync(reportPath, "utf-8"));
@@ -1566,7 +1729,6 @@ function cmdRecordValidation(args) {
     }
   }
 
-  const reportPathForMode = path.join(runDir, "validator-report.json");
   if (state.loginFeatures._loginMethod === "probe" && !reportUsedAndroidMode(reportPathForMode)) {
     if (checkAdb()) {
       androidWarning = [
@@ -1591,6 +1753,27 @@ function cmdRecordValidation(args) {
     }
   }
 
+  if (state.loginFeatures._loginMethod === "probe" && reportUsedAndroidMode(reportPathForMode) && !reportHasLoginSessionEvidence(reportPathForMode)) {
+    v.attempts -= 1;
+    saveRunState(runDir, state);
+    writeValidatorSummary(runDir, status, "blocked:android_probe_cookie_not_used", reportPathForMode);
+    return {
+      ok: true,
+      status: "blocked",
+      blockedBy: "android_probe_cookie_not_used",
+      shouldRetry: true,
+      nextAction: "rerun_android_validation_with_probe_cookie",
+      message: [
+        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+        "⛔ Probe 登录态没有进入 validator 报告",
+        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+        "本轮登录已记录为 Android Probe，但 validator-report.json 仍是匿名会话：未看到非 anonymous sessionMode，也未看到 Cookie/Authorization 请求头。",
+        "这说明只是完成了手机登录动作，验证请求没有使用该登录态。请确认 /cookie-check 有 Cookie 后，重新用 Android mode 验证。",
+        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+      ].join("\n"),
+    };
+  }
+
   // Check: book source has webView/webJs → verify via Android Probe
   const bookSourcePath = path.join(state.workingDir, "outputs", state.siteSlug, "book-source.json");
   if (fileExists(bookSourcePath)) {
@@ -1607,6 +1790,7 @@ function cmdRecordValidation(args) {
         const adbOk = checkAdb();
         // Check if Android mode was actually used (not HTTP fallback)
         let androidWasUsed = reportUsedAndroidMode(reportPathForMode);
+        const androidWebViewWasUsed = reportUsedAndroidWebView(reportPathForMode);
 
         if (adbOk && !androidWasUsed) {
           // Device connected but AI didn't use it → BLOCK
@@ -1616,6 +1800,16 @@ function cmdRecordValidation(args) {
             "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
             "adb 检测到设备，但你用了 mode=http 验证 WebView 正文。",
             "立即执行: validator/setup-android-probe.bat → 重新验证 → record-validation。",
+            "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+          ].join("\n");
+        } else if (androidWasUsed && !androidWebViewWasUsed) {
+          androidWarning = [
+            "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+            "⛔ Android mode 没有实际 WebView 渲染证据",
+            "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+            "validator-report.json 标了 mode=android，但 content 阶段没有 response.rendered.html / screenshot.png / webViewHtmlPreview / webViewScreenshotBase64。",
+            "这只能说明 Probe/Android 通道被调用过，不能证明阅读 App WebView 渲染过正文。",
+            "重新用 Android Probe 验证正文页，并开启 debugDir 产物；如果站点是纯 SSR 且不需要 WebView，应移除 webView:true / webJs 后重跑。",
             "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
           ].join("\n");
         } else if (state.adbDetected) {
@@ -1664,6 +1858,11 @@ function cmdRecordValidation(args) {
         saveRunState(runDir, state);
         return { ok: true, status: "blocked", blockedBy: "android_device_disconnected", shouldRetry: true, nextAction: "reconnect_device_and_retry", message: androidWarning };
       }
+    } else if (!reportUsedAndroidWebView(reportPathForMode) && (state.loginFeatures.hasWebView || state.loginFeatures.hasWebJs)) {
+      v.attempts -= 1;
+      saveRunState(runDir, state);
+      writeValidatorSummary(runDir, status, "blocked:android_webview_not_used", reportPathForMode);
+      return { ok: true, status: "blocked", blockedBy: "android_webview_not_used", shouldRetry: true, nextAction: "rerun_android_webview_validation", message: androidWarning };
     }
   }
   // Never had device → warning only, allow continue
@@ -1782,6 +1981,8 @@ function cmdRecordValidation(args) {
     nextAction = "deliver";
   }
 
+  v.recordedAt = new Date().toISOString();
+  writeValidatorSummary(runDir, status, finalStatus, reportPathForMode);
   saveRunState(runDir, state);
 
   let baseMessage;
@@ -1825,22 +2026,22 @@ function cmdDeliverCheck(state, runDir) {
   const missing = requiredFiles.filter((f) => !fileExists(path.join(runDir, f)));
 
   if (missing.length > 0) {
-    return fail(`交付前文件不完整。缺少: ${missing.join(", ")}`);
+    const summaryHint = missing.includes("validator-summary.md")
+      ? "validator-summary.md 必须由 record-validation 生成；不要手写补文件。"
+      : "";
+    return fail(`交付前文件不完整。缺少: ${missing.join(", ")}${summaryHint ? " " + summaryHint : ""}`);
+  }
+
+  const summaryText = fs.readFileSync(path.join(runDir, "validator-summary.md"), "utf-8");
+  if (!summaryText.includes("此文件由 record-validation 生成")) {
+    return fail("validator-summary.md 不是 record-validation 生成的摘要。请重新运行 record-validation，不要手写 summary。");
   }
 
   // Check book-source.json
-  const bookSourcePath = path.join(state.workingDir, "outputs", state.siteSlug, "book-source.json");
-  if (!fileExists(bookSourcePath)) {
-    return fail("book-source.json 不存在。");
-  }
-
-  let sourceJson;
-  try {
-    sourceJson = fs.readFileSync(bookSourcePath, "utf-8");
-    JSON.parse(sourceJson);
-  } catch (e) {
-    return fail(`book-source.json 不是合法 JSON: ${e.message}`);
-  }
+  const loadedSource = loadBookSource(runDir, state);
+  if (!loadedSource.ok) return fail(loadedSource.error);
+  const sourceStructureError = validateBookSourceStructure(loadedSource.sources);
+  if (sourceStructureError) return fail(sourceStructureError);
 
   const v = state.phases.validate;
   const hasLoginFeatures = Object.values(state.loginFeatures).some((b) => b === true);

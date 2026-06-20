@@ -62,6 +62,12 @@ node "<skill-dir>/scripts/bsg.mjs" resolve-user-action --run <run-dir> --action 
 
 登录优先级：有 adb → Probe 原生登录并用 Android mode 验证；无 adb → Browser MCP 登录 + Cookie 提取。详见 `references/policies.md`
 
+注意区分两件事：
+- Probe 原生登录只证明登录态来自手机环境。
+- `mode=android` 只证明 validator 走过 Android 通道。
+- Probe 登录后的验证报告必须能看到登录态证据（非 anonymous sessionMode，或 Cookie/Authorization 请求头）。如果报告仍是匿名会话，说明登录动作没有进入验证请求。
+- 生成源含 `webView:true` / `webJs` 时，必须在正文 content 阶段看到 Android WebView 渲染证据（`response.rendered.html`、`screenshot.png`、`webViewHtmlPreview` 或 `webViewScreenshotBase64`）。只有 `mode=android` 但没有正文渲染证据，按“未使用 Android WebView 验证”处理，不能交付。
+
 常用动作：`android_device_ready`、`android_device_unavailable`、`login_completed`、`no_account`、`continue_after_rating_block`。
 
 Probe 手机登录时必须给用户明确步骤，不要只说"完成登录"：
@@ -141,3 +147,5 @@ node "<skill-dir>/scripts/bsg.mjs" record-validation --run <run-dir> --status <p
 `record-assessment` 返回错误时，不展示评估摘要，不询问后续选择，先修正 `assessment.md`。VIP、付费、订阅、会员、登录态、Cookie、Authorization、401/403 不能写成“登录需求: 否”或“风险标签: 无风险”。
 
 禁止手工写 `validator-report.json` / `validator-summary.md` 后交付。`deliver` 只接受 `record-validation` 写入的真实状态。
+
+`validator-summary.md` 由 `record-validation` 自动生成；缺失或不是脚本生成时，重新运行 `record-validation`，不要手写补齐。

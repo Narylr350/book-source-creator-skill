@@ -164,7 +164,13 @@ node scripts/bsg.mjs record-validation --run runs/<slug> --status <status> --rep
 
 `record-validation` 会再次读取 `outputs/<slug>/book-source.json`。如果源里有 `webView:true` / `webJs`，或本轮登录态来自 Android Probe，但报告不是 `mode=android`，且 `android-status` 显示设备可用，会返回 `blockedBy=android_probe_not_used`。这种情况必须重跑 android mode，不能交付。
 
-`deliver` 没有 `record-validation` 状态会拒绝交付。不要手工伪造 `validator-report.json` 或 `validator-summary.md`。
+`mode=android` 不是 Android WebView 正文验证的充分证据。生成源含 `webView:true` / `webJs` 时，报告必须在 content 阶段留下 Android WebView 渲染证据：`webViewHtmlPreview`、`webViewScreenshotBase64`、`debugArtifacts["response.rendered.html"]` 或 `debugArtifacts["screenshot.png"]`。否则 `record-validation` 返回 `blockedBy=android_webview_not_used`。
+
+Probe 登录后的报告必须有登录态证据：非 `anonymous` 的 `sessionMode`，或请求头里有 Cookie/Authorization。否则 `record-validation` 返回 `blockedBy=android_probe_cookie_not_used`，说明只是完成了手机登录动作，validator 请求没有使用该登录态。
+
+报告中出现明确规则错误时，不允许把状态写成 `needs_app_review` 或 `validator_limitation`。典型规则错误包括：目录请求变成 `/chapter-list/`、详情阶段提取到的 `tocUrl` 缺少 book id、详情成功但 `coverUrl` / `intro` 为空。先修规则再重跑 validator。
+
+`deliver` 没有 `record-validation` 状态会拒绝交付。不要手工伪造 `validator-report.json` 或 `validator-summary.md`；`validator-summary.md` 只能由 `record-validation` 生成。
 
 ## 判定逻辑（Validator 端）
 

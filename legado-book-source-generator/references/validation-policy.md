@@ -21,14 +21,17 @@
 3. **WebView/App-only** — 需要 WebView 但 Android Probe 不可用或验证失败
 4. **付费墙** — 内容需要付费
 5. **生成源含 WebView/WebJs 但未用 Android 验证** — 设备可用时必须用 `mode=android`；HTTP passed 不能作为可用结论
+6. **Probe 登录态未进入验证请求** — Probe 登录后报告仍是 anonymous 且无 Cookie/Authorization，必须重新注入登录态验证
+7. **只有 Android mode 但没有正文 WebView 渲染证据** — content 阶段必须有 rendered HTML、截图或 WebView preview；否则按未验证处理
+8. **报告已证明是规则错误** — 例如 toc 请求缺 book id、详情字段为空，必须回修规则，不能标 `needs_app_review` / `validator_limitation`
 
 以下情况标记 `validator_limitation`（不是 `needs_app_review`）：
 
-6. **validator 工具限制** — @js 动态 URL、相对路径未拼接、validator 不支持的规则能力
+9. **validator 工具限制** — @js 动态 URL、相对路径未拼接、validator 不支持的规则能力
 
 以下情况标记 `failed_unresolved`：
 
-7. **收敛失败** — 同一错误连续 5 次未修复（相同 error + 相同失败字段），判定为死循环，停止自动回修
+10. **收敛失败** — 同一错误连续 5 次未修复（相同 error + 相同失败字段），判定为死循环，停止自动回修
 
 ## 验收标准
 
@@ -40,7 +43,7 @@
 
 不满足则不能标"可用"。
 
-验证结果必须通过 `bsg.mjs record-validation` 记录。不能用手工创建的 report/summary 代替。返回 `blockedBy=android_probe_not_used`、`android_device_disconnected`、`cookie_not_injected` 时按提示补用户动作或凭据后重跑 validator。
+验证结果必须通过 `bsg.mjs record-validation` 记录。不能用手工创建的 report/summary 代替。返回 `blockedBy=android_probe_not_used`、`android_probe_cookie_not_used`、`android_webview_not_used`、`android_device_disconnected`、`hard_rule_error`、`cookie_not_injected` 时按提示补用户动作、凭据或规则后重跑 validator。
 
 ## 质量门槛
 
