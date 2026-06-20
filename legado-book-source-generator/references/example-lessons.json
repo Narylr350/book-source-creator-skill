@@ -1,0 +1,53 @@
+{
+  "version": "1.0",
+  "lessons": [
+    {
+      "lessonId": "partial-chain-success-is-not-full-pass",
+      "source": "examples",
+      "confidence": "heuristic",
+      "triggerTags": ["search_blocked", "detail_success", "toc_success", "content_success"],
+      "checkQuestions": [
+        "搜索链路是否独立验证成功？",
+        "是否存在已验证的替代入口？",
+        "是否把详情/目录/正文成功误写成整体 full pass？"
+      ],
+      "notEvidence": ["historical selector", "historical URL", "historical site behavior"]
+    },
+    {
+      "lessonId": "desktop-cookie-is-not-mobile-webview-cookie",
+      "source": "examples",
+      "confidence": "heuristic",
+      "triggerTags": ["login_cookie", "android_probe"],
+      "checkQuestions": [
+        "登录态是否来自当前验证环境？",
+        "validator 请求里是否真的有 Cookie/Authorization？",
+        "是否把桌面浏览器登录当成手机 WebView 登录？"
+      ],
+      "notEvidence": ["browser logged-in UI", "manual login claim"]
+    },
+    {
+      "lessonId": "ssr-content-does-not-prove-discovery",
+      "source": "examples",
+      "confidence": "heuristic",
+      "triggerTags": ["content_ssr", "search_unknown"],
+      "checkQuestions": [
+        "正文 SSR 是否只证明 content 链路？",
+        "搜索/书库/发现是否单独验证？",
+        "是否把正文 HTML 可见误写成全站无反爬？"
+      ],
+      "notEvidence": ["content page html", "single direct chapter url"]
+    },
+    {
+      "lessonId": "example-selector-is-not-current-site-fact",
+      "source": "examples",
+      "confidence": "heuristic",
+      "triggerTags": ["using_example"],
+      "checkQuestions": [
+        "selector 是否来自当前站点实测 DOM？",
+        "URL 是否来自当前站点实测请求？",
+        "是否仅复用了历史样例结构而未验证？"
+      ],
+      "notEvidence": ["example book-source.json", "old run artifacts"]
+    }
+  ]
+}

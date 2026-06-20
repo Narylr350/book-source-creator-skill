@@ -43,11 +43,13 @@
 
 不满足则不能标"可用"。
 
-验证结果必须通过 `bsg.mjs record-validation` 记录。不能用手工创建的 report/summary 代替。返回 `blockedBy=android_probe_not_used`、`android_probe_cookie_not_used`、`android_webview_not_used`、`android_device_disconnected`、`hard_rule_error`、`cookie_not_injected` 时按提示补用户动作、凭据或规则后重跑 validator。
+验证结果必须通过 `bsg.mjs record-validation` 记录。不能用手工创建的 report/summary 代替。`record-validation` 会生成 `capability-matrix.json`，后续只能从 matrix 判断 search/detail/toc/content 的状态、blocker、render 和 full pass。返回 `blockedBy=android_probe_not_used`、`android_probe_cookie_not_used`、`android_webview_not_used`、`android_device_disconnected`、`hard_rule_error`、`cookie_not_injected` 时按提示补用户动作、凭据或规则后重跑 validator。
 
 ## 质量门槛
 
 **validator passed ≠ 质量 pass。** validator 只验证技术链路，不验证书源质量。
+
+局部链路成功不等于 full pass。比如 search 被验证码阻断、detail/toc/content 成功时，`capability-matrix.json` 必须是 `partial_candidate`，交付说明不得写成全链路可用。
 
 以下情况不能标 full pass，只能标 degraded（可导入但阅读体验降级）：
 - `ruleToc.chapterUrl` 为空

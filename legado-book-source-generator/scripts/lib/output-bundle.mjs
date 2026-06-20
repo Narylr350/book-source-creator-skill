@@ -22,42 +22,28 @@ export function initializeRunBundle(rootDir, siteUrl) {
     "assessment.md": [
       "# 网站可生成性评估",
       "",
-      "- 目标站点: ",
-      `- 站点 URL: ${siteUrl}`,
-      "- 登录需求: ",
-      "- 用户选择: 待用户确认",
-      "- 当前分析会话: 匿名 / 已登录 / 登录失败 / 待确认",
-      "- 评级: 可生成 / 不建议生成",
-      "- 风险标签: （可多选）无风险 / WebView 依赖 / 需登录态 / 有反爬风险 / 加密正文",
-      "- 官方规则对照: 已完成 / 未完成",
-      "- 辅助文档对照: 已完成 / 未完成",
+      "<!-- AUTO:BEGIN summary -->",
+      "<!-- AUTO:HASH pending -->",
+      "- 站点 URL: " + siteUrl,
+      "- 评级: 待评估",
+      "- 风险标签: 待评估",
+      "- 总体状态: pending",
+      "- 搜索链路: unknown",
+      "- 详情链路: unknown",
+      "- 目录链路: unknown",
+      "- 正文链路: unknown",
+      "- 登录/Android/WebView: 待评估",
+      "- 阻塞原因: 待评估",
+      "- 待确认动作: 无",
+      "<!-- AUTO:END summary -->",
       "",
-      "## 结论",
+      "## 证据说明",
       "",
-      "- 继续生成: 是 / 否",
-      "- 继续生成理由: ",
+      "<!-- AI 可写；每条事实说明必须引用 site-facts 或 validator-report 的 evidence id，例如 evidence:search-1。 -->",
       "",
-      "## 关键依据",
+      "## 分析备注",
       "",
-      "- 搜索链路: ",
-      "- 详情链路: ",
-      "- 目录链路: ",
-      "- 正文链路: ",
-      "",
-      "## 风险与阻塞",
-      "",
-      "- 反爬或验证码: ",
-      "- 会员限制: ",
-      "- 动态签名或加密: ",
-      "- 支付限制: ",
-      "- 其他阻塞点: ",
-      "- `P15(WebView)` 是否已排除: ",
-      "- 更低复杂度回退是否已排除: ",
-      "",
-      "## 预期失效环节",
-      "",
-      "- 若继续生成，最可能失败的链路: ",
-      "- 失败原因: ",
+      "<!-- AI 可写当前判断、selector 来源、修正原因；不得修改 AUTO 区块结论。 -->",
       "",
     ].join("\n"),
     "analysis.md": [
@@ -113,6 +99,52 @@ export function initializeRunBundle(rootDir, siteUrl) {
     const filePath = path.join(bundleDir, filename);
     if (!fs.existsSync(filePath)) {
       fs.writeFileSync(filePath, content, "utf8");
+    }
+  }
+
+  const jsonTemplates = {
+    "site-facts.json": {
+      version: "1.0",
+      siteUrl,
+      links: {
+        search: { status: "unknown", blocker: null, render: null, evidenceIds: [] },
+        detail: { status: "unknown", blocker: null, render: null, evidenceIds: [] },
+        toc: { status: "unknown", blocker: null, render: null, evidenceIds: [] },
+        content: { status: "unknown", blocker: null, render: null, evidenceIds: [] },
+      },
+      evidence: [],
+    },
+    "capability-matrix.json": {
+      version: "1.0",
+      status: "pending",
+      links: {
+        search: { status: "unknown", blocker: null, render: null, evidenceIds: [] },
+        detail: { status: "unknown", blocker: null, render: null, evidenceIds: [] },
+        toc: { status: "unknown", blocker: null, render: null, evidenceIds: [] },
+        content: { status: "unknown", blocker: null, render: null, evidenceIds: [] },
+      },
+      overall: { status: "pending", fullPass: false, blockers: [] },
+    },
+    "rule-check.json": {
+      version: "1.0",
+      status: "pending",
+      source: "official-rule-pack",
+      errors: [],
+      warnings: [],
+      checkedRuleIds: [],
+    },
+    "lesson-check.json": {
+      version: "1.0",
+      status: "pending",
+      triggeredLessons: [],
+      answers: [],
+    },
+  };
+
+  for (const [filename, data] of Object.entries(jsonTemplates)) {
+    const filePath = path.join(bundleDir, filename);
+    if (!fs.existsSync(filePath)) {
+      fs.writeFileSync(filePath, JSON.stringify(data, null, 2) + "\n", "utf8");
     }
   }
 

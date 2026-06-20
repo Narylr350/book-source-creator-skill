@@ -7,15 +7,19 @@ outputs/<site-slug>/
   book-source.json          # 唯一默认用户交付物
 
 runs/<site-slug>/
-  assessment.md             # 可生成性评估（过程记录）
+  assessment.md             # 可生成性评估（AUTO 结论 + AI 证据说明）
+  site-facts.json           # probe/assessment 阶段机器事实
   analysis.md               # 网站分析（过程记录）
   validation-checklist.md   # 验收清单（过程记录）
   validator-report.json     # validator 验证报告
+  capability-matrix.json    # record-validation 归一化链路能力矩阵
+  rule-check.json           # official-rule-pack 静态规则审计结果
+  lesson-check.json         # examples lesson 检查问题与回答
   validator-summary.md      # validator 验证摘要
 ```
 
 - `outputs/` 只放可交付内容，即 `book-source.json`。
-- `runs/` 放 AI 生成过程、自检、分析记录，用于 AI 接力、故障回溯。
+- `runs/` 放 AI 生成过程、自检、机器事实、分析记录，用于 AI 接力、故障回溯。
 - 输出目录和文件完整性由 `bsg.mjs init` 创建、`bsg.mjs check` 验证。
 
 ## book-source.json 要求

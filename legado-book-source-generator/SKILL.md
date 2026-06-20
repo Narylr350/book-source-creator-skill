@@ -42,7 +42,9 @@ HTTP fetch 单独永远不够——它看不到 DOM、不执行 JS、不渲染 C
 
 **Probe 阶段遇到登录墙：立即停止所有探测，直接问用户是否可登录。** 触发条件：任一页面重定向到 /login、API 返回 401/403、页面显示"请先登录"。不要检查 localStorage、不要翻源码、不要研究 WebSocket——每多一步都在浪费用户时间。
 
-写完 `assessment.md` 后必须先运行 `record-assessment`。只有 `record-assessment` 返回 `ok:true` 后，才能向用户展示 3-6 行评估摘要。摘要包含：评级、风险标签、4 条链路状态、关键阻塞点（如有）。
+Probe 阶段必须把四链路事实写入 `runs/<slug>/site-facts.json`。`assessment.md` 的 AUTO 结论由 `record-assessment` 从 `site-facts.json` 生成，AI 只能写 AUTO 区块外的证据说明/分析备注，并且证据说明必须引用有效 `evidence:<id>`。
+
+写完 `assessment.md` 后必须先运行 `record-assessment`。只有 `record-assessment` 返回 `ok:true` 后，才能向用户展示 3-6 行评估摘要。摘要只能取 AUTO 区块里的评级、风险标签、4 条链路状态、关键阻塞点（如有），不要自由改写成“正常阅读/无验证码/可用”等结论。
 
 `requiredUserAction` 非 null 时停下来等用户。用户答复后只用命令记录决定：
 
@@ -81,8 +83,8 @@ Probe 手机登录时必须给用户明确步骤，不要只说"完成登录"：
 ## 原则
 
 1. 实测优先于模型推断。冲突以 Browser MCP 为准，写明修正原因。
-2. 官方规则优先。服从 `references/legado-official-rule-notes.md`。
-3. `candidates/` 是参考素材，不是可用书源。
+2. 规则来源分层：`official-rule-pack.json` 管官方教程可确认的硬规则；`legado-source-behavior.md` 只记录源码/实现确认行为；validator 文档管验证策略；`example-lessons.json` 只提供检查提醒。
+3. examples 是经验样例，不是当前站点事实。不得把历史 selector、URL、站点行为当证据。
 4. Browser MCP ≠ Android WebView。写"桌面浏览器可渲染"，不写"Legado WebView 可渲染"。
 5. WebView 渲染，不解密。正文加密但浏览器能渲染 → `webView: true` + `webJs` 从 DOM 提取。不分析加密算法。
 6. 只覆盖 search / detail / toc / content。不启用发现页，除非用户明确要求。
@@ -94,9 +96,9 @@ Probe 手机登录时必须给用户明确步骤，不要只说"完成登录"：
 
 | 阶段 | 必读 | 按需 |
 |------|------|------|
-| probe / assess | `references/policies.md`、`references/assessment-template.md` | |
+| probe / assess | `references/policies.md`、`references/assessment-template.md` | `references/example-lessons.json` |
 | analyze | `references/analysis-workflow.md` | `references/webview-behavior-matrix.md`（CSR/WebView）、`examples/README.md` |
-| generate | `references/legado-official-rule-notes.md`、`references/legado-json-structure.md` | `examples/README.md`、`examples/<site>/book-source.json` |
+| generate | `references/official-rule-pack.json`、`references/legado-source-behavior.md`、`references/legado-json-structure.md` | `examples/README.md`、`examples/<site>/book-source.json` |
 | validate | `references/validator-integration.md`、`references/validation-policy.md` | `references/failure-diagnosis.md`、`references/validation-checklist.md` |
 | 调试/复核 | `references/debugging-collaboration.md` | `references/failure-diagnosis.md` |
 
@@ -144,8 +146,8 @@ node "<skill-dir>/scripts/bsg.mjs" record-validation --run <run-dir> --status <p
 
 `record-validation` 返回 `blocked` 时按 `blockedBy` 处理，不要继续 `advance` 或 `deliver`。
 
-`record-assessment` 返回错误时，不展示评估摘要，不询问后续选择，先修正 `assessment.md`。VIP、付费、订阅、会员、登录态、Cookie、Authorization、401/403 不能写成“登录需求: 否”或“风险标签: 无风险”。
+`record-assessment` 返回错误时，不展示评估摘要，不询问后续选择，先修正 `site-facts.json` 或 `assessment.md` 的证据说明。VIP、付费、订阅、会员、登录态、Cookie、Authorization、401/403 由 facts/blocker 推导，不能靠 AI 文本改成无风险。
 
 禁止手工写 `validator-report.json` / `validator-summary.md` 后交付。`deliver` 只接受 `record-validation` 写入的真实状态。
 
-`validator-summary.md` 由 `record-validation` 自动生成；缺失或不是脚本生成时，重新运行 `record-validation`，不要手写补齐。
+`record-validation` 会生成 `capability-matrix.json` 和 `validator-summary.md`；`generate` 阶段会生成 `rule-check.json`。`deliver` 只从 `capability-matrix.json` / `rule-check.json` / run-state 决定最终状态。缺失或不是脚本生成时，重新运行对应命令，不要手写补齐。

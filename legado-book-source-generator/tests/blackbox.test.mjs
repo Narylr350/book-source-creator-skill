@@ -99,14 +99,11 @@ describe("CLI: scaffold-run", () => {
     await execFileAsync("node", [HELPER, "scaffold-run", tmpDir, "https://example.com"]);
 
     const content = await fs.readFile(path.join(tmpDir, "example-com", "assessment.md"), "utf8");
-    assert.ok(content.includes("- 用户选择: 待用户确认"), "用户选择不应预设为登录/不登录");
-    assert.ok(content.includes("- 当前分析会话: 匿名 / 已登录 / 登录失败 / 待确认"), "应包含当前分析会话字段");
-    assert.ok(content.includes("官方规则对照"), "应包含官方规则对照字段");
-    assert.ok(content.includes("辅助文档对照"), "应包含辅助文档对照字段");
-    assert.ok(content.includes("## 结论"), "应包含结论章节");
-    assert.ok(content.includes("## 关键依据"), "应包含关键依据章节");
-    assert.ok(content.includes("## 风险与阻塞"), "应包含风险与阻塞章节");
-    assert.ok(content.includes("## 预期失效环节"), "应包含预期失效环节章节");
+    assert.ok(content.includes("<!-- AUTO:BEGIN summary -->"), "应包含脚本自动结论区");
+    assert.ok(content.includes("<!-- AUTO:HASH pending -->"), "初始自动结论区应等待 record-assessment 生成 hash");
+    assert.ok(content.includes("## 证据说明"), "应包含 AI 证据说明区");
+    assert.ok(content.includes("## 分析备注"), "应包含 AI 分析备注区");
+    assert.ok(!content.includes("用户选择: 登录分析 / 不登录分析"), "不应预设登录/不登录选择");
   });
 
   it("参数不足时退出码为 2", async () => {

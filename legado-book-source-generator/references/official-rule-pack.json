@@ -1,0 +1,67 @@
+{
+  "version": "1.0",
+  "sourceUrl": "https://mgz0227.github.io/The-tutorial-of-Legado/Rule/source.html",
+  "rules": [
+    {
+      "id": "book-info-intro-field",
+      "sourceKind": "official-tutorial",
+      "sourceUrl": "https://mgz0227.github.io/The-tutorial-of-Legado/Rule/source.html",
+      "severity": "error",
+      "checkKind": "forbidField",
+      "target": "ruleBookInfo.summary",
+      "message": "ruleBookInfo.summary 不是阅读详情简介字段；应使用 ruleBookInfo.intro。"
+    },
+    {
+      "id": "url-options-post-method",
+      "sourceKind": "official-tutorial",
+      "sourceUrl": "https://mgz0227.github.io/The-tutorial-of-Legado/Rule/source.html",
+      "severity": "error",
+      "checkKind": "forbidSearchUrlToken",
+      "tokens": [";post=", ";get="],
+      "message": "POST/GET 请求选项应使用 URL 后的 JSON options（body/method），不是 ;post= 或 ;get=。"
+    },
+    {
+      "id": "css-text-action-required",
+      "sourceKind": "official-tutorial",
+      "sourceUrl": "https://mgz0227.github.io/The-tutorial-of-Legado/Rule/source.html",
+      "severity": "error",
+      "checkKind": "textFieldsNeedAction",
+      "fields": ["chapterName", "name", "author", "intro", "kind"],
+      "message": "HTML CSS 文本字段必须带 @text/@textNodes/@html 等 action；JSONPath/JS 规则除外。"
+    },
+    {
+      "id": "css-url-action-required",
+      "sourceKind": "official-tutorial",
+      "sourceUrl": "https://mgz0227.github.io/The-tutorial-of-Legado/Rule/source.html",
+      "severity": "error",
+      "checkKind": "urlFieldsNeedHref",
+      "fields": ["chapterUrl", "bookUrl", "tocUrl"],
+      "message": "HTML CSS URL 字段必须带 @href 或等价 JS/模板处理；JSONPath、绝对/相对 URL 模板除外。"
+    },
+    {
+      "id": "cookie-login-header",
+      "sourceKind": "official-tutorial",
+      "sourceUrl": "https://mgz0227.github.io/The-tutorial-of-Legado/Rule/source.html",
+      "severity": "error",
+      "checkKind": "cookieLoginShape",
+      "message": "需要登录态的书源必须启用 enabledCookieJar，并提供 loginUrl 与使用 java.getCookie 的 header。"
+    },
+    {
+      "id": "jquery-selectors-not-jsoup",
+      "sourceKind": "legado-source",
+      "sourceUrl": "references/legado-source-behavior.md",
+      "severity": "error",
+      "checkKind": "forbidSelectorTokens",
+      "tokens": [":contains(", ":has(", ":eq(", ":first", ":last", ":text", ":input", ":visible", ":hidden"],
+      "message": "阅读 HTML 规则由 Jsoup 解析，不支持 jQuery 扩展选择器。"
+    },
+    {
+      "id": "webjs-non-empty-return",
+      "sourceKind": "official-tutorial",
+      "sourceUrl": "https://mgz0227.github.io/The-tutorial-of-Legado/Rule/source.html",
+      "severity": "warning",
+      "checkKind": "webJsShouldReturn",
+      "message": "webJs 必须产生非空返回值；CSR 页面通常需要等待目标 DOM 后返回。"
+    }
+  ]
+}

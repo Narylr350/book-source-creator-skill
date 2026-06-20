@@ -10,15 +10,13 @@
 
 ## 2. 可生成性评估
 
-- 先输出 `assessment.md` 到 `runs/<site-slug>/`，然后运行 `bsg.mjs record-assessment --run <run-dir>`。
+- 先把 search/detail/toc/content 四链路写入 `site-facts.json`，再补 `assessment.md` 的证据说明。
+- `record-assessment` 从 `site-facts.json` 生成 AUTO 结论区；AI 不写评级、风险标签、full pass、阻塞原因。
 - `record-assessment` 通过前不要展示评估摘要，不要询问用户选择，不要继续 `advance`。
-- 评级只能是以下两种之一：
-  - `可生成` — 加风险标签（无风险 / WebView 依赖 / 需登录态 / 有反爬风险 / 加密正文，可多选）
-  - `不建议生成` — 付费墙、全站验证码、纯 App 无 Web 端
 - 评级为"可生成"：若 `record-assessment` / `advance` 没有返回 `requiredUserAction`，继续自动生成。
 - 评级为"不建议生成"：停下来等用户决策。
 - 评估至少覆盖：登录依赖、搜索链路、详情链路、目录链路、正文链路、反爬/验证码/会员/签名/加密/付费限制。
-- VIP、付费、订阅、会员、登录态、Cookie、Authorization、401/403 不能写成 `登录需求: 否` 或 `风险标签: 无风险`。
+- VIP、付费、订阅、会员、登录态、Cookie、Authorization、401/403 写入 facts 的 blocker，由脚本推导登录/风险结论。
 - 若准备写 `不建议生成`，必须同时写出：为什么 WebView 不适用、为什么更简单的直接提取不适用、哪条链路已经被实测证伪。
 
 使用 `references/assessment-template.md` 作为输出模板。
@@ -49,17 +47,23 @@
 - 若 Browser MCP 已证明章节页本身可稳定渲染正文，而不稳定点只在直连接口，优先考虑 `WebView`。
 - 只有更简单的规则无法表达站点行为时，才加 JS。
 - 生成时保持以下文档同步打开：
-  - `references/legado-official-rule-notes.md`
+  - `references/official-rule-pack.json`
+  - `references/legado-source-behavior.md`
   - `references/legado-json-structure.md`
+  - `references/example-lessons.json`（只用于检查问题，不作为事实）
   - `examples/pattern-api-webview-auth/book-source.json`（复杂站点参考）
 
 至少包含：`bookSourceUrl`、`bookSourceName`、`searchUrl`、`ruleSearch`、`ruleBookInfo`、`ruleToc`、`ruleContent`。
 
 使用 `references/legado-json-structure.md` 检查最终 JSON。
 
+生成完成后 `advance` 会运行 official-rule-pack 校验并写 `rule-check.json`。失败时先修书源，不进入 validator。
+
 ## 5. Validator 验证
 
 生成 `book-source.json` 后，必须用 validator 跑真实链路验证。重试次数和状态判定由 `bsg.mjs record-validation` 强制管理。
+
+`record-validation` 会生成 `capability-matrix.json`。最终交付状态只从 matrix、`rule-check.json` 和 run-state 推导；不要把局部链路成功写成 full pass。
 
 **CSR/WebView 边界**：遇到正文可能是 CSR/WebView 时，优先用 `mode=android` 跑 Probe 验证。
 

@@ -94,7 +94,15 @@ describe("initializeRunBundle", () => {
       initializeRunBundle(tmpDir, "https://example.com");
       const slugDir = path.join(tmpDir, "example-com");
       const files = fs.readdirSync(slugDir).sort();
-      assert.deepStrictEqual(files, ["analysis.md", "assessment.md", "validation-checklist.md"]);
+      assert.deepStrictEqual(files, [
+        "analysis.md",
+        "assessment.md",
+        "capability-matrix.json",
+        "lesson-check.json",
+        "rule-check.json",
+        "site-facts.json",
+        "validation-checklist.md",
+      ]);
     } finally {
       fs.rmSync(tmpDir, { recursive: true });
     }

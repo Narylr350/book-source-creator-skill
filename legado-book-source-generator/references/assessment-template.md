@@ -1,61 +1,68 @@
 # 网站可生成性评估模板
 
-在正式生成 `book-source.json` 前先填写本文件。
+`assessment.md` 是混合文档：
+
+- AUTO 区块由 `bsg.mjs record-assessment` 从 `site-facts.json` 生成，AI 不得手改。
+- `## 证据说明` 和 `## 分析备注` 可由 AI 填写，但证据说明必须引用 `site-facts.json` 或 validator report 中的 `evidence:<id>`。
+- 评级、风险标签、四链路状态、full pass、阻塞原因、待确认动作都以 AUTO 区块为准。
 
 ```md
 # 网站可生成性评估
 
-- 目标站点:
-- 站点 URL:
-- 登录需求:
-- 用户选择: 待用户确认
-- 当前分析会话: 匿名 / 已登录 / 登录失败 / 待确认
-- 评级: 可生成 / 不建议生成
-- 风险标签: （可多选）无风险 / WebView 依赖 / 需登录态 / 有反爬风险 / 加密正文
-- 官方规则对照: 已完成 / 未完成
+<!-- AUTO:BEGIN summary -->
+<!-- AUTO:HASH pending -->
+- 站点 URL: https://example.com
+- 评级: 待评估
+- 风险标签: 待评估
+- 总体状态: pending
+- 搜索链路: unknown
+- 详情链路: unknown
+- 目录链路: unknown
+- 正文链路: unknown
+- 登录/Android/WebView: 待评估
+- 阻塞原因: 待评估
+- 待确认动作: 无
+<!-- AUTO:END summary -->
 
-## 结论
+## 证据说明
 
-- 继续生成: 是 / 否
-- 继续生成理由:
+- 搜索链路命中 SSR 列表 evidence:search-1
+- 详情页标题和作者来自当前 DOM evidence:detail-1
 
-## 关键依据
+## 分析备注
 
-- 搜索链路:
-- 详情链路:
-- 目录链路:
-- 正文链路:
-
-## 风险与阻塞
-
-- 反爬或验证码:
-- 会员限制:
-- 动态签名或加密:
-- 支付限制:
-- 其他阻塞点:
-- WebView 是否已排除:
-- 更低复杂度回退是否已排除:
-
-## 预期失效环节
-
-- 若继续生成，最可能失败的链路:
-- 失败原因:
+- 可写 selector 来源、修正原因、站点风险背景。
+- 不写“可正常阅读”“无验证码”“VIP 支持”等结论；这些由 AUTO 区块生成。
 ```
 
-## 评级说明
+## site-facts.json
 
-| 评级 | 条件 |
-|------|------|
-| **可生成** | 4 条链路至少有一条可访问，无硬阻断（付费墙/纯 App/全站验证码） |
-| **不建议生成** | 付费墙、全站验证码、纯 App 无 Web 端——不可逾越 |
+`record-assessment` 运行前，必须先写入四链路事实：
 
-风险标签不阻塞生成，只决定验证策略和最终状态：
-- `无风险` → 快速路径候选，HTTP 验证即可
-- `WebView 依赖` → 正文需 Android Probe 或 App 复核
-- `需登录态` → 需 enabledCookieJar + header/loginUrl
-- `有反爬风险` → 可能需 UA/Cookie/频率控制
-- `加密正文` → WebView 不解密，直接 DOM 提取
+```json
+{
+  "version": "1.0",
+  "siteUrl": "https://example.com",
+  "links": {
+    "search": { "status": "success", "blocker": null, "render": null, "evidenceIds": ["search-1"] },
+    "detail": { "status": "success", "blocker": null, "render": null, "evidenceIds": ["detail-1"] },
+    "toc": { "status": "success", "blocker": null, "render": null, "evidenceIds": ["toc-1"] },
+    "content": { "status": "success", "blocker": null, "render": "ssr_or_http", "evidenceIds": ["content-1"] }
+  },
+  "evidence": [
+    { "id": "search-1", "phase": "search", "kind": "html", "note": "当前实测证据" }
+  ]
+}
+```
 
-填写后必须运行 `bsg.mjs record-assessment --run <run-dir>`。通过前不要展示摘要或继续 `advance`。
+`status` 使用 `success`、`blocked`、`failed`，不能保留 `unknown` 后运行 `record-assessment`。`blocker` 使用事实类型，如 `captcha`、`login`、`vip`、`cloudflare`、`csr`、`webview`、`encrypt`。
 
-VIP、付费、订阅、会员、登录态、Cookie、Authorization、401/403 不能写成 `登录需求: 否` 或 `风险标签: 无风险`。
+## 运行规则
+
+填写或更新后运行：
+
+```bash
+node scripts/bsg.mjs record-assessment --run <run-dir>
+```
+
+如果 AUTO 区块 hash 不匹配，说明有人手改了结论区；不要继续编辑结论，重新运行 `record-assessment`。如果证据说明没有有效 `evidence:<id>`，先补 `site-facts.json` 证据或改成分析备注。
