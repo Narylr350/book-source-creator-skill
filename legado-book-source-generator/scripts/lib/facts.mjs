@@ -1,0 +1,604 @@
+import fs from "node:fs";
+import path from "node:path";
+import crypto from "node:crypto";
+import {
+  fileExists, readJsonFile, writeJsonFile, fileSha256, emptyLinks,
+  normalizeLinkStatus, getEvidenceIds, LINK_PHASES, OFFICIAL_RULE_PACK_PATH,
+} from "./state.mjs";
+
+// ── cookie / report helpers ────────────────────────────────────────────────
+
+export function validateCookieFileShape(cookieFile) {
+  if (!fileExists(cookieFile)) {
+    return { ok: false, reason: "missing" };
+  }
+  let parsed;
+  try {
+    parsed = JSON.parse(fs.readFileSync(cookieFile, "utf-8"));
+  } catch (e) {
+    return { ok: false, reason: `cookies.json 不是合法 JSON: ${e.message}` };
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    return { ok: false, reason: "cookies.json 必须是对象。" };
+  }
+
+  if (typeof parsed.domain === "string" && typeof parsed.cookie === "string") {
+    if (!parsed.domain.includes(".") || !parsed.cookie.includes("=")) {
+      return { ok: false, reason: "cookies.json 的 {domain,cookie} 格式无效。" };
+    }
+    return { ok: true, format: "domain_cookie" };
+  }
+
+  const entries = Object.entries(parsed);
+  if (entries.length === 0) {
+    return { ok: false, reason: "cookies.json 为空。" };
+  }
+  if (entries.length === 1 && entries[0][0] === "domain" && typeof entries[0][1] === "string" && entries[0][1].includes("=")) {
+    return {
+      ok: false,
+      reason: "cookies.json 写成了 {\"domain\":\"cookie_string\"}，缺少真实域名键。",
+    };
+  }
+  for (const [domain, value] of entries) {
+    if (!domain.includes(".") || typeof value !== "string" || !value.includes("=")) {
+      return {
+        ok: false,
+        reason: "cookies.json 应为 {\"www.example.com\":\"a=b; c=d\"}，或 {\"domain\":\"www.example.com\",\"cookie\":\"a=b; c=d\"}。",
+      };
+    }
+  }
+  return { ok: true, format: "domain_map" };
+}
+
+export function reportUsedAndroidMode(reportPath) {
+  if (!fileExists(reportPath)) return false;
+  try {
+    const report = JSON.parse(fs.readFileSync(reportPath, "utf-8"));
+    if (report.mode === "android") return true;
+    return (report.steps || []).some((s) => s.mode === "android");
+  } catch {
+    return false;
+  }
+}
+
+export function reportUsedAndroidWebView(reportPath) {
+  if (!fileExists(reportPath)) return false;
+  try {
+    const report = JSON.parse(fs.readFileSync(reportPath, "utf-8"));
+    return (report.steps || []).some((step) => {
+      if (step?.mode !== "android") return false;
+      if (step.phase !== "content") return false;
+      if (step.webViewHtmlPreview || step.webViewScreenshotBase64) return true;
+      const artifacts = step.debugArtifacts || {};
+      return Boolean(artifacts["response.rendered.html"] || artifacts["screenshot.png"]);
+    });
+  } catch {
+    return false;
+  }
+}
+
+export function reportHasLoginSessionEvidence(reportPath) {
+  if (!fileExists(reportPath)) return false;
+  try {
+    const report = JSON.parse(fs.readFileSync(reportPath, "utf-8"));
+    if (report.sessionMode && report.sessionMode !== "anonymous") return true;
+    return (report.steps || []).some((step) => {
+      if (step.sessionMode && step.sessionMode !== "anonymous") return true;
+      const headers = step.request?.headers || {};
+      return Boolean(headers.Cookie || headers.cookie || headers.Authorization || headers.authorization);
+    });
+  } catch {
+    return false;
+  }
+}
+
+export function reportHardRuleError(reportPath) {
+  if (!fileExists(reportPath)) return null;
+  try {
+    const report = JSON.parse(fs.readFileSync(reportPath, "utf-8"));
+    for (const step of report.steps || []) {
+      const phase = step?.phase || "";
+      const requestUrl = step?.request?.url || "";
+      const extracted = step?.extracted || {};
+      if (phase === "toc" && step.status === "error" && /\/chapter-list\/?(?:[?#]|$)/.test(requestUrl)) {
+        return "目录请求变成 /chapter-list/，这是 tocUrl/book id 规则错误，不是 App 复核或 validator 限制。";
+      }
+      if (phase === "detail" && /\/chapter-list\/?(?:[?#]|$)/.test(extracted.tocUrl || "")) {
+        return "详情阶段提取到的 tocUrl 缺少 book id，应修 ruleBookInfo.tocUrl，不应标 needs_app_review。";
+      }
+      if (phase === "detail" && step.status === "success") {
+        const missing = [];
+        if (Object.prototype.hasOwnProperty.call(extracted, "coverUrl") && !extracted.coverUrl) missing.push("coverUrl");
+        if (Object.prototype.hasOwnProperty.call(extracted, "intro") && !extracted.intro) missing.push("intro");
+        if (missing.length > 0) {
+          return `详情阶段 ${missing.join(", ")} 为空，这是选择器或字段名错误，不应包装成 App 复核。`;
+        }
+      }
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+export function writeValidatorSummary(runDir, status, finalStatus, reportPath) {
+  const lines = [
+    "# 验证摘要",
+    "",
+    `- 记录状态: ${status}`,
+    `- 最终状态: ${finalStatus}`,
+  ];
+  if (reportPath && fileExists(reportPath)) {
+    try {
+      const report = JSON.parse(fs.readFileSync(reportPath, "utf-8"));
+      if (report.phases) lines.push(`- 阶段状态: ${JSON.stringify(report.phases)}`);
+      if (report.summary?.error) lines.push(`- 主要错误: ${report.summary.error}`);
+      lines.push(`- Android mode: ${reportUsedAndroidMode(reportPath) ? "有" : "无"}`);
+      lines.push(`- Android WebView 渲染证据: ${reportUsedAndroidWebView(reportPath) ? "有" : "无"}`);
+    } catch (e) {
+      lines.push(`- 报告读取失败: ${e.message}`);
+    }
+  }
+  lines.push("", "此文件由 record-validation 生成，不手写。");
+  fs.writeFileSync(path.join(runDir, "validator-summary.md"), lines.join("\n") + "\n", "utf-8");
+}
+
+// ── book source helpers ────────────────────────────────────────────────────
+
+export function loadBookSource(runDir, state) {
+  const bookSourcePath = path.join(state.workingDir, "outputs", state.siteSlug, "book-source.json");
+  if (!fileExists(bookSourcePath)) {
+    return { ok: false, error: `book-source.json 不存在: ${bookSourcePath}。` };
+  }
+  try {
+    const sourceJson = fs.readFileSync(bookSourcePath, "utf-8");
+    const parsed = JSON.parse(sourceJson);
+    const sources = Array.isArray(parsed) ? parsed : [parsed];
+    return { ok: true, bookSourcePath, sourceJson, parsed, sources };
+  } catch (e) {
+    return { ok: false, error: `book-source.json 不是合法 JSON: ${e.message}` };
+  }
+}
+
+export function validateBookSourceStructure(sources) {
+  for (const source of sources) {
+    if (source?.ruleBookInfo && Object.prototype.hasOwnProperty.call(source.ruleBookInfo, "summary")) {
+      return "ruleBookInfo.summary 不是阅读详情简介字段；应使用 ruleBookInfo.intro。";
+    }
+  }
+  return null;
+}
+
+// ── site facts / assessment ────────────────────────────────────────────────
+
+export function loadSiteFacts(runDir) {
+  const factsPath = path.join(runDir, "site-facts.json");
+  const facts = readJsonFile(factsPath);
+  if (!facts || typeof facts !== "object") {
+    return { ok: false, error: "site-facts.json 不存在或不是合法 JSON。Probe 后必须先记录四链路事实。" };
+  }
+  const missing = [];
+  const invalid = [];
+  for (const phase of LINK_PHASES) {
+    const link = facts.links?.[phase];
+    if (!link || !link.status || link.status === "unknown") {
+      missing.push(phase);
+      continue;
+    }
+    const normalizedStatus = normalizeLinkStatus(link.status);
+    if (!["success", "blocked", "failed"].includes(normalizedStatus)) {
+      invalid.push(`${phase}:${link.status}`);
+      continue;
+    }
+    link.status = normalizedStatus;
+  }
+  if (missing.length > 0) {
+    return { ok: false, error: `site-facts.json 四链路事实不完整，缺少明确状态: ${missing.join(", ")}。` };
+  }
+  if (invalid.length > 0) {
+    return { ok: false, error: `site-facts.json 链路 status 必须是 success/blocked/failed（ok/pass/error 可自动归一化）。无效值: ${invalid.join(", ")}。` };
+  }
+  return { ok: true, facts };
+}
+
+export function riskFromBlocker(blocker) {
+  if (!blocker) return null;
+  if (/captcha|cloudflare|turnstile|anti_bot|blocked/i.test(blocker)) return "有反爬风险";
+  if (/login|cookie|auth|vip|paid|subscribe|payment/i.test(blocker)) return "需登录态";
+  if (/webview|csr|android/i.test(blocker)) return "WebView 依赖";
+  if (/encrypt|crypto/i.test(blocker)) return "加密正文";
+  return null;
+}
+
+export function risksFromRender(render) {
+  const value = String(render || "");
+  const risks = [];
+  if (/webview|csr/i.test(value)) risks.push("WebView 依赖");
+  if (/encrypt|crypto|cipher/i.test(value)) risks.push("加密正文");
+  return risks;
+}
+
+export function deriveAssessmentFromFacts(facts) {
+  const links = facts.links || {};
+  const risks = new Set();
+  const blockers = [];
+  const statuses = LINK_PHASES.map((phase) => {
+    const link = links[phase] || { status: "unknown" };
+    const status = normalizeLinkStatus(link.status);
+    link.status = status;
+    const risk = riskFromBlocker(link.blocker);
+    if (risk) risks.add(risk);
+    for (const renderRisk of risksFromRender(link.render)) risks.add(renderRisk);
+    if (link.blocker) blockers.push(`${phase}:${link.blocker}`);
+    return status;
+  });
+
+  const successCount = statuses.filter((s) => s === "success").length;
+  const allSuccess = successCount === LINK_PHASES.length;
+  const rating = successCount > 0 ? "可生成" : "不建议生成";
+  const overallStatus = allSuccess ? "full_pass_candidate" : successCount > 0 ? "partial_candidate" : "blocked";
+  const fullPass = allSuccess && blockers.length === 0;
+  const riskLabels = risks.size > 0 ? Array.from(risks).join(" / ") : "无风险";
+  const loginDemand = risks.has("需登录态") ? "部分需要" : "否";
+  const requiredActions = [];
+  if (risks.has("需登录态")) requiredActions.push("login_required");
+  if (risks.has("WebView 依赖")) requiredActions.push("android_device_needed");
+
+  return {
+    rating,
+    riskLabels,
+    loginDemand,
+    overallStatus,
+    fullPass,
+    blockers,
+    requiredActions,
+    signals: {
+      protectedContent: risks.has("需登录态"),
+      hasLoginRiskLabel: risks.has("需登录态"),
+      hasPaymentRisk: blockers.some((b) => /vip|paid|subscribe|payment/i.test(b)),
+      hasWebView: risks.has("WebView 依赖"),
+      hasEncryptedContent: risks.has("加密正文"),
+    },
+  };
+}
+
+export function renderAssessmentAutoSummary(state, facts, derived) {
+  const lines = [
+    `- 站点 URL: ${facts.siteUrl || state.siteUrl}`,
+    `- 评级: ${derived.rating}`,
+    `- 风险标签: ${derived.riskLabels}`,
+    `- 总体状态: ${derived.overallStatus}`,
+    `- full pass: ${derived.fullPass ? "是" : "否"}`,
+    `- 搜索链路: ${facts.links.search.status}${facts.links.search.blocker ? ` (${facts.links.search.blocker})` : ""}`,
+    `- 详情链路: ${facts.links.detail.status}${facts.links.detail.blocker ? ` (${facts.links.detail.blocker})` : ""}`,
+    `- 目录链路: ${facts.links.toc.status}${facts.links.toc.blocker ? ` (${facts.links.toc.blocker})` : ""}`,
+    `- 正文链路: ${facts.links.content.status}${facts.links.content.render ? ` (${facts.links.content.render})` : ""}${facts.links.content.blocker ? ` (${facts.links.content.blocker})` : ""}`,
+    `- 登录需求: ${derived.loginDemand}`,
+    `- 登录/Android/WebView: ${derived.requiredActions.length > 0 ? derived.requiredActions.join(", ") : "无"}`,
+    `- 阻塞原因: ${derived.blockers.length > 0 ? derived.blockers.join(", ") : "无"}`,
+    `- 待确认动作: ${derived.requiredActions.length > 0 ? derived.requiredActions.join(", ") : "无"}`,
+  ];
+  const hash = crypto.createHash("sha256").update(lines.join("\n")).digest("hex").slice(0, 16);
+  return [
+    "<!-- AUTO:BEGIN summary -->",
+    `<!-- AUTO:HASH ${hash} -->`,
+    ...lines,
+    "<!-- AUTO:END summary -->",
+  ].join("\n");
+}
+
+export function getAutoSummaryBlock(content) {
+  const match = content.match(/<!-- AUTO:BEGIN summary -->([\s\S]*?)<!-- AUTO:END summary -->/);
+  if (!match) return null;
+  return match[0];
+}
+
+export function validateAssessmentAutoBlock(content) {
+  const block = getAutoSummaryBlock(content);
+  if (!block) return null;
+  const hashMatch = block.match(/<!-- AUTO:HASH ([a-f0-9]{16}|pending) -->/);
+  if (!hashMatch || hashMatch[1] === "pending") return null;
+  const body = block
+    .split(/\r?\n/)
+    .filter((line) => !/AUTO:BEGIN|AUTO:END|AUTO:HASH/.test(line))
+    .join("\n");
+  const expected = crypto.createHash("sha256").update(body).digest("hex").slice(0, 16);
+  return expected === hashMatch[1] ? null : "assessment.md 自动结论区被手动修改。请重新运行 record-assessment 生成 AUTO 区块，不要手写结论。";
+}
+
+export function replaceAssessmentAutoSummary(content, autoSummary) {
+  if (getAutoSummaryBlock(content)) {
+    return content.replace(/<!-- AUTO:BEGIN summary -->[\s\S]*?<!-- AUTO:END summary -->/, autoSummary);
+  }
+  return [
+    "# 网站可生成性评估",
+    "",
+    autoSummary,
+    "",
+    "## 证据说明",
+    "",
+    "## 分析备注",
+    "",
+    content.trim(),
+    "",
+  ].join("\n");
+}
+
+export function validateEvidenceNotes(content, facts) {
+  const section = content.match(/## 证据说明([\s\S]*?)(?:\n## |\s*$)/);
+  if (!section) return null;
+  const evidenceIds = getEvidenceIds(facts);
+  const badLines = section[1]
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line && !line.startsWith("<!--") && !line.startsWith("#"))
+    .filter((line) => {
+      const match = line.match(/evidence:([A-Za-z0-9_.:-]+)/);
+      return !match || !evidenceIds.has(match[1]);
+    });
+  if (badLines.length === 0) return null;
+  return `证据说明必须引用有效 evidence id（格式 evidence:<id>）。问题行: ${badLines.slice(0, 3).join(" | ")}`;
+}
+
+// ── official rule check ────────────────────────────────────────────────────
+
+export function loadOfficialRulePack() {
+  const pack = readJsonFile(OFFICIAL_RULE_PACK_PATH);
+  return pack?.rules || [];
+}
+
+export function isJsonOrJsRule(value) {
+  return typeof value === "string" && (
+    value.startsWith("$.") ||
+    value.startsWith("@json:") ||
+    value.startsWith("<js>") ||
+    value.startsWith("@js:") ||
+    value.includes("{{")
+  );
+}
+
+export function runOfficialRuleCheck(sources, state) {
+  const rules = loadOfficialRulePack();
+  const errors = [];
+  const warnings = [];
+  const checkedRuleIds = [];
+  const addIssue = (rule, detail) => {
+    const issue = {
+      ruleId: rule.id,
+      severity: rule.severity,
+      message: detail || rule.message,
+      sourceKind: rule.sourceKind,
+      sourceUrl: rule.sourceUrl,
+    };
+    if (rule.severity === "warning") warnings.push(issue);
+    else errors.push(issue);
+  };
+
+  for (const rule of rules) {
+    checkedRuleIds.push(rule.id);
+    for (const source of sources) {
+      const jsonStr = JSON.stringify(source);
+      if (rule.checkKind === "forbidField") {
+        const [groupName, fieldName] = rule.target.split(".");
+        if (source?.[groupName] && Object.prototype.hasOwnProperty.call(source[groupName], fieldName)) {
+          addIssue(rule);
+        }
+      } else if (rule.checkKind === "forbidSearchUrlToken") {
+        if (rule.tokens.some((token) => source.searchUrl?.includes(token))) {
+          addIssue(rule);
+        }
+      } else if (rule.checkKind === "forbidSelectorTokens") {
+        const token = rule.tokens.find((item) => jsonStr.includes(item));
+        if (token) addIssue(rule, `${rule.message} 检测到: ${token}`);
+      } else if (rule.checkKind === "cookieLoginShape") {
+        if (state.loginFeatures.hasEnabledCookieJar || state.loginFeatures.hasAuthorization || source.enabledCookieJar) {
+          if (!source.enabledCookieJar) addIssue(rule, "需要登录态的站点必须设置 enabledCookieJar: true。");
+          if (!source.loginUrl) addIssue(rule, "enabledCookieJar 已启用但缺少 loginUrl。");
+          if (!source.header || !String(source.header).includes("java.getCookie")) {
+            addIssue(rule, "enabledCookieJar 已启用但 header 未使用 java.getCookie 注入 Cookie。");
+          }
+        }
+      } else if (rule.checkKind === "webViewScope") {
+        const fields = [];
+        if (source.searchUrl && /webView|webview/i.test(source.searchUrl)) fields.push("searchUrl");
+        if (source.ruleBookInfo?.tocUrl && /webView|webview/i.test(source.ruleBookInfo.tocUrl)) fields.push("ruleBookInfo.tocUrl");
+        if (source.ruleSearch?.bookUrl && /webView|webview/i.test(source.ruleSearch.bookUrl)) fields.push("ruleSearch.bookUrl");
+        if (fields.length > 0) addIssue(rule, `${rule.message} 问题字段: ${fields.join(", ")}`);
+      } else if (rule.checkKind === "textFieldsNeedAction") {
+        for (const group of [source.ruleSearch, source.ruleBookInfo, source.ruleToc]) {
+          if (!group || typeof group !== "object") continue;
+          for (const field of rule.fields || []) {
+            const val = group[field];
+            if (typeof val === "string" && val.length > 0 && !val.includes("@") && !isJsonOrJsRule(val)) {
+              addIssue(rule, `${field}: "${val}" — ${rule.message}`);
+              break;
+            }
+          }
+        }
+      } else if (rule.checkKind === "urlFieldsNeedHref") {
+        for (const group of [source.ruleSearch, source.ruleToc, source.ruleBookInfo]) {
+          if (!group || typeof group !== "object") continue;
+          for (const field of rule.fields || []) {
+            const val = group[field];
+            if (
+              typeof val === "string" &&
+              val.length > 0 &&
+              !val.includes("@href") &&
+              !val.includes("@js") &&
+              !isJsonOrJsRule(val) &&
+              !val.startsWith("http") &&
+              !val.startsWith("/") &&
+              !val.startsWith("##")
+            ) {
+              addIssue(rule, `${field}: "${val}" — ${rule.message}`);
+              break;
+            }
+          }
+        }
+      } else if (rule.checkKind === "webJsShouldReturn") {
+        if (source.ruleContent?.webJs) {
+          const webJs = String(source.ruleContent.webJs);
+          if (!/return|while\s*\(|sleep|document\.querySelector|querySelector/.test(webJs)) {
+            addIssue(rule);
+          }
+        }
+      }
+    }
+  }
+
+  return {
+    version: "1.0",
+    status: errors.length > 0 ? "failed" : "passed",
+    source: "official-rule-pack",
+    errors,
+    warnings,
+    checkedRuleIds,
+  };
+}
+
+export function writeRuleCheck(runDir, ruleCheck) {
+  writeJsonFile(path.join(runDir, "rule-check.json"), ruleCheck);
+}
+
+// ── freshness guards ───────────────────────────────────────────────────────
+
+export function ensureAssessmentFactsFresh(state, runDir) {
+  const recordedHash = state.phases.assess?.factsHash;
+  if (!recordedHash) return null;
+  const currentHash = fileSha256(path.join(runDir, "site-facts.json"));
+  if (currentHash !== recordedHash) {
+    return "site-facts.json 在 record-assessment 后发生变化。必须重新运行 record-assessment，并重新推进后续分析/生成/验证，不能用旧 assessment 交付。";
+  }
+  return null;
+}
+
+export function ensureRuleCheckSourceFresh(runDir, bookSourcePath) {
+  const ruleCheck = readJsonFile(path.join(runDir, "rule-check.json"));
+  if (!ruleCheck?.sourceHash) return null;
+  const currentHash = fileSha256(bookSourcePath);
+  if (currentHash !== ruleCheck.sourceHash) {
+    return "book-source.json 在 generate 阶段 rule-check 后发生变化。必须重新完成 generate/official-rule-pack 校验，不能用旧 rule-check 继续验证或交付。";
+  }
+  return null;
+}
+
+// ── validator report analysis ──────────────────────────────────────────────
+
+export function detectStepBlocker(step) {
+  const text = [
+    step?.error || "",
+    step?.errorCode || "",
+    step?.response?.bodyPreview || "",
+    step?.response?.title || "",
+  ].join("\n");
+  if (/captcha|验证码|极验|geetest/i.test(text)) return "captcha";
+  if (/cloudflare|turnstile|challenge/i.test(text)) return "cloudflare";
+  if (/login|登录|401|403|unauthorized|COOKIE_REQUIRED/i.test(text)) return "login";
+  if (/vip|付费|订阅|paid|subscribe/i.test(text)) return "vip";
+  if (/CONTENT_IS_CSR_SHELL|__nuxt|__next|webpack|vite/i.test(text)) return "csr";
+  if (/ANDROID_PROBE_UNAVAILABLE/i.test(text)) return "android_unavailable";
+  return step?.status === "error" ? "rule_or_network_error" : null;
+}
+
+export function stepRenderKind(step) {
+  if (!step) return null;
+  if (step.webViewHtmlPreview || step.webViewScreenshotBase64) return "webview";
+  const artifacts = step.debugArtifacts || {};
+  if (artifacts["response.rendered.html"] || artifacts["screenshot.png"]) return "webview";
+  if (step.response?.bodyPreview) return "ssr_or_http";
+  return null;
+}
+
+export function buildCapabilityMatrix(report, finalStatus) {
+  const steps = report?.steps || [];
+  const links = {};
+  const blockers = [];
+  for (const phase of LINK_PHASES) {
+    const phaseSteps = steps.filter((step) => step.phase === phase);
+    const failed = phaseSteps.find((step) => step.status === "error");
+    const success = phaseSteps.find((step) => step.status === "success");
+    const step = failed || success || null;
+    const blocker = detectStepBlocker(step);
+    if (blocker) blockers.push(`${phase}:${blocker}`);
+    links[phase] = {
+      status: success && !failed ? "success" : failed ? "blocked" : "unknown",
+      blocker,
+      render: phase === "content" ? stepRenderKind(step) : null,
+      evidenceIds: step ? [`validator:${phase}`] : [],
+    };
+  }
+  const allSuccess = LINK_PHASES.every((phase) => links[phase].status === "success");
+  const anySuccess = LINK_PHASES.some((phase) => links[phase].status === "success");
+  const overallStatus = allSuccess && finalStatus === "passed"
+    ? "full_pass"
+    : anySuccess
+      ? "partial_candidate"
+      : finalStatus || "blocked";
+  return {
+    version: "1.0",
+    status: finalStatus || "unknown",
+    links,
+    overall: {
+      status: overallStatus,
+      fullPass: overallStatus === "full_pass",
+      blockers,
+    },
+  };
+}
+
+export function writeCapabilityMatrix(runDir, reportPath, finalStatus) {
+  const report = readJsonFile(reportPath, {});
+  const matrix = buildCapabilityMatrix(report, finalStatus);
+  writeJsonFile(path.join(runDir, "capability-matrix.json"), matrix);
+  return matrix;
+}
+
+// ── assessment validation ──────────────────────────────────────────────────
+
+export function loadAndValidateAssessment(runDir, state) {
+  const assessPath = path.join(runDir, "assessment.md");
+  if (!fileExists(assessPath)) {
+    return { ok: false, error: "assessment.md 不存在，请先完成评估。" };
+  }
+
+  const content = fs.readFileSync(assessPath, "utf-8");
+  const autoError = validateAssessmentAutoBlock(content);
+  if (autoError) return { ok: false, error: autoError };
+
+  const factsResult = loadSiteFacts(runDir);
+  if (!factsResult.ok) return factsResult;
+  const facts = factsResult.facts;
+  const evidenceError = validateEvidenceNotes(content, facts);
+  if (evidenceError) return { ok: false, error: evidenceError };
+  const derived = deriveAssessmentFromFacts(facts);
+
+  const userChoiceMatch = content.match(/用户选择[：:]\s*([^\n\r]+)/);
+  if (userChoiceMatch) {
+    const choice = userChoiceMatch[1].trim();
+    const isPlaceholder = choice.includes("/") || choice.includes("或") || choice.includes("待") || choice === "";
+    if (!isPlaceholder) {
+      const loginDecision = state.userDecisions?.login;
+      const saysNoLogin = /不登录|无账号|匿名/.test(choice);
+      const saysLogin = /登录分析|已登录|登录完成/.test(choice) && !saysNoLogin;
+      if (saysNoLogin && loginDecision !== "no_account") {
+        return { ok: false, error: "assessment.md 写了用户选择为不登录/无账号，但 run-state.json 没有 resolve-user-action --action no_account 记录。不要编用户选择。" };
+      }
+      if (saysLogin && loginDecision !== "completed") {
+        return { ok: false, error: "assessment.md 写了用户选择为登录/已登录，但 run-state.json 没有 resolve-user-action --action login_completed 记录。不要编用户选择。" };
+      }
+    }
+  }
+
+  const autoSummary = renderAssessmentAutoSummary(state, facts, derived);
+  const updatedContent = replaceAssessmentAutoSummary(content, autoSummary);
+  fs.writeFileSync(assessPath, updatedContent, "utf-8");
+
+  return {
+    ok: true,
+    rating: derived.rating,
+    signals: derived.signals,
+    content: updatedContent,
+    facts,
+    derived,
+  };
+}
