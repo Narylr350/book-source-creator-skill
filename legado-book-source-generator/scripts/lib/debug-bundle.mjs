@@ -103,8 +103,13 @@ function claudeHomeDir() {
   return path.join(process.env.USERPROFILE || process.env.HOME || "", ".claude");
 }
 
-function findClaudeJsonlCandidates() {
-  const root = path.join(claudeHomeDir(), "projects");
+function claudeProjectDirName(workDir) {
+  return path.resolve(workDir).replace(/[:\\/]/g, "-");
+}
+
+function findClaudeJsonlCandidates(projectDirName = null) {
+  const projectsRoot = path.join(claudeHomeDir(), "projects");
+  const root = projectDirName ? path.join(projectsRoot, projectDirName) : projectsRoot;
   if (!fileExists(root)) return [];
   const candidates = [];
   const stack = [root];
@@ -131,9 +136,18 @@ function findClaudeSessionJsonl(sessionId) {
   return findClaudeJsonlCandidates().find((item) => item.sessionId === sessionId) || null;
 }
 
-function findLatestClaudeSessionJsonl() {
-  return findClaudeJsonlCandidates()
+function latestCandidate(candidates) {
+  return candidates
     .sort((a, b) => b.mtimeMs - a.mtimeMs)[0] || null;
+}
+
+function findLatestClaudeSessionJsonl(workDir) {
+  if (workDir) {
+    const projectCandidates = findClaudeJsonlCandidates(claudeProjectDirName(workDir));
+    const projectLatest = latestCandidate(projectCandidates);
+    if (projectLatest) return projectLatest;
+  }
+  return latestCandidate(findClaudeJsonlCandidates());
 }
 
 function claudeCodeLogCommands() {
@@ -174,8 +188,8 @@ function claudeCodeLogCommands() {
   return commands;
 }
 
-function exportClaudeTranscript(sessionId, bundleDir) {
-  const candidate = sessionId ? findClaudeSessionJsonl(sessionId) : findLatestClaudeSessionJsonl();
+function exportClaudeTranscript(sessionId, bundleDir, workDir) {
+  const candidate = sessionId ? findClaudeSessionJsonl(sessionId) : findLatestClaudeSessionJsonl(workDir);
   if (!candidate) {
     return { copied: [], included: false, source: null, exporter: "claude-code-log", error: "session_jsonl_not_found" };
   }
@@ -189,7 +203,7 @@ function exportClaudeTranscript(sessionId, bundleDir) {
       execFileSync(bin, [
         ...prefixArgs,
         jsonlPath,
-        "--detail", "low",
+        "--detail", "high",
         "--format", "md",
         "--compact",
         "-o", outPath,
@@ -238,9 +252,10 @@ export function cmdDebugBundle(args) {
   const outputFiles = copyOutput(state, bundleDir);
   const claudeSession = parseArg(args, "--claude-session");
   const transcriptArg = parseArg(args, "--transcript");
+  const transcriptWorkDir = parseArg(args, "--cwd") ? cwd : (state.workingDir || cwd);
   const transcript = transcriptArg
     ? { ...copyTranscript(transcriptArg, bundleDir), source: transcriptArg, exporter: "manual" }
-    : exportClaudeTranscript(claudeSession, bundleDir);
+    : exportClaudeTranscript(claudeSession, bundleDir, transcriptWorkDir);
   const resolvedClaudeSession = claudeSession || transcript.sessionId || null;
 
   const manifest = {

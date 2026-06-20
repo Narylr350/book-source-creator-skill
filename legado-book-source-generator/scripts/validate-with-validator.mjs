@@ -269,6 +269,7 @@ async function main() {
       // ── 原有字段 ──
       needsAppReview: s.needsAppReview,
       ruleHits: s.ruleHits || [],
+      extracted: s.extracted || {},
       probeAvailable: s.probeAvailable,
       compatibilityWarnings: s.compatibilityWarnings,
       reviewReason: s.reviewReason,

@@ -23,6 +23,17 @@ async function runBsg(args, options = {}) {
   return JSON.parse(result.stdout);
 }
 
+async function runBsgBlocked(args, options = {}) {
+  try {
+    await runBsg(args, options);
+  } catch (err) {
+    const result = JSON.parse(err.stdout);
+    assert.equal(result.status, "blocked");
+    return result;
+  }
+  assert.fail("Expected bsg command to exit non-zero with status=blocked");
+}
+
 async function initRun(tmpDir, options = {}) {
   const init = await runBsg(["init", "https://example.com", "--cwd", tmpDir], options);
   await runBsg(["advance", "--run", init.runDir]);
@@ -384,7 +395,7 @@ describe("bsg workflow user-action gates", () => {
     );
   });
 
-  it("requires user login decision when assessment mentions VIP subscription", async () => {
+  it("asks about Android availability before Browser login when assessment mentions VIP subscription", async () => {
     const runDir = await initRun(tmpDir);
     await writeAssessmentAndRecord(runDir, [
       "- 评级: 可生成",
@@ -402,8 +413,38 @@ describe("bsg workflow user-action gates", () => {
       },
     });
 
+    assert.equal(result.requiredUserAction, "android_device_needed");
+    assert.equal(result.reason, "login_requires_android_decision");
+  });
+
+  it("asks for login only after user confirms Android is unavailable", async () => {
+    const runDir = await initRun(tmpDir);
+    await writeAssessmentAndRecord(runDir, [
+      "- 评级: 可生成",
+      "- 登录需求: 部分需要（VIP章节需登录+订阅）",
+      "- 用户选择: 登录分析 / 不登录分析",
+      "- 当前分析会话: 匿名 / 已登录 / 登录失败",
+      "- 风险标签: 需登录态",
+      "- 会员限制: VIP章节需订阅",
+    ]);
+    await runBsg(["advance", "--run", runDir], {
+      env: {
+        ...process.env,
+        BSG_TEST_ADB_DEVICES_OUTPUT: "List of devices attached\n",
+      },
+    });
+    await runBsg(["resolve-user-action", "--run", runDir, "--action", "android_device_unavailable"]);
+
+    const result = await runBsg(["advance", "--run", runDir], {
+      env: {
+        ...process.env,
+        BSG_TEST_ADB_DEVICES_OUTPUT: "List of devices attached\n",
+      },
+    });
+
     assert.equal(result.requiredUserAction, "login_required");
     assert.equal(result.reason, "login_required");
+    assert.equal(result.adbAvailable, false);
   });
 
   it("does not accept Browser cookies as login when adb is online", async () => {
@@ -450,8 +491,8 @@ describe("bsg workflow user-action gates", () => {
       },
     });
 
-    assert.equal(result.requiredUserAction, "login_required");
-    assert.equal(result.adbAvailable, false);
+    assert.equal(result.requiredUserAction, "android_device_needed");
+    assert.equal(result.reason, "login_requires_android_decision");
   });
 
   it("does not resolve Browser login completion without a valid cookies file", async () => {
@@ -463,6 +504,13 @@ describe("bsg workflow user-action gates", () => {
       "- 当前分析会话: 匿名 / 已登录 / 登录失败",
       "- 风险标签: 需登录态",
     ]);
+    await runBsg(["advance", "--run", runDir], {
+      env: {
+        ...process.env,
+        BSG_TEST_ADB_DEVICES_OUTPUT: "List of devices attached\n",
+      },
+    });
+    await runBsg(["resolve-user-action", "--run", runDir, "--action", "android_device_unavailable"]);
     await runBsg(["advance", "--run", runDir], {
       env: {
         ...process.env,
@@ -526,10 +574,47 @@ describe("bsg workflow user-action gates", () => {
       () => execFileAsync("node", [BSG, "deliver", "--run", runDir], { encoding: "utf8" }),
       (err) => {
         const result = JSON.parse(err.stdout);
-        assert.match(result.error, /record-validation|验证状态/);
+        assert.match(result.error, /deliver 阶段|advance|record-validation|验证状态/);
         return true;
       },
     );
+  });
+
+  it("requires record-validation then advance before deliver", async () => {
+    const runDir = await initRun(tmpDir);
+    await writeRequiredDeliverFiles(tmpDir, runDir);
+    await fs.writeFile(path.join(runDir, "validator-report.json"), JSON.stringify({
+      mode: "http",
+      phases: { search: "success", detail: "success", toc: "success", content: "success" },
+      steps: [{ phase: "content", status: "success", mode: "http" }],
+    }), "utf8");
+
+    const recorded = await runBsg(["record-validation", "--run", runDir, "--status", "passed"]);
+    assert.equal(recorded.nextAction, "advance");
+
+    await assert.rejects(
+      () => execFileAsync("node", [BSG, "deliver", "--run", runDir], { encoding: "utf8" }),
+      (err) => {
+        const result = JSON.parse(err.stdout);
+        assert.match(result.error, /先运行 advance|不能跳过 advance|deliver 阶段/);
+        return true;
+      },
+    );
+
+    const advanced = await runBsg(["advance", "--run", runDir]);
+    assert.equal(advanced.nextAction, "deliver");
+
+    await assert.rejects(
+      () => execFileAsync("node", [BSG, "advance", "--run", runDir], { encoding: "utf8" }),
+      (err) => {
+        const result = JSON.parse(err.stdout);
+        assert.match(result.error, /运行 deliver|不要用 advance/);
+        return true;
+      },
+    );
+
+    const delivered = await runBsg(["deliver", "--run", runDir]);
+    assert.equal(delivered.finalStatus, "passed");
   });
 
   it("refuses record-validation before validate phase is active", async () => {
@@ -613,7 +698,7 @@ describe("bsg workflow user-action gates", () => {
     await fs.writeFile(fakeExporter, [
       "import fs from 'node:fs';",
       "const out = process.argv[process.argv.indexOf('-o') + 1];",
-      "fs.writeFileSync(out, '# exported by claude-code-log\\n\\n自动导出成功\\n', 'utf8');",
+      "fs.writeFileSync(out, '# exported by claude-code-log\\n\\n' + process.argv.join(' ') + '\\n', 'utf8');",
     ].join("\n"), "utf8");
 
     const result = await runBsg([
@@ -631,7 +716,7 @@ describe("bsg workflow user-action gates", () => {
     assert.equal(result.ok, true);
     assert.equal(result.includedTranscript, true);
     const exported = await fs.readFile(path.join(result.bundleDir, "transcript", "claude-code-log.md"), "utf8");
-    assert.match(exported, /自动导出成功/);
+    assert.match(exported, /--detail high/);
     const manifest = JSON.parse(await fs.readFile(path.join(result.bundleDir, "manifest.json"), "utf8"));
     assert.equal(manifest.claude.transcriptSource.endsWith(`${sessionId}.jsonl`), true);
     assert.notEqual(manifest.claude.exporter, "raw-jsonl-fallback");
@@ -677,6 +762,44 @@ describe("bsg workflow user-action gates", () => {
     assert.equal(manifest.claude.transcriptSource, latestPath);
   });
 
+  it("prefers the latest Claude Code transcript for the requested work directory", async () => {
+    const runDir = await initRun(tmpDir);
+    await writeRequiredDeliverFiles(tmpDir, runDir);
+    const claudeHome = path.join(tmpDir, ".claude");
+    const matchingDir = path.join(claudeHome, "projects", "C--Users-Tester-skill-test");
+    const otherDir = path.join(claudeHome, "projects", "C--Users-Tester-other-project");
+    await fs.mkdir(matchingDir, { recursive: true });
+    await fs.mkdir(otherDir, { recursive: true });
+    const matchingSessionId = "33333333-3333-4333-8333-333333333333";
+    const otherSessionId = "44444444-4444-4444-8444-444444444444";
+    const matchingPath = path.join(matchingDir, `${matchingSessionId}.jsonl`);
+    const otherPath = path.join(otherDir, `${otherSessionId}.jsonl`);
+    await fs.writeFile(matchingPath, "{\"type\":\"user\"}\n", "utf8");
+    await fs.writeFile(otherPath, "{\"type\":\"assistant\"}\n", "utf8");
+    await fs.utimes(matchingPath, new Date("2024-01-01T00:00:00Z"), new Date("2024-01-01T00:00:00Z"));
+    await fs.utimes(otherPath, new Date("2024-01-02T00:00:00Z"), new Date("2024-01-02T00:00:00Z"));
+    const fakeExporter = path.join(tmpDir, "fake-claude-code-log-cwd.mjs");
+    await fs.writeFile(fakeExporter, [
+      "import fs from 'node:fs';",
+      "const input = process.argv.find((arg) => arg.endsWith('.jsonl'));",
+      "const out = process.argv[process.argv.indexOf('-o') + 1];",
+      "fs.writeFileSync(out, `# ${input}\\n`, 'utf8');",
+    ].join("\n"), "utf8");
+
+    const result = await runBsg(["debug-bundle", "--run", runDir, "--cwd", "C:/Users/Tester/skill-test"], {
+      env: {
+        ...process.env,
+        BSG_TEST_CLAUDE_HOME: claudeHome,
+        BSG_CLAUDE_CODE_LOG_COMMAND: JSON.stringify([process.execPath, fakeExporter]),
+      },
+    });
+
+    assert.equal(result.ok, true);
+    const manifest = JSON.parse(await fs.readFile(path.join(result.bundleDir, "manifest.json"), "utf8"));
+    assert.equal(manifest.claude.sessionId, matchingSessionId);
+    assert.equal(manifest.claude.transcriptSource, matchingPath);
+  });
+
   it("classifies unauthorized adb devices as user authorization required", async () => {
     const result = await runBsg(["android-status"], {
       env: {
@@ -698,7 +821,7 @@ describe("bsg workflow user-action gates", () => {
       steps: [{ phase: "content", status: "success", mode: "http" }],
     }), "utf8");
 
-    const result = await runBsg(["record-validation", "--run", runDir, "--status", "passed"], {
+    const result = await runBsgBlocked(["record-validation", "--run", runDir, "--status", "passed"], {
       env: {
         ...process.env,
         BSG_TEST_ADB_DEVICES_OUTPUT: "List of devices attached\nABC123\tdevice\n",
@@ -722,7 +845,7 @@ describe("bsg workflow user-action gates", () => {
       _loginMethod: "probe",
     })]);
 
-    const result = await runBsg(["record-validation", "--run", runDir, "--status", "passed"], {
+    const result = await runBsgBlocked(["record-validation", "--run", runDir, "--status", "passed"], {
       env: {
         ...process.env,
         BSG_TEST_ADB_DEVICES_OUTPUT: "List of devices attached\nABC123\tdevice\n",
@@ -752,7 +875,7 @@ describe("bsg workflow user-action gates", () => {
       _loginMethod: "probe",
     })]);
 
-    const result = await runBsg(["record-validation", "--run", runDir, "--status", "passed"], {
+    const result = await runBsgBlocked(["record-validation", "--run", runDir, "--status", "passed"], {
       env: {
         ...process.env,
         BSG_TEST_ADB_DEVICES_OUTPUT: "List of devices attached\n",
@@ -764,6 +887,37 @@ describe("bsg workflow user-action gates", () => {
     assert.match(result.message, /真机或模拟器已断开/);
   });
 
+  it("downgrades WebView source to validator_limitation when Android is unavailable", async () => {
+    const noAndroidEnv = {
+      ...process.env,
+      BSG_TEST_ADB_DEVICES_OUTPUT: "List of devices attached\n",
+    };
+    const runDir = await initRun(tmpDir, { env: noAndroidEnv });
+    await advanceToValidateWithWebViewSource(tmpDir, runDir);
+    await fs.writeFile(path.join(runDir, "validator-report.json"), JSON.stringify({
+      mode: "http",
+      phases: { search: "success", detail: "success", toc: "success", content: "success" },
+      steps: [
+        { phase: "search", status: "success", mode: "http" },
+        { phase: "detail", status: "success", mode: "http" },
+        { phase: "toc", status: "success", mode: "http" },
+        { phase: "content", status: "success", mode: "http", preview: "电脑端正文预览" },
+      ],
+    }), "utf8");
+
+    const recorded = await runBsg(["record-validation", "--run", runDir, "--status", "passed"], {
+      env: noAndroidEnv,
+    });
+
+    assert.equal(recorded.status, "validator_limitation");
+    assert.match(recorded.androidWarning, /Android Probe 不可用|WebView 正文/);
+
+    await runBsg(["advance", "--run", runDir]);
+    const delivered = await runBsg(["deliver", "--run", runDir]);
+    assert.equal(delivered.finalStatus, "validator_limitation");
+    assert.match(delivered.message, /不能标可用|App\/WebView/);
+  });
+
   it("blocks malformed cookies json during validation recording", async () => {
     const runDir = await initRun(tmpDir);
     await writeRequiredDeliverFiles(tmpDir, runDir);
@@ -772,7 +926,7 @@ describe("bsg workflow user-action gates", () => {
       domain: "a=b; c=d",
     }), "utf8");
 
-    const result = await runBsg(["record-validation", "--run", runDir, "--status", "needs_app_review"]);
+    const result = await runBsgBlocked(["record-validation", "--run", runDir, "--status", "needs_app_review"]);
 
     assert.equal(result.status, "blocked");
     assert.equal(result.blockedBy, "cookie_not_injected");
@@ -793,7 +947,7 @@ describe("bsg workflow user-action gates", () => {
       ],
     }), "utf8");
 
-    const blocked = await runBsg(["record-validation", "--run", runDir, "--status", "needs_app_review"], {
+    const blocked = await runBsgBlocked(["record-validation", "--run", runDir, "--status", "needs_app_review"], {
       env: {
         ...process.env,
         BSG_TEST_ADB_DEVICES_OUTPUT: "List of devices attached\n",
@@ -878,7 +1032,7 @@ describe("bsg workflow user-action gates", () => {
       ],
     }), "utf8");
 
-    const result = await runBsg(["record-validation", "--run", runDir, "--status", "needs_app_review"]);
+    const result = await runBsgBlocked(["record-validation", "--run", runDir, "--status", "needs_app_review"]);
 
     assert.equal(result.status, "blocked");
     assert.equal(result.blockedBy, "hard_rule_error");
@@ -903,10 +1057,66 @@ describe("bsg workflow user-action gates", () => {
       _loginMethod: "probe",
     })]);
 
-    const result = await runBsg(["record-validation", "--run", runDir, "--status", "passed"]);
+    const result = await runBsgBlocked(["record-validation", "--run", runDir, "--status", "passed"]);
 
     assert.equal(result.status, "blocked");
     assert.equal(result.blockedBy, "android_webview_not_used");
+  });
+
+  it("refuses deliver after blocked validation matrix", async () => {
+    const runDir = await initRun(tmpDir);
+    await advanceToValidateWithWebViewSource(tmpDir, runDir);
+    await fs.writeFile(path.join(runDir, "validation-checklist.md"), "# 清单\n", "utf8");
+    await fs.writeFile(path.join(runDir, "validator-report.json"), JSON.stringify({
+      mode: "android",
+      phases: { search: "error" },
+      steps: [
+        { phase: "search", status: "error", mode: "android", error: "搜索结果为空" },
+      ],
+    }), "utf8");
+
+    const blocked = await runBsgBlocked(["record-validation", "--run", runDir, "--status", "validator_limitation"]);
+    assert.equal(blocked.status, "blocked");
+    assert.equal(blocked.blockedBy, "android_webview_not_used");
+
+    await assert.rejects(
+      () => execFileAsync("node", [BSG, "deliver", "--run", runDir], { encoding: "utf8" }),
+      (err) => {
+        const result = JSON.parse(err.stdout);
+        assert.match(result.error, /blocked:android_webview_not_used|验证未完成|record-validation/);
+        return true;
+      },
+    );
+  });
+
+  it("blocks Android WebView validation without extracted content evidence", async () => {
+    const runDir = await initRun(tmpDir);
+    await advanceToValidateWithWebViewSource(tmpDir, runDir);
+    await fs.writeFile(path.join(runDir, "validator-report.json"), JSON.stringify({
+      mode: "android",
+      phases: { search: "success", detail: "success", toc: "success", content: "success" },
+      steps: [{
+        phase: "content",
+        status: "success",
+        mode: "android",
+        request: { headers: { Cookie: "a=b" } },
+        webViewHtmlPreview: "<html><body><div id=\"J_BookRead\"></div></body></html>",
+        evidence: { contentLength: 0 },
+        preview: "",
+      }],
+    }), "utf8");
+    await runBsg(["set-login-features", "--run", runDir, "--flags", JSON.stringify({
+      hasEnabledCookieJar: true,
+      _loginMethod: "probe",
+    })]);
+
+    const result = await runBsgBlocked(["record-validation", "--run", runDir, "--status", "passed"]);
+    const matrix = JSON.parse(await fs.readFile(path.join(runDir, "capability-matrix.json"), "utf8"));
+
+    assert.equal(result.blockedBy, "android_webview_content_not_verified");
+    assert.equal(matrix.links.content.status, "blocked");
+    assert.equal(matrix.links.content.blocker, "android_webview_content_not_verified");
+    assert.equal(matrix.overall.status, "blocked:android_webview_content_not_verified");
   });
 
   it("accepts Probe login plus webView source when android content step has WebView render evidence", async () => {
@@ -921,6 +1131,9 @@ describe("bsg workflow user-action gates", () => {
         mode: "android",
         request: { headers: { Cookie: "a=b" } },
         webViewHtmlPreview: "<html><body><div id=\"J_BookRead\">正文</div></body></html>",
+        evidence: { contentLength: 120, contentPreview: "这是一段从 Android WebView DOM 中提取出的章节正文。" },
+        preview: "这是一段从 Android WebView DOM 中提取出的章节正文。",
+        extracted: { contentLength: 120 },
       }],
     }), "utf8");
     await runBsg(["set-login-features", "--run", runDir, "--flags", JSON.stringify({
@@ -931,7 +1144,7 @@ describe("bsg workflow user-action gates", () => {
     const result = await runBsg(["record-validation", "--run", runDir, "--status", "passed"]);
 
     assert.equal(result.status, "anonymous_candidate");
-    assert.equal(result.nextAction, "deliver");
+    assert.equal(result.nextAction, "advance");
   });
 
   it("blocks Probe login when android report stays anonymous with no cookie evidence", async () => {
@@ -953,7 +1166,7 @@ describe("bsg workflow user-action gates", () => {
       _loginMethod: "probe",
     })]);
 
-    const result = await runBsg(["record-validation", "--run", runDir, "--status", "passed"]);
+    const result = await runBsgBlocked(["record-validation", "--run", runDir, "--status", "passed"]);
 
     assert.equal(result.status, "blocked");
     assert.equal(result.blockedBy, "android_probe_cookie_not_used");
@@ -977,6 +1190,36 @@ describe("bsg workflow user-action gates", () => {
     assert.match(summary, /最终状态: passed/);
   });
 
+  it("blocks passed validation when search success has zero extracted books", async () => {
+    const runDir = await initRun(tmpDir);
+    await writeRequiredDeliverFiles(tmpDir, runDir);
+    await fs.writeFile(path.join(runDir, "validator-report.json"), JSON.stringify({
+      status: "passed",
+      mode: "http",
+      summary: {
+        resultCount: 0,
+        firstBook: "",
+        chapterCount: 20,
+        contentPreview: "这是一段足够长的正文预览。".repeat(10),
+      },
+      phases: { search: "success", detail: "success", toc: "success", content: "success" },
+      steps: [
+        { phase: "search", status: "success", response: { bodyPreview: "<li>book</li>" }, extracted: {} },
+        { phase: "detail", status: "success", response: { bodyPreview: "detail" } },
+        { phase: "toc", status: "success", response: { bodyPreview: "toc" } },
+        { phase: "content", status: "success", response: { bodyPreview: "content" }, preview: "这是一段足够长的正文预览。".repeat(10) },
+      ],
+    }), "utf8");
+
+    const result = await runBsgBlocked(["record-validation", "--run", runDir, "--status", "passed"]);
+    const matrix = JSON.parse(await fs.readFile(path.join(runDir, "capability-matrix.json"), "utf8"));
+
+    assert.equal(result.blockedBy, "search_result_empty");
+    assert.equal(matrix.links.search.status, "blocked");
+    assert.equal(matrix.links.search.blocker, "search_result_empty");
+    assert.match(result.message, /阅读语义证据|resultCount/);
+  });
+
   it("capability matrix keeps search CAPTCHA as partial candidate, not full pass", async () => {
     const runDir = await initRun(tmpDir);
     await writeRequiredDeliverFiles(tmpDir, runDir);
@@ -991,6 +1234,8 @@ describe("bsg workflow user-action gates", () => {
       ],
     }), "utf8");
 
+    await runBsgBlocked(["record-validation", "--run", runDir, "--status", "needs_app_review"]);
+    await runBsg(["resolve-user-action", "--run", runDir, "--action", "android_device_unavailable"]);
     await runBsg(["record-validation", "--run", runDir, "--status", "needs_app_review"]);
     const matrix = JSON.parse(await fs.readFile(path.join(runDir, "capability-matrix.json"), "utf8"));
 

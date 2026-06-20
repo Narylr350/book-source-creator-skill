@@ -14,7 +14,8 @@ import {
   loadBookSource, validateBookSourceStructure, validateCookieFileShape,
   ensureAssessmentFactsFresh, ensureRuleCheckSourceFresh,
   reportHardRuleError, reportUsedAndroidMode, reportUsedAndroidWebView,
-  reportHasLoginSessionEvidence, writeCapabilityMatrix, writeValidatorSummary,
+  reportHasAndroidWebViewContentEvidence, reportHasLoginSessionEvidence,
+  reportAcceptanceGateError, writeCapabilityMatrix, writeValidatorSummary,
 } from "./facts.mjs";
 
 export function cmdRecordValidation(args) {
@@ -85,9 +86,10 @@ export function cmdRecordValidation(args) {
   let hasLoginFeatures = Object.values(state.loginFeatures).some((b) => b === true);
   let shouldRetry = false;
   let finalStatus = null;
-  let nextAction = "deliver";
+  let nextAction = "advance";
   let cookieWarning = null;
   let androidWarning = null;
+  let webViewAndroidUnavailable = false;
   let convergenceBlock = null;
   let hardRuleBlock = null;
 
@@ -119,6 +121,33 @@ export function cmdRecordValidation(args) {
       nextAction: "fix_rules_and_retry",
       message: hardRuleBlock,
     };
+  }
+
+  if (["passed", "needs_app_review", "validator_limitation", "degraded"].includes(status)) {
+    const acceptanceError = reportAcceptanceGateError(reportPathForMode);
+    if (acceptanceError) {
+      v.attempts -= 1;
+      v.lastStatus = "failed";
+      saveRunState(runDir, state);
+      const finalBlocked = `blocked:${acceptanceError.phase}:${acceptanceError.blockedBy}`;
+      writeCapabilityMatrix(runDir, reportPathForMode, finalBlocked);
+      writeValidatorSummary(runDir, status, finalBlocked, reportPathForMode);
+      return {
+        ok: true,
+        status: "blocked",
+        blockedBy: acceptanceError.blockedBy,
+        shouldRetry: true,
+        nextAction: "fix_rules_and_retry",
+        message: [
+          "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+          "⛔ validator 成功结论缺少阅读语义证据",
+          "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+          acceptanceError.message,
+          "这类问题不能按后端限制通过，也不能靠经验修完直接交付；必须修规则并重新运行 validator。",
+          "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+        ].join("\n"),
+      };
+    }
   }
 
   if (status === "passed") {
@@ -241,6 +270,7 @@ export function cmdRecordValidation(args) {
         const adbOk = checkAdb();
         const androidWasUsed = reportUsedAndroidMode(reportPathForMode);
         const androidWebViewWasUsed = reportUsedAndroidWebView(reportPathForMode);
+        const androidWebViewContentVerified = reportHasAndroidWebViewContentEvidence(reportPathForMode);
 
         if (adbOk && !androidWasUsed) {
           androidWarning = [
@@ -261,6 +291,16 @@ export function cmdRecordValidation(args) {
             "重新用 Android Probe 验证正文页，并开启 debugDir 产物；如果站点是纯 SSR 且不需要 WebView，应移除 webView:true / webJs 后重跑。",
             "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
           ].join("\n");
+        } else if (androidWasUsed && androidWebViewWasUsed && !androidWebViewContentVerified) {
+          androidWarning = [
+            "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+            "⛔ Android WebView 没有正文提取证据",
+            "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+            "validator-report.json 有 Android WebView 渲染证据，但 content 阶段没有 ruleContent 提取出的正文 preview / evidence.contentPreview / contentLength。",
+            "这只能证明页面在手机/模拟器 WebView 打开过，不能证明阅读 App 能提取正文。",
+            "请用 Android Probe 重新验证正文页，确认 ruleContent.content / webJs 在 WebView DOM 上能提取到正文；失败时按 CONTENT_SELECTOR_EMPTY / WEBJS_RETURN_EMPTY / CONTENT_TOO_SHORT 回修。",
+            "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+          ].join("\n");
         } else if (state.adbDetected) {
           androidWarning = [
             "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
@@ -273,6 +313,7 @@ export function cmdRecordValidation(args) {
             "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
           ].join("\n");
         } else {
+          webViewAndroidUnavailable = true;
           androidWarning = [
             "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
             "⚠️  WebView 正文 — Android Probe 不可用",
@@ -309,6 +350,12 @@ export function cmdRecordValidation(args) {
       writeCapabilityMatrix(runDir, reportPathForMode, "blocked:android_webview_not_used");
       writeValidatorSummary(runDir, status, "blocked:android_webview_not_used", reportPathForMode);
       return { ok: true, status: "blocked", blockedBy: "android_webview_not_used", shouldRetry: true, nextAction: "rerun_android_webview_validation", message: androidWarning };
+    } else if (!reportHasAndroidWebViewContentEvidence(reportPathForMode) && (state.loginFeatures.hasWebView || state.loginFeatures.hasWebJs)) {
+      v.attempts -= 1;
+      saveRunState(runDir, state);
+      writeCapabilityMatrix(runDir, reportPathForMode, "blocked:android_webview_content_not_verified");
+      writeValidatorSummary(runDir, status, "blocked:android_webview_content_not_verified", reportPathForMode);
+      return { ok: true, status: "blocked", blockedBy: "android_webview_content_not_verified", shouldRetry: true, nextAction: "fix_android_webview_content_extraction", message: androidWarning };
     }
   }
   if (androidWarning) {
@@ -386,7 +433,12 @@ export function cmdRecordValidation(args) {
     };
   }
 
-  if (status === "passed" && !hasLoginFeatures) {
+  if (status === "passed" && webViewAndroidUnavailable && (state.loginFeatures.hasWebView || state.loginFeatures.hasWebJs)) {
+    finalStatus = "validator_limitation";
+    v.lastStatus = finalStatus;
+    v.status = "completed";
+    v.consecutiveSame = 0;
+  } else if (status === "passed" && !hasLoginFeatures) {
     finalStatus = "passed";
     v.status = "completed";
     v.consecutiveSame = 0;
@@ -397,7 +449,6 @@ export function cmdRecordValidation(args) {
   } else if (status === "degraded") {
     finalStatus = "degraded";
     v.status = "completed";
-    nextAction = "deliver";
   } else if (status === "failed") {
     let errorSig = status;
     if (fileExists(reportPathForMode)) {
@@ -438,7 +489,6 @@ export function cmdRecordValidation(args) {
     if (v.consecutiveSame >= 5) {
       finalStatus = "failed_unresolved";
       v.status = "completed";
-      nextAction = "deliver";
       convergenceBlock = `同一错误连续 ${v.consecutiveSame} 次未修复 (${errorSig.slice(0, 120)})，判定为死循环。停止自动回修，需人工介入。`;
     } else {
       shouldRetry = true;
@@ -448,11 +498,9 @@ export function cmdRecordValidation(args) {
   } else if (status === "needs_app_review") {
     finalStatus = "needs_app_review";
     v.status = "completed";
-    nextAction = "deliver";
   } else if (status === "validator_limitation") {
     finalStatus = "validator_limitation";
     v.status = "completed";
-    nextAction = "deliver";
   }
 
   v.recordedAt = new Date().toISOString();

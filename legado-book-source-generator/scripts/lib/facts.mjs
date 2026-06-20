@@ -77,6 +77,23 @@ export function reportUsedAndroidWebView(reportPath) {
   }
 }
 
+export function reportHasAndroidWebViewContentEvidence(reportPath) {
+  if (!fileExists(reportPath)) return false;
+  try {
+    const report = JSON.parse(fs.readFileSync(reportPath, "utf-8"));
+    return (report.steps || []).some((step) => {
+      if (step?.mode !== "android" || step.phase !== "content" || step.status !== "success") return false;
+      if (step.preview && String(step.preview).trim().length > 0) return true;
+      if (step.evidence?.contentPreview && String(step.evidence.contentPreview).trim().length > 0) return true;
+      const evidenceLength = Number(step.evidence?.contentLength || 0);
+      const extractedLength = Number(step.extracted?.contentLength || 0);
+      return evidenceLength > 0 || extractedLength > 0;
+    });
+  } catch {
+    return false;
+  }
+}
+
 export function reportHasLoginSessionEvidence(reportPath) {
   if (!fileExists(reportPath)) return false;
   try {
@@ -118,6 +135,92 @@ export function reportHardRuleError(reportPath) {
     return null;
   } catch {
     return null;
+  }
+}
+
+function successfulStep(report, phase) {
+  return (report?.steps || []).find((step) => step.phase === phase && step.status === "success") || null;
+}
+
+function numberFrom(...values) {
+  for (const value of values) {
+    const n = Number(value);
+    if (Number.isFinite(n)) return n;
+  }
+  return 0;
+}
+
+function firstText(...values) {
+  for (const value of values) {
+    if (typeof value === "string" && value.trim()) return value.trim();
+  }
+  return "";
+}
+
+function hasAnyKey(obj, keys) {
+  return Boolean(obj && typeof obj === "object" && keys.some((key) => Object.prototype.hasOwnProperty.call(obj, key)));
+}
+
+export function reportAcceptanceGateError(reportPath) {
+  if (!fileExists(reportPath)) return null;
+  try {
+    const report = JSON.parse(fs.readFileSync(reportPath, "utf-8"));
+    const summary = report.summary || {};
+    const rawSummary = report.raw?.summary || {};
+    const phases = report.phases || {};
+
+    if ((phases.search === "success" || successfulStep(report, "search")) && hasAnyKey(summary, ["resultCount", "firstBook"])) {
+      const resultCount = numberFrom(summary.resultCount, rawSummary.resultCount);
+      const firstBook = firstText(summary.firstBook, rawSummary.firstBook, successfulStep(report, "search")?.extracted?.name);
+      if (resultCount < 1) {
+        return {
+          phase: "search",
+          blockedBy: "search_result_empty",
+          message: "validator 报告标记 search success，但 resultCount < 1。搜索没有证明能提取书籍列表，不能交付。",
+        };
+      }
+      if (!firstBook) {
+        return {
+          phase: "search",
+          blockedBy: "search_book_name_empty",
+          message: "validator 报告标记 search success，但 firstBook/name 为空。搜索只证明页面有返回，未证明 ruleSearch.name 在阅读语义下可用。",
+        };
+      }
+    }
+
+    if ((phases.toc === "success" || successfulStep(report, "toc")) && hasAnyKey(summary, ["chapterCount"])) {
+      const chapterCount = numberFrom(summary.chapterCount, rawSummary.chapterCount, successfulStep(report, "toc")?.extracted?.chapterCount);
+      if (chapterCount > 0 && chapterCount < 10) {
+        return {
+          phase: "toc",
+          blockedBy: "toc_chapter_count_too_low",
+          message: "validator 报告标记 toc success，但 chapterCount < 10。目录数量不足，不能作为可交付结果。",
+        };
+      }
+    }
+
+    if ((phases.content === "success" || successfulStep(report, "content")) && hasAnyKey(summary, ["contentLength", "contentPreview"])) {
+      const contentStep = successfulStep(report, "content");
+      const contentPreview = firstText(summary.contentPreview, rawSummary.contentPreview, contentStep?.preview, contentStep?.evidence?.contentPreview);
+      const contentLength = numberFrom(
+        summary.contentLength,
+        rawSummary.contentLength,
+        contentStep?.evidence?.contentLength,
+        contentStep?.extracted?.contentLength,
+        contentPreview.length,
+      );
+      if (contentLength < 100) {
+        return {
+          phase: "content",
+          blockedBy: "content_length_too_short",
+          message: "validator 报告标记 content success，但 contentLength/contentPreview 不足 100 字符。正文未证明可用，不能交付。",
+        };
+      }
+    }
+
+    return null;
+  } catch (e) {
+    return { phase: "unknown", blockedBy: "validator_report_unreadable", message: `validator-report.json 读取失败: ${e.message}` };
   }
 }
 
@@ -522,6 +625,7 @@ export function detectStepBlocker(step) {
   if (/login|登录|401|403|unauthorized|COOKIE_REQUIRED/i.test(text)) return "login";
   if (/vip|付费|订阅|paid|subscribe/i.test(text)) return "vip";
   if (/CONTENT_IS_CSR_SHELL|__nuxt|__next|webpack|vite/i.test(text)) return "csr";
+  if (/WEBJS_RETURN_EMPTY|WEBJS_EXEC_ERROR|CONTENT_SELECTOR_EMPTY|CONTENT_TOO_SHORT/i.test(text)) return "content_extraction";
   if (/ANDROID_PROBE_UNAVAILABLE/i.test(text)) return "android_unavailable";
   return step?.status === "error" ? "rule_or_network_error" : null;
 }
@@ -539,15 +643,20 @@ export function buildCapabilityMatrix(report, finalStatus) {
   const steps = report?.steps || [];
   const links = {};
   const blockers = [];
+  const forcedMatch = typeof finalStatus === "string" ? finalStatus.match(/^blocked:(search|detail|toc|content):([A-Za-z0-9_:-]+)$/) : null;
+  const forcedPhase = forcedMatch?.[1] || null;
+  const forcedPhaseBlocker = forcedMatch?.[2] || null;
   for (const phase of LINK_PHASES) {
     const phaseSteps = steps.filter((step) => step.phase === phase);
     const failed = phaseSteps.find((step) => step.status === "error");
     const success = phaseSteps.find((step) => step.status === "success");
     const step = failed || success || null;
-    const blocker = detectStepBlocker(step);
+    const forcedBlocked = phase === "content" && typeof finalStatus === "string" && finalStatus.startsWith("blocked:android_webview_content_not_verified");
+    const forcedByQualityGate = forcedPhase === phase;
+    const blocker = forcedBlocked ? "android_webview_content_not_verified" : forcedByQualityGate ? forcedPhaseBlocker : detectStepBlocker(step);
     if (blocker) blockers.push(`${phase}:${blocker}`);
     links[phase] = {
-      status: success && !failed ? "success" : failed ? "blocked" : "unknown",
+      status: forcedBlocked || forcedByQualityGate ? "blocked" : success && !failed ? "success" : failed ? "blocked" : "unknown",
       blocker,
       render: phase === "content" ? stepRenderKind(step) : null,
       evidenceIds: step ? [`validator:${phase}`] : [],
@@ -555,7 +664,9 @@ export function buildCapabilityMatrix(report, finalStatus) {
   }
   const allSuccess = LINK_PHASES.every((phase) => links[phase].status === "success");
   const anySuccess = LINK_PHASES.some((phase) => links[phase].status === "success");
-  const overallStatus = allSuccess && finalStatus === "passed"
+  const overallStatus = typeof finalStatus === "string" && finalStatus.startsWith("blocked:")
+    ? finalStatus
+    : allSuccess && finalStatus === "passed"
     ? "full_pass"
     : anySuccess
       ? "partial_candidate"

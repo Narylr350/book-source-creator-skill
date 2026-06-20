@@ -92,6 +92,34 @@ export function completePhase(phase, state, runDir) {
       const android = diagnoseAndroid();
       const adbOk = android.state === "device_ready";
 
+      if (!adbOk && state.userDecisions?.androidDevice !== "unavailable") {
+        const message = [
+          "站点需要登录态/Cookie/Authorization，但未检测到可用 Android 真机或模拟器。",
+          "",
+          `当前 Android/adb 状态: ${android.state}。${android.message}`,
+          "",
+          "为尽量还原阅读 App 行为，必须先确认是否有 Android 真机或模拟器可用于 Probe 登录和 App/WebView 验证。",
+          "  • 如果有，请连接真机或启动模拟器并完成 adb 授权后，再运行 resolve-user-action --action android_device_ready。",
+          "  • 如果没有可用 Android 真机或模拟器，运行 resolve-user-action --action android_device_unavailable；之后才允许降级为 Browser Cookie 登录路径。",
+        ].join("\n");
+        const pending = setPendingUserAction(state, "android_device_needed", "login_requires_android_decision", message, {
+          blockingPhase: "assess",
+          android,
+          loginRequired: true,
+        });
+        saveRunState(runDir, state);
+        return {
+          ok: true,
+          nextAction: "stop",
+          requiredUserAction: "android_device_needed",
+          message,
+          blockingPhase: "assess",
+          reason: "login_requires_android_decision",
+          android,
+          pendingUserAction: pending,
+        };
+      }
+
       if (state.userDecisions?.login === "no_account") {
         state.loginFeatures._loginDeclined = true;
         saveRunState(runDir, state);
@@ -300,7 +328,7 @@ export function completePhase(phase, state, runDir) {
   }
 
   if (phase === "deliver") {
-    return cmdDeliverCheck(state, runDir);
+    return fail("当前已进入 deliver 阶段。请运行 deliver --run <run-dir> 完成交付；不要用 advance 代替 deliver。");
   }
 
   return fail(`未知阶段: ${phase}`);

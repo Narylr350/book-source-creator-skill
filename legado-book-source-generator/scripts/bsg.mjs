@@ -113,7 +113,7 @@ async function main(argv) {
   }
 
   console.log(JSON.stringify(result, null, 2));
-  return result.ok ? 0 : 1;
+  return result.ok && result.status !== "blocked" ? 0 : 1;
 }
 
 process.exitCode = await main(process.argv.slice(2));

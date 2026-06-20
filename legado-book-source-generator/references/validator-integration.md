@@ -180,7 +180,12 @@ node scripts/bsg.mjs record-validation --run runs/<slug> --status <status> --rep
 
 最终链路结论以 `capability-matrix.json` 为准，不从 `assessment.md`、`validator-summary.md` 或 AI 摘要里反推。
 
-`mode=android` 不是 Android WebView 正文验证的充分证据。生成源含 `webView:true` / `webJs` 时，报告必须在 content 阶段留下 Android WebView 渲染证据：`webViewHtmlPreview`、`webViewScreenshotBase64`、`debugArtifacts["response.rendered.html"]` 或 `debugArtifacts["screenshot.png"]`。否则 `record-validation` 返回 `blockedBy=android_webview_not_used`。
+`mode=android` 不是 Android WebView 正文验证的充分证据。生成源含 `webView:true` / `webJs` 时，报告必须在 content 阶段同时留下两类证据：
+
+1. Android WebView 渲染证据：`webViewHtmlPreview`、`webViewScreenshotBase64`、`debugArtifacts["response.rendered.html"]` 或 `debugArtifacts["screenshot.png"]`。缺失时 `record-validation` 返回 `blockedBy=android_webview_not_used`。
+2. WebView 后正文提取证据：`preview`、`evidence.contentPreview`、`evidence.contentLength` 或 `extracted.contentLength`。缺失时 `record-validation` 返回 `blockedBy=android_webview_content_not_verified`。
+
+截图或 rendered HTML 只能证明页面打开过，不能证明阅读 App 能按 `ruleContent.content` / `webJs` 提取正文。正文可用性必须以后者为准。
 
 Probe 登录后的报告必须有登录态证据：非 `anonymous` 的 `sessionMode`，或请求头里有 Cookie/Authorization。否则 `record-validation` 返回 `blockedBy=android_probe_cookie_not_used`，说明只是完成了手机/模拟器登录动作，validator 请求没有使用该登录态。
 

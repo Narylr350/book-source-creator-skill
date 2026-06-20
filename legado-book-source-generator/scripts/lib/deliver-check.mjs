@@ -4,7 +4,7 @@ import {
   SKILL_ROOT, fail, fileExists, readJsonFile, saveRunState,
   getPendingUserAction,
 } from "./state.mjs";
-import { resetPhasesFrom } from "./phase-order.mjs";
+import { PHASE_ORDER, currentPhaseIndex, resetPhasesFrom } from "./phase-order.mjs";
 import {
   loadBookSource, validateBookSourceStructure, ensureAssessmentFactsFresh,
   ensureRuleCheckSourceFresh,
@@ -16,6 +16,11 @@ export function cmdDeliverCheck(state, runDir) {
   const pending = getPendingUserAction(state);
   if (pending) {
     return fail(`仍有待用户确认动作: ${pending.type}。请先运行 resolve-user-action。`);
+  }
+
+  const current = PHASE_ORDER[currentPhaseIndex(state)] || "all_completed";
+  if (current !== "deliver" || state.phases.deliver.status !== "in_progress") {
+    return fail("尚未进入 deliver 阶段。record-validation 完成后必须先运行 advance，再运行 deliver；不能跳过 advance 直接交付。");
   }
 
   const requiredFiles = [
@@ -65,6 +70,9 @@ export function cmdDeliverCheck(state, runDir) {
   if (!v.lastStatus) {
     return fail("缺少验证状态。必须先运行 record-validation 记录真实 validator 结果，不能仅创建 validator-report.json。");
   }
+  if (v.status !== "completed") {
+    return fail("验证未完成。上次 record-validation 返回 blocked/重试动作时不能交付，请按 blockedBy 修复后重新记录验证。");
+  }
 
   const ruleCheck = readJsonFile(path.join(runDir, "rule-check.json"));
   if (!ruleCheck || ruleCheck.status !== "passed") {
@@ -74,6 +82,10 @@ export function cmdDeliverCheck(state, runDir) {
   const matrix = readJsonFile(path.join(runDir, "capability-matrix.json"));
   if (!matrix || !matrix.overall || matrix.status === "pending") {
     return fail("capability-matrix.json 未由 record-validation 生成有效能力矩阵。请重新运行 record-validation。");
+  }
+  const matrixStatus = matrix.overall?.status || matrix.status;
+  if (typeof matrixStatus === "string" && matrixStatus.startsWith("blocked")) {
+    return fail(`capability-matrix.json 仍为阻塞状态: ${matrixStatus}。不能把 blocked 验证结果作为后端限制通过或交付。`);
   }
 
   let finalStatus;

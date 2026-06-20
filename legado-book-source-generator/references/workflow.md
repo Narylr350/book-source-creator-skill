@@ -65,7 +65,7 @@
 
 `record-validation` 会生成 `capability-matrix.json`。最终交付状态只从 matrix、`rule-check.json` 和 run-state 推导；不要把局部链路成功写成 full pass。
 
-**CSR/WebView 边界**：遇到正文可能是 CSR/WebView 时，优先用 `mode=android` 跑 Probe 验证。
+**CSR/WebView 边界**：遇到正文可能是 CSR/WebView 时，优先用 `mode=android` 跑 Probe 验证。没有 Android 真机或模拟器时不强制阻塞，但 HTTP/browser 通过只能由 `record-validation` 降级为 `validator_limitation`，交付说明必须标明正文 App/WebView 可靠性未知。
 
 回修依据：
 - URL 没拼对 → 修 searchUrl/bookUrl/chapterUrl
