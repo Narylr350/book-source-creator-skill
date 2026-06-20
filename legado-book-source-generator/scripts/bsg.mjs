@@ -365,6 +365,14 @@ function emptyLinks() {
   ]));
 }
 
+function normalizeLinkStatus(status) {
+  const value = String(status || "").trim().toLowerCase();
+  if (["success", "ok", "passed", "pass"].includes(value)) return "success";
+  if (["blocked", "block", "captcha", "login_required"].includes(value)) return "blocked";
+  if (["failed", "fail", "error"].includes(value)) return "failed";
+  return value || "unknown";
+}
+
 function getEvidenceIds(facts) {
   const ids = new Set();
   for (const item of facts?.evidence || []) {
@@ -424,12 +432,25 @@ function loadSiteFacts(runDir) {
     return { ok: false, error: "site-facts.json 不存在或不是合法 JSON。Probe 后必须先记录四链路事实。" };
   }
   const missing = [];
+  const invalid = [];
   for (const phase of LINK_PHASES) {
     const link = facts.links?.[phase];
-    if (!link || !link.status || link.status === "unknown") missing.push(phase);
+    if (!link || !link.status || link.status === "unknown") {
+      missing.push(phase);
+      continue;
+    }
+    const normalizedStatus = normalizeLinkStatus(link.status);
+    if (!["success", "blocked", "failed"].includes(normalizedStatus)) {
+      invalid.push(`${phase}:${link.status}`);
+      continue;
+    }
+    link.status = normalizedStatus;
   }
   if (missing.length > 0) {
     return { ok: false, error: `site-facts.json 四链路事实不完整，缺少明确状态: ${missing.join(", ")}。` };
+  }
+  if (invalid.length > 0) {
+    return { ok: false, error: `site-facts.json 链路 status 必须是 success/blocked/failed（ok/pass/error 可自动归一化）。无效值: ${invalid.join(", ")}。` };
   }
   return { ok: true, facts };
 }
@@ -443,17 +464,27 @@ function riskFromBlocker(blocker) {
   return null;
 }
 
+function risksFromRender(render) {
+  const value = String(render || "");
+  const risks = [];
+  if (/webview|csr/i.test(value)) risks.push("WebView 依赖");
+  if (/encrypt|crypto|cipher/i.test(value)) risks.push("加密正文");
+  return risks;
+}
+
 function deriveAssessmentFromFacts(facts) {
   const links = facts.links || {};
   const risks = new Set();
   const blockers = [];
   const statuses = LINK_PHASES.map((phase) => {
     const link = links[phase] || { status: "unknown" };
+    const status = normalizeLinkStatus(link.status);
+    link.status = status;
     const risk = riskFromBlocker(link.blocker);
     if (risk) risks.add(risk);
-    if (link.render === "webview" || link.render === "csr") risks.add("WebView 依赖");
+    for (const renderRisk of risksFromRender(link.render)) risks.add(renderRisk);
     if (link.blocker) blockers.push(`${phase}:${link.blocker}`);
-    return link.status;
+    return status;
   });
 
   const successCount = statuses.filter((s) => s === "success").length;

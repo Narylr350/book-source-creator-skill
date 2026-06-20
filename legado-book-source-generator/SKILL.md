@@ -42,7 +42,7 @@ HTTP fetch 单独永远不够——它看不到 DOM、不执行 JS、不渲染 C
 
 **Probe 阶段遇到登录墙：立即停止所有探测，直接问用户是否可登录。** 触发条件：任一页面重定向到 /login、API 返回 401/403、页面显示"请先登录"。不要检查 localStorage、不要翻源码、不要研究 WebSocket——每多一步都在浪费用户时间。
 
-Probe 阶段必须把四链路事实写入 `runs/<slug>/site-facts.json`。`assessment.md` 的 AUTO 结论由 `record-assessment` 从 `site-facts.json` 生成，AI 只能写 AUTO 区块外的证据说明/分析备注，并且证据说明必须引用有效 `evidence:<id>`。
+Probe 阶段必须把四链路事实写入 `runs/<slug>/site-facts.json`。四链路 `status` 只写 `success` / `blocked` / `failed`（`ok/pass/error` 会归一化，其他自由词会拒绝）；`render` 写 `ssr_or_http` / `csr` / `webview` / `csr_encrypted` 等事实；验证码、登录、VIP、加密等必须写入 `blocker` 或 `render`，不能只写在自然语言备注里。`assessment.md` 的 AUTO 结论由 `record-assessment` 从 `site-facts.json` 生成，AI 只能写 AUTO 区块外的证据说明/分析备注，并且证据说明必须引用有效 `evidence:<id>`。
 
 写完 `assessment.md` 后必须先运行 `record-assessment`。只有 `record-assessment` 返回 `ok:true` 后，才能向用户展示 3-6 行评估摘要。摘要只能取 AUTO 区块里的评级、风险标签、4 条链路状态、关键阻塞点（如有），不要自由改写成“正常阅读/无验证码/可用”等结论。
 

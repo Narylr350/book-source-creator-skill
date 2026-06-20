@@ -55,7 +55,11 @@
 }
 ```
 
-`status` 使用 `success`、`blocked`、`failed`，不能保留 `unknown` 后运行 `record-assessment`。`blocker` 使用事实类型，如 `captcha`、`login`、`vip`、`cloudflare`、`csr`、`webview`、`encrypt`。
+`status` 使用 `success`、`blocked`、`failed`，不能保留 `unknown` 后运行 `record-assessment`。`ok/pass/error` 会被脚本归一化，`available/good/可用` 这类自由词会被拒绝。
+
+`render` 使用事实类型，如 `ssr_or_http`、`csr`、`webview`、`csr_encrypted`。`csr`/`webview` 会推导为 `WebView 依赖`，`encrypted`/`crypto` 会推导为 `加密正文`。
+
+`blocker` 使用阻塞类型，如 `captcha`、`login`、`vip`、`cloudflare`、`encrypt`。不要把风险只写在 `assessment.md` 备注里，必须进入 facts。
 
 ## 运行规则
 
