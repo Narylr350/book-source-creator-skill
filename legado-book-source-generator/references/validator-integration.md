@@ -182,7 +182,7 @@ node scripts/bsg.mjs record-validation --run runs/<slug> --status <status> --rep
 
 `mode=android` 不是 Android WebView 正文验证的充分证据。生成源含 `webView:true` / `webJs` 时，报告必须在 content 阶段留下 Android WebView 渲染证据：`webViewHtmlPreview`、`webViewScreenshotBase64`、`debugArtifacts["response.rendered.html"]` 或 `debugArtifacts["screenshot.png"]`。否则 `record-validation` 返回 `blockedBy=android_webview_not_used`。
 
-Probe 登录后的报告必须有登录态证据：非 `anonymous` 的 `sessionMode`，或请求头里有 Cookie/Authorization。否则 `record-validation` 返回 `blockedBy=android_probe_cookie_not_used`，说明只是完成了手机登录动作，validator 请求没有使用该登录态。
+Probe 登录后的报告必须有登录态证据：非 `anonymous` 的 `sessionMode`，或请求头里有 Cookie/Authorization。否则 `record-validation` 返回 `blockedBy=android_probe_cookie_not_used`，说明只是完成了手机/模拟器登录动作，validator 请求没有使用该登录态。
 
 报告中出现明确规则错误时，不允许把状态写成 `needs_app_review` 或 `validator_limitation`。典型规则错误包括：目录请求变成 `/chapter-list/`、详情阶段提取到的 `tocUrl` 缺少 book id、详情成功但 `coverUrl` / `intro` 为空。先修规则再重跑 validator。
 
@@ -262,9 +262,9 @@ curl -s http://localhost:1111/api/sources >nul 2>&1 && echo Running || echo Not 
 
 ## Android Probe / adb
 
-使用 `mode=android` 处理 `webView:true` / `webJs`，或复用 Android Probe 登录态时，需要 adb 和已连接 Android 设备。
+使用 `mode=android` 处理 `webView:true` / `webJs`，或复用 Android Probe 登录态时，需要 adb 和已在线的 Android 真机或模拟器。
 
 - 安装并启动 Probe：运行 `validator/setup-android-probe.bat`
 - `setup-android-probe.bat` 是唯一入口：检测 adb、必要时调用 `setup-adb.bat`、安装 APK、启动 Probe、配置端口转发并检查 `http://127.0.0.1:18888/ping`
 - 如果脚本失败，停止并向用户报告脚本输出。不要手工 `adb install` 绕过脚本
-- 找不到设备：返回 `validator_limitation` / `Android Probe 不可用`
+- 找不到真机或模拟器：返回 `validator_limitation` / `Android Probe 不可用`

@@ -6,7 +6,7 @@
 
 - 先匿名访问 search/detail/toc/content 四条链路，只判断站点结构、接口路径、是否有反爬、是否需要 WebView。
 - 检查登录入口、会员限制、匿名降级、登录后能力变化。
-- 如果站点需要登录态且 Android 设备在线，必须使用 Probe 原生登录；Android 不可用时才使用 Browser MCP Cookie 路径。
+- 如果站点需要登录态且 Android 真机或模拟器在线，必须使用 Probe 原生登录；Android 不可用时才使用 Browser MCP Cookie 路径。
 
 ## 2. 可生成性评估
 

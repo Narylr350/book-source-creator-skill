@@ -13,6 +13,7 @@
  *   node scripts/bsg.mjs set-login-features --run <dir> [--flags <json>]
  *   node scripts/bsg.mjs record-validation --run <dir> --status <status> [--report <file>]
  *   node scripts/bsg.mjs deliver --run <dir>
+ *   node scripts/bsg.mjs debug-bundle [--run <dir>] [--cwd <work-dir>] [--transcript <file>] [--claude-session <id>]
  *   node scripts/bsg.mjs validator-start [--background]
  *   node scripts/bsg.mjs validator-stop
  */
@@ -28,6 +29,7 @@ import {
   cmdAndroidStatus,
   cmdRecordValidation,
   cmdDeliver,
+  cmdDebugBundle,
   cmdValidatorStart,
   cmdValidatorStop,
 } from "./lib/commands.mjs";
@@ -46,6 +48,7 @@ function printUsage() {
       "  node scripts/bsg.mjs resolve-user-action --run {dir} --action <action>",
       "  node scripts/bsg.mjs record-validation --run {dir} --status <status> [--report <file>]",
       "  node scripts/bsg.mjs deliver --run {dir}",
+      "  node scripts/bsg.mjs debug-bundle [--run {dir}] [--cwd {work-dir}] [--transcript {file}] [--claude-session {id}]",
       "  node scripts/bsg.mjs android-status",
       "  node scripts/bsg.mjs validator-start [--background]",
       "  node scripts/bsg.mjs validator-stop",
@@ -94,6 +97,9 @@ async function main(argv) {
     case "deliver":
       result = cmdDeliver(args);
       break;
+    case "debug-bundle":
+      result = cmdDebugBundle(args);
+      break;
     case "validator-start":
       result = await cmdValidatorStart(args);
       break;
@@ -102,7 +108,7 @@ async function main(argv) {
       break;
     default:
       result = fail(
-        `未知命令: ${command}。可用: init, status, advance, check, record-assessment, set-login-features, resolve-user-action, android-status, record-validation, deliver, validator-start, validator-stop`
+        `未知命令: ${command}。可用: init, status, advance, check, record-assessment, set-login-features, resolve-user-action, android-status, record-validation, deliver, debug-bundle, validator-start, validator-stop`
       );
   }
 

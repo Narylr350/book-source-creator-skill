@@ -267,7 +267,7 @@ export function cmdResolveUserAction(args) {
   } else if (action === "android_device_ready") {
     const android = diagnoseAndroid();
     if (android.state !== "device_ready") {
-      return fail(`Android 设备尚未可用: ${android.state}。${android.message}`);
+      return fail(`Android 真机或模拟器尚未可用: ${android.state}。${android.message}`);
     }
     state.userDecisions.androidDevice = "ready";
   } else if (action === "no_account") {
@@ -280,7 +280,7 @@ export function cmdResolveUserAction(args) {
     if (adbOnline) {
       const probeCookies = checkProbeCookies();
       if (!probeCookies.ok) {
-        return fail("Android 设备在线时，login_completed 必须先通过 Probe /cookie-check 确认 Cookie。请运行 validator/setup-android-probe.bat，手机登录完成后再重试。");
+        return fail("Android 真机或模拟器在线时，login_completed 必须先通过 Probe /cookie-check 确认 Cookie。请运行 validator/setup-android-probe.bat，在手机/模拟器登录完成后再重试。");
       }
       state.loginFeatures._loginMethod = "probe";
     } else {

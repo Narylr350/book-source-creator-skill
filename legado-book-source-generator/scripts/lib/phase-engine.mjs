@@ -99,7 +99,7 @@ export function completePhase(phase, state, runDir) {
         if (adbOk) {
           const probeCookies = checkProbeCookies();
           if (!probeCookies.ok) {
-            return fail("Android 设备在线时，已完成登录状态必须来自 Probe /cookie-check。请重新运行登录流程，不要用 Browser Cookie 或口头确认绕过。");
+            return fail("Android 真机或模拟器在线时，已完成登录状态必须来自 Probe /cookie-check。请重新运行登录流程，不要用 Browser Cookie 或口头确认绕过。");
           }
           state.loginFeatures._loginMethod = "probe";
         } else {
@@ -117,14 +117,14 @@ export function completePhase(phase, state, runDir) {
           "站点需要登录态（enabledCookieJar / Authorization），但尚未完成登录。",
           "",
           adbOk
-            ? "Android 设备已在线，必须使用 Probe 原生登录："
+            ? "Android 真机或模拟器已在线，必须使用 Probe 原生登录："
             : "登录方式：",
           "",
           adbOk
-            ? "方式1（推荐）：Probe 原生登录 — POST http://localhost:18888/login 打开手机网页登录页 → 用户在手机上输入账号密码并完成验证码/短信/扫码 → 看到已登录状态后回复 → /cookie-check 确认"
+            ? "方式1（推荐）：Probe 原生登录 — POST http://localhost:18888/login 打开手机/模拟器网页登录页 → 用户在手机/模拟器里输入账号密码并完成验证码/短信/扫码 → 看到已登录状态后回复 → /cookie-check 确认"
             : "",
           adbOk
-            ? "Browser MCP 登录不是当前默认路径；如需改用浏览器，必须先断开/声明 Android 不可用，再按 Browser Cookie 路径继续。"
+            ? "Browser MCP 登录不是当前默认路径；如需改用浏览器，必须先断开/声明 Android 真机或模拟器不可用，再按 Browser Cookie 路径继续。"
             : "Browser MCP 登录 — 打开登录页 → 完成登录 → browser_network_requests 提取 Cookie → 保存 runs/<slug>/cookies.json",
           "",
           "如果没有该站账号，回复「无账号」——书源标为 anonymous_candidate。",
@@ -152,17 +152,17 @@ export function completePhase(phase, state, runDir) {
     if ((state.loginFeatures.hasWebView || state.loginFeatures.hasWebJs) && !checkAdb() && state.userDecisions?.androidDevice !== "unavailable") {
       const android = diagnoseAndroid();
       const message = [
-        "评估发现站点需要 WebView/CSR 渲染正文，但未检测到可用 Android 设备。",
+        "评估发现站点需要 WebView/CSR 渲染正文，但未检测到可用 Android 真机或模拟器。",
         "",
         `当前 Android/adb 状态: ${android.state}。${android.message}`,
         "",
-        "请确认：你是否有满足以下条件的设备？",
+        "请确认：你是否有满足以下条件的 Android 真机或模拟器？",
         "  • Android 真机（已开启 USB 调试）或 Android 模拟器",
-        "  • 电脑通过 USB 数据线连接手机",
-        "  • 电脑可运行 validator/setup-android-probe.bat（脚本会检测并安装 adb）",
+        "  • 真机通过 USB 数据线连接电脑；模拟器已启动并能被 adb 看到",
+        "  • 电脑可运行 validator/setup-android-probe.bat（脚本会检测并安装 adb，并通过 adb 连接真机/模拟器）",
         "",
-        "如果有，请连接设备并完成授权后，再运行 resolve-user-action --action android_device_ready。",
-        "如果没有 Android 设备，运行 resolve-user-action --action android_device_unavailable；后续正文验证只能标 needs_app_review / validator_limitation，不能标 passed。",
+        "如果有，请连接真机或启动模拟器并完成授权后，再运行 resolve-user-action --action android_device_ready。",
+        "如果没有可用 Android 真机或模拟器，运行 resolve-user-action --action android_device_unavailable；后续正文验证只能标 needs_app_review / validator_limitation，不能标 passed。",
       ].join("\n");
       const pending = setPendingUserAction(state, "android_device_needed", "webview_requires_android", message, {
         blockingPhase: "assess",

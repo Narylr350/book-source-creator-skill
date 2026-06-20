@@ -66,7 +66,7 @@ export function parseAdbDevicesOutput(out) {
     return {
       state: "device_ready",
       devices,
-      message: "adb 已检测到在线 Android 设备。",
+      message: "adb 已检测到在线 Android 真机或模拟器。",
       requiredUserAction: null,
     };
   }
@@ -74,7 +74,7 @@ export function parseAdbDevicesOutput(out) {
     return {
       state: "unauthorized",
       devices,
-      message: "Android 设备未授权。请在手机上确认 USB 调试授权。",
+      message: "Android 真机或模拟器未授权。真机请确认 USB 调试授权；模拟器请确认 adb 连接状态。",
       requiredUserAction: "authorize_usb_debugging",
     };
   }
@@ -82,7 +82,7 @@ export function parseAdbDevicesOutput(out) {
     return {
       state: "offline",
       devices,
-      message: "Android 设备处于 offline。请重插 USB、解锁手机，必要时重启 adb。",
+      message: "Android 真机或模拟器处于 offline。真机请重插 USB、解锁手机；模拟器请重启模拟器或 adb。",
       requiredUserAction: "reconnect_android_device",
     };
   }

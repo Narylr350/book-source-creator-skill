@@ -3,12 +3,13 @@ import path from "node:path";
 import crypto from "node:crypto";
 import {
   fail, parseArg, fileExists, saveRunState, loadAndVerify,
-  blockForPendingUserAction,
+  blockForPendingUserAction, setPendingUserAction,
 } from "./state.mjs";
 import {
   PHASE_ORDER, currentPhaseIndex, resetPhasesFrom, checkAdb,
   cmdDeliverCheck,
 } from "./phase-engine.mjs";
+import { diagnoseAndroid } from "./environment.mjs";
 import {
   loadBookSource, validateBookSourceStructure, validateCookieFileShape,
   ensureAssessmentFactsFresh, ensureRuleCheckSourceFresh,
@@ -193,10 +194,10 @@ export function cmdRecordValidation(args) {
     } else if (state.adbDetected) {
       androidWarning = [
         "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
-        "⚠️  Probe 登录后 Android 设备已断开",
+        "⚠️  Probe 登录后 Android 真机或模拟器已断开",
         "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
-        "本轮登录态来自 Android Probe，但现在 adb 找不到设备，不能退回 HTTP+Cookie 验证。",
-        "请重新插拔 USB 并在手机上确认 USB 调试授权。",
+        "本轮登录态来自 Android Probe，但现在 adb 找不到真机或模拟器，不能退回 HTTP+Cookie 验证。",
+        "请重新连接真机并确认 USB 调试授权，或启动模拟器并确认 adb devices 可见。",
         "然后运行: validator/setup-android-probe.bat → validate-with-validator.mjs ... android → record-validation。",
         "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
       ].join("\n");
@@ -219,7 +220,7 @@ export function cmdRecordValidation(args) {
         "⛔ Probe 登录态没有进入 validator 报告",
         "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
         "本轮登录已记录为 Android Probe，但 validator-report.json 仍是匿名会话：未看到非 anonymous sessionMode，也未看到 Cookie/Authorization 请求头。",
-        "这说明只是完成了手机登录动作，验证请求没有使用该登录态。请确认 /cookie-check 有 Cookie 后，重新用 Android mode 验证。",
+        "这说明只是完成了手机/模拟器登录动作，验证请求没有使用该登录态。请确认 /cookie-check 有 Cookie 后，重新用 Android mode 验证。",
         "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
       ].join("\n"),
     };
@@ -244,9 +245,9 @@ export function cmdRecordValidation(args) {
         if (adbOk && !androidWasUsed) {
           androidWarning = [
             "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
-            "⛔ WebView 未验证 — Android 设备已连接但未使用",
+            "⛔ WebView 未验证 — Android 真机或模拟器已连接但未使用",
             "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
-            "adb 检测到设备，但你用了 mode=http 验证 WebView 正文。",
+            "adb 检测到真机或模拟器，但你用了 mode=http 验证 WebView 正文。",
             "立即执行: validator/setup-android-probe.bat → 重新验证 → record-validation。",
             "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
           ].join("\n");
@@ -263,11 +264,11 @@ export function cmdRecordValidation(args) {
         } else if (state.adbDetected) {
           androidWarning = [
             "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
-            "⚠️  Android 设备已断开 — 请重新连接",
+            "⚠️  Android 真机或模拟器已断开 — 请重新连接",
             "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
-            "init 时检测到 Android 设备，但现在 adb 找不到设备。",
-            "可能原因：手机息屏后 USB 断开、adb 授权过期、数据线松动。",
-            "请重新插拔 USB 并在手机上确认 USB 调试授权。",
+            "init 时检测到 Android 真机或模拟器，但现在 adb 找不到。",
+            "可能原因：手机息屏后 USB 断开、adb 授权过期、数据线松动，或模拟器已关闭。",
+            "请重新连接真机并确认 USB 调试授权，或启动模拟器并确认 adb devices 可见。",
             "然后运行: validator/setup-android-probe.bat → 重新用 mode=android 验证。",
             "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
           ].join("\n");
@@ -276,9 +277,9 @@ export function cmdRecordValidation(args) {
             "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
             "⚠️  WebView 正文 — Android Probe 不可用",
             "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
-            "无 Android 设备，WebView 正文无法在本机验证。",
+            "无可用 Android 真机或模拟器，WebView 正文无法在本机验证。",
             "书源状态将标为 needs_app_review——需在 Legado App 内实测正文。",
-            "如果用户后续连接了 Android 设备，可用 validator/setup-android-probe.bat 重新验证。",
+            "如果用户后续连接真机或启动模拟器，可用 validator/setup-android-probe.bat 重新验证。",
             "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
           ].join("\n");
         }
@@ -346,6 +347,42 @@ export function cmdRecordValidation(args) {
       shouldRetry: true,
       nextAction: "inject_cookies_and_retry",
       message: cookieWarning,
+    };
+  }
+
+  if (status === "needs_app_review" && state.userDecisions?.androidDevice !== "unavailable" && !reportUsedAndroidMode(reportPathForMode)) {
+    const android = diagnoseAndroid();
+    const message = [
+      "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+      "⛔ needs_app_review 需要先确认 Android/App 复核条件",
+      "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+      "本轮验证结论是 needs_app_review，但 validator-report.json 没有 Android mode 证据。",
+      `当前 Android/adb 状态: ${android.state}。${android.message}`,
+      "",
+      android.state === "device_ready"
+        ? "已检测到 Android 真机或模拟器：请优先用 validator/setup-android-probe.bat 后重新进行 Android 验证，不要直接交付 needs_app_review。"
+        : "未检测到可用 Android 真机或模拟器：必须先问用户是否有 Android 真机/模拟器可用于 App 复核。",
+      "",
+      "如果用户确认没有可用 Android 真机或模拟器，运行 resolve-user-action --action android_device_unavailable 后再记录 needs_app_review。",
+      "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+    ].join("\n");
+    const pending = setPendingUserAction(state, "android_device_needed", "needs_app_review_requires_android_decision", message, {
+      blockingPhase: "validate",
+      android,
+      validatorStatus: status,
+    });
+    v.attempts -= 1;
+    saveRunState(runDir, state);
+    writeCapabilityMatrix(runDir, reportPathForMode, "blocked:android_device_needed");
+    return {
+      ok: true,
+      status: "blocked",
+      blockedBy: "android_device_needed",
+      shouldRetry: true,
+      nextAction: "confirm_android_device_availability",
+      requiredUserAction: "android_device_needed",
+      message,
+      pendingUserAction: pending,
     };
   }
 

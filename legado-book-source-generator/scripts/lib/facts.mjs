@@ -297,11 +297,37 @@ export function validateAssessmentAutoBlock(content) {
   const block = getAutoSummaryBlock(content);
   if (!block) return null;
   const hashMatch = block.match(/<!-- AUTO:HASH ([a-f0-9]{16}|pending) -->/);
-  if (!hashMatch || hashMatch[1] === "pending") return null;
+  if (!hashMatch) return null;
   const body = block
     .split(/\r?\n/)
     .filter((line) => !/AUTO:BEGIN|AUTO:END|AUTO:HASH/.test(line))
     .join("\n");
+  if (hashMatch[1] === "pending") {
+    const fields = new Map();
+    for (const line of body.split(/\r?\n/)) {
+      const match = line.match(/^-\s*([^:：]+)[：:]\s*(.*)$/);
+      if (match) fields.set(match[1].trim(), match[2].trim());
+    }
+    const expected = new Map([
+      ["评级", "待评估"],
+      ["风险标签", "待评估"],
+      ["总体状态", "pending"],
+      ["搜索链路", "unknown"],
+      ["详情链路", "unknown"],
+      ["目录链路", "unknown"],
+      ["正文链路", "unknown"],
+      ["登录/Android/WebView", "待评估"],
+      ["阻塞原因", "待评估"],
+      ["待确认动作", "无"],
+    ]);
+    const allowedKeys = new Set(["站点 URL", ...expected.keys()]);
+    const hasUnexpectedKey = [...fields.keys()].some((key) => !allowedKeys.has(key));
+    const hasChangedValue = [...expected.entries()].some(([key, value]) => fields.get(key) !== value);
+    if (!fields.has("站点 URL") || hasUnexpectedKey || hasChangedValue) {
+      return "assessment.md 自动结论区被手动修改。AUTO:HASH pending 区块只能保留模板占位，结论必须由 record-assessment 根据 site-facts.json 生成。";
+    }
+    return null;
+  }
   const expected = crypto.createHash("sha256").update(body).digest("hex").slice(0, 16);
   return expected === hashMatch[1] ? null : "assessment.md 自动结论区被手动修改。请重新运行 record-assessment 生成 AUTO 区块，不要手写结论。";
 }

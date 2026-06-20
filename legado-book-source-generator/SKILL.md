@@ -55,14 +55,14 @@ node "<skill-dir>/scripts/bsg.mjs" resolve-user-action --run <run-dir> --action 
 | 触发 | 操作 |
 |------|------|
 | 评级"不建议生成" | 等用户决定 |
-| WebView/CSR 正文但 Android 状态未知 | 运行 `android-status`；设备可用则用 android mode，设备不可用则问用户并记录 `android_device_unavailable` |
-| 需要登录（enabledCookieJar/Authorization/VIP/订阅/付费） | **adb 在线 → Probe 原生登录（/login + 手机完成）并用 `mode=android` 验证；无 adb → Browser MCP 登录 + Cookie 提取** |
+| WebView/CSR 正文但 Android 状态未知 | 运行 `android-status`；Android 真机或模拟器可用则用 android mode，不可用则问用户并记录 `android_device_unavailable` |
+| 需要登录（enabledCookieJar/Authorization/VIP/订阅/付费） | **adb 在线（真机或模拟器）→ Probe 原生登录（/login + 手机/模拟器完成）并用 `mode=android` 验证；无 adb → Browser MCP 登录 + Cookie 提取** |
 | **登录态丢失**（页面跳登录页、401/403、Cookie 失效） | **立即停止当前操作，告知用户登录态已失效，询问是否重新登录。不要反复重试。** |
-| Probe 和 Browser MCP 互斥提示 | 手机登录可能挤掉电脑会话（反之亦然）。如果一边登录后另一边立即失效，这是正常的——选择一条线坚持用。 |
+| Probe 和 Browser MCP 互斥提示 | 手机/模拟器登录可能挤掉电脑会话（反之亦然）。如果一边登录后另一边立即失效，这是正常的——选择一条线坚持用。 |
 | Android Probe 需 adb 授权 | 用户在手机上确认 USB 调试 |
 | 同一错误连续 5 次（收敛失败） | 等用户决定 |
 
-登录优先级：有 adb → Probe 原生登录并用 Android mode 验证；无 adb → Browser MCP 登录 + Cookie 提取。详见 `references/policies.md`
+登录优先级：有 adb 在线目标（Android 真机或模拟器）→ Probe 原生登录并用 Android mode 验证；无 adb → Browser MCP 登录 + Cookie 提取。详见 `references/policies.md`
 
 注意区分两件事：
 - Probe 原生登录只证明登录态来自手机环境。
@@ -72,12 +72,12 @@ node "<skill-dir>/scripts/bsg.mjs" resolve-user-action --run <run-dir> --action 
 
 常用动作：`android_device_ready`、`android_device_unavailable`、`login_completed`、`no_account`、`continue_after_rating_block`。
 
-Probe 手机登录时必须给用户明确步骤，不要只说"完成登录"：
+Probe 登录时必须给用户明确步骤，不要只说"完成登录"：
 
-1. 手机屏幕会弹出目标站点的网页登录页，不是让用户点一个完成按钮。
-2. 请用户在手机页面里按站点提示输入账号/密码，完成短信、验证码、滑块或扫码。
+1. 手机或模拟器屏幕会弹出目标站点的网页登录页，不是让用户点一个完成按钮。
+2. 请用户在手机/模拟器页面里按站点提示输入账号/密码，完成短信、验证码、滑块或扫码。
 3. 看到登录成功页面、用户名、会员中心或站点首页后，再让用户回复"已完成登录"。
-4. 如果手机没弹出页面、页面打不开、验证码过不去或账号不可用，让用户直接说明，不要继续猜。
+4. 如果手机/模拟器没弹出页面、页面打不开、验证码过不去或账号不可用，让用户直接说明，不要继续猜。
 5. 用户回复后再检查 `/cookie-check`，确认 Cookie 后运行 `resolve-user-action --action login_completed`。adb 在线时该命令会强制检查 Probe Cookie；不要用 Browser Cookie 绕过。
 
 ## 原则
@@ -114,15 +114,15 @@ node "<skill-dir>/scripts/bsg.mjs" android-status
 
 **Probe 阶段发现 CSR 正文且设备状态未知时，立即停下来问用户：**
 
-> "这个站的正文需要 WebView 渲染（CSR 页面），Android 设备或模拟器能大幅提高验证精度。你有 Android 设备（或模拟器）可以用吗？"
+> "这个站的正文需要 WebView 渲染（CSR 页面），Android 真机或模拟器能大幅提高验证精度。你有可用的 Android 真机或模拟器吗？"
 
 **用户说"有"：**
-1. `adb devices` — 确认设备已连接。没连上？等用户插 USB + 确认授权。
+1. `adb devices` — 确认真机或模拟器在线。真机没连上？等用户插 USB + 确认授权；模拟器没连上？等用户启动模拟器并确认 adb 可见。
 2. `bsg.mjs validator-start`
 3. `validator/setup-android-probe.bat` — 单入口：检测 adb、必要时安装 adb、安装 APK、启动 Probe、配置端口并检查 `/ping`
 4. validate 阶段用 `mode=android`
 
-**用户说"没有"：**
+**用户说"没有 Android 真机或模拟器"：**
 - 继续生成，但 validate 阶段用 `mode=http`
 - 正文失败标 `validator_limitation`，**不标 passed**
 - 交付时明确告知用户：此书源需在 Legado App 内实测正文
@@ -132,9 +132,9 @@ node "<skill-dir>/scripts/bsg.mjs" android-status
 - `setup-android-probe.bat` 失败后手工 `adb install` 绕过脚本；应把脚本输出报给用户并等待处理
 - setup 失败后悄悄跳过，标 passed
 - 假设用户没有设备就不问
-- HTTP mode 验证通过但生成源含 `webView:true` / `webJs` 时标 passed。必须用 android mode；无设备只能 `needs_app_review` / `validator_limitation`
+- HTTP mode 验证通过但生成源含 `webView:true` / `webJs` 时标 passed。必须用 android mode；无可用 Android 真机或模拟器只能 `needs_app_review` / `validator_limitation`
 
-手机设置指南见 `docs/SETUP.md`（含各品牌 USB 调试步骤）。
+真机需要用户自行开启 USB 调试并授权；模拟器当前没有独立教程，只要求 `adb devices` 能看到在线目标。
 
 ## 验证记录
 

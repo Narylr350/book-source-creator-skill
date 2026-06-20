@@ -10,23 +10,23 @@
 
 | 方式 | 适用场景 | 操作 |
 |------|---------|------|
-| Probe 手机 WebView 登录 | 有 Android 设备，需站点 Cookie/Token | AI 打开 Probe `/login`，用户在手机网页里手动登录 |
+| Probe Android WebView 登录 | 有 Android 真机或模拟器，需站点 Cookie/Token | AI 打开 Probe `/login`，用户在手机/模拟器网页里手动登录 |
 | 手机扫码登录 | App loginUi 配置了账号密码/扫码 | 用户在 Legado App 内操作 |
 | Token 手动输入 | 用户已知 Cookie/Token 字符串 | 用户粘贴，AI 写入 `--cookie=<file>` 参数 |
 | Browser MCP 提取 Cookie | Android/Probe 不可用时的备选 | 用户通过 Browser MCP 登录 → AI 调用 `browser_network_requests` 提取 → 保存为 JSON 文件 → `--cookie=<file>` 喂给 validator |
 
-**Probe 手机 WebView 登录用户提示模板：**
+**Probe Android WebView 登录用户提示模板：**
 
 ```md
-我已经把登录页发到你的手机 Probe WebView。
+我已经把登录页发到你的 Android Probe WebView（真机或模拟器）。
 
-请在手机上操作：
-1. 解锁手机，查看刚打开的网页登录页
+请在手机或模拟器里操作：
+1. 解锁手机或打开模拟器窗口，查看刚打开的网页登录页
 2. 按站点页面提示输入账号和密码
 3. 如果出现短信、验证码、滑块、扫码或安全确认，请你手动完成
 4. 看到用户名、会员中心、书架、首页或其他已登录状态后，回到这里回复"已完成登录"
 
-如果手机没有弹出页面、页面打不开、验证码过不去、没有账号，直接告诉我具体情况。
+如果手机/模拟器没有弹出页面、页面打不开、验证码过不去、没有账号，直接告诉我具体情况。
 ```
 
 用户回复完成后，再检查 `http://127.0.0.1:18888/cookie-check`；确认有目标域 Cookie 后再记录 `resolve-user-action --action login_completed`。adb 在线时脚本会强制校验 Probe Cookie，Browser Cookie 不能替代。

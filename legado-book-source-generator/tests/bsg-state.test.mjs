@@ -222,6 +222,26 @@ describe("bsg workflow user-action gates", () => {
     );
   });
 
+  it("rejects manual edits inside pending AUTO summary before first record-assessment", async () => {
+    const runDir = await initRun(tmpDir);
+    await writeSiteFacts(runDir);
+    const assessPath = path.join(runDir, "assessment.md");
+    await fs.writeFile(
+      assessPath,
+      assessmentContent().replace("- 搜索链路: unknown", "- 搜索链路: blocked"),
+      "utf8",
+    );
+
+    await assert.rejects(
+      () => execFileAsync("node", [BSG, "record-assessment", "--run", runDir], { encoding: "utf8" }),
+      (err) => {
+        const result = JSON.parse(err.stdout);
+        assert.match(result.error, /自动结论区|AUTO|手动修改/);
+        return true;
+      },
+    );
+  });
+
   it("rejects evidence notes without a valid evidence id", async () => {
     const runDir = await initRun(tmpDir);
     await writeSiteFacts(runDir);
@@ -526,6 +546,137 @@ describe("bsg workflow user-action gates", () => {
     );
   });
 
+  it("creates a debug bundle with run files, source output, transcript, and redacted cookies", async () => {
+    const runDir = await initRun(tmpDir);
+    await writeRequiredDeliverFiles(tmpDir, runDir);
+    await fs.writeFile(path.join(runDir, "cookies.json"), JSON.stringify({
+      "www.example.com": "session=secret; token=hidden",
+    }), "utf8");
+    const transcriptPath = path.join(tmpDir, "claude-log.md");
+    await fs.writeFile(transcriptPath, "# Claude log\n\ntranscript body\n", "utf8");
+
+    const result = await runBsg([
+      "debug-bundle",
+      "--run", runDir,
+      "--transcript", transcriptPath,
+      "--claude-session", "01300c68-e5a5-4b98-baf9-22fdfc352cac",
+    ]);
+
+    assert.equal(result.ok, true);
+    assert.equal(result.includedTranscript, true);
+    assert.match(result.bundleDir, /debug-bundles/);
+
+    const manifest = JSON.parse(await fs.readFile(path.join(result.bundleDir, "manifest.json"), "utf8"));
+    assert.equal(manifest.siteSlug, "example-com");
+    assert.equal(manifest.claude.sessionId, "01300c68-e5a5-4b98-baf9-22fdfc352cac");
+
+    const bundledSource = await fs.readFile(path.join(result.bundleDir, "outputs", "example-com", "book-source.json"), "utf8");
+    assert.match(bundledSource, /Example/);
+
+    const bundledTranscript = await fs.readFile(path.join(result.bundleDir, "transcript", "claude-log.md"), "utf8");
+    assert.match(bundledTranscript, /transcript body/);
+
+    await assert.rejects(
+      () => fs.readFile(path.join(result.bundleDir, "run", "cookies.json"), "utf8"),
+      /ENOENT/,
+    );
+    const redactedCookies = await fs.readFile(path.join(result.bundleDir, "run", "cookies.redacted.json"), "utf8");
+    assert.doesNotMatch(redactedCookies, /secret|hidden/);
+    assert.match(redactedCookies, /REDACTED/);
+  });
+
+  it("creates a debug bundle from the latest run in a work directory", async () => {
+    const runDir = await initRun(tmpDir);
+    await writeRequiredDeliverFiles(tmpDir, runDir);
+
+    const result = await runBsg(["debug-bundle", "--cwd", tmpDir]);
+
+    assert.equal(result.ok, true);
+    assert.equal(result.runDir, runDir);
+    assert.match(result.bundleDir, /debug-bundles/);
+    const manifest = JSON.parse(await fs.readFile(path.join(result.bundleDir, "manifest.json"), "utf8"));
+    assert.equal(manifest.runDir, runDir);
+  });
+
+  it("exports Claude Code transcript automatically with claude-code-log", async () => {
+    const runDir = await initRun(tmpDir);
+    await writeRequiredDeliverFiles(tmpDir, runDir);
+    const sessionId = "01300c68-e5a5-4b98-baf9-22fdfc352cac";
+    const claudeHome = path.join(tmpDir, ".claude");
+    const jsonlDir = path.join(claudeHome, "projects", "D--Narylr-skill-test");
+    await fs.mkdir(jsonlDir, { recursive: true });
+    await fs.writeFile(path.join(jsonlDir, `${sessionId}.jsonl`), JSON.stringify({
+      type: "user",
+      message: { content: "生成书源" },
+    }) + "\n", "utf8");
+    const fakeExporter = path.join(tmpDir, "fake-claude-code-log.mjs");
+    await fs.writeFile(fakeExporter, [
+      "import fs from 'node:fs';",
+      "const out = process.argv[process.argv.indexOf('-o') + 1];",
+      "fs.writeFileSync(out, '# exported by claude-code-log\\n\\n自动导出成功\\n', 'utf8');",
+    ].join("\n"), "utf8");
+
+    const result = await runBsg([
+      "debug-bundle",
+      "--run", runDir,
+      "--claude-session", sessionId,
+    ], {
+      env: {
+        ...process.env,
+        BSG_TEST_CLAUDE_HOME: claudeHome,
+        BSG_CLAUDE_CODE_LOG_COMMAND: JSON.stringify([process.execPath, fakeExporter]),
+      },
+    });
+
+    assert.equal(result.ok, true);
+    assert.equal(result.includedTranscript, true);
+    const exported = await fs.readFile(path.join(result.bundleDir, "transcript", "claude-code-log.md"), "utf8");
+    assert.match(exported, /自动导出成功/);
+    const manifest = JSON.parse(await fs.readFile(path.join(result.bundleDir, "manifest.json"), "utf8"));
+    assert.equal(manifest.claude.transcriptSource.endsWith(`${sessionId}.jsonl`), true);
+    assert.notEqual(manifest.claude.exporter, "raw-jsonl-fallback");
+    assert.equal(manifest.claude.exporterError, null);
+  });
+
+  it("exports the latest Claude Code transcript when no session id is provided", async () => {
+    const runDir = await initRun(tmpDir);
+    await writeRequiredDeliverFiles(tmpDir, runDir);
+    const claudeHome = path.join(tmpDir, ".claude");
+    const jsonlDir = path.join(claudeHome, "projects", "D--Narylr-skill-test");
+    await fs.mkdir(jsonlDir, { recursive: true });
+    const oldSessionId = "11111111-1111-4111-8111-111111111111";
+    const latestSessionId = "22222222-2222-4222-8222-222222222222";
+    const oldPath = path.join(jsonlDir, `${oldSessionId}.jsonl`);
+    const latestPath = path.join(jsonlDir, `${latestSessionId}.jsonl`);
+    await fs.writeFile(oldPath, "{\"type\":\"user\"}\n", "utf8");
+    await fs.writeFile(latestPath, "{\"type\":\"assistant\"}\n", "utf8");
+    const oldDate = new Date("2024-01-01T00:00:00Z");
+    const latestDate = new Date("2024-01-02T00:00:00Z");
+    await fs.utimes(oldPath, oldDate, oldDate);
+    await fs.utimes(latestPath, latestDate, latestDate);
+    const fakeExporter = path.join(tmpDir, "fake-claude-code-log-latest.mjs");
+    await fs.writeFile(fakeExporter, [
+      "import fs from 'node:fs';",
+      "const input = process.argv.find((arg) => arg.endsWith('.jsonl'));",
+      "const out = process.argv[process.argv.indexOf('-o') + 1];",
+      "fs.writeFileSync(out, `# ${input}\\n`, 'utf8');",
+    ].join("\n"), "utf8");
+
+    const result = await runBsg(["debug-bundle", "--run", runDir], {
+      env: {
+        ...process.env,
+        BSG_TEST_CLAUDE_HOME: claudeHome,
+        BSG_CLAUDE_CODE_LOG_COMMAND: JSON.stringify([process.execPath, fakeExporter]),
+      },
+    });
+
+    assert.equal(result.ok, true);
+    assert.equal(result.includedTranscript, true);
+    const manifest = JSON.parse(await fs.readFile(path.join(result.bundleDir, "manifest.json"), "utf8"));
+    assert.equal(manifest.claude.sessionId, latestSessionId);
+    assert.equal(manifest.claude.transcriptSource, latestPath);
+  });
+
   it("classifies unauthorized adb devices as user authorization required", async () => {
     const result = await runBsg(["android-status"], {
       env: {
@@ -610,7 +761,7 @@ describe("bsg workflow user-action gates", () => {
 
     assert.equal(result.status, "blocked");
     assert.equal(result.blockedBy, "android_device_disconnected");
-    assert.match(result.message, /设备已断开/);
+    assert.match(result.message, /真机或模拟器已断开/);
   });
 
   it("blocks malformed cookies json during validation recording", async () => {
@@ -626,6 +777,42 @@ describe("bsg workflow user-action gates", () => {
     assert.equal(result.status, "blocked");
     assert.equal(result.blockedBy, "cookie_not_injected");
     assert.match(result.message, /缺少真实域名键/);
+  });
+
+  it("requires explicit Android availability decision before accepting needs_app_review", async () => {
+    const runDir = await initRun(tmpDir);
+    await writeRequiredDeliverFiles(tmpDir, runDir);
+    await fs.writeFile(path.join(runDir, "validator-report.json"), JSON.stringify({
+      mode: "http",
+      phases: { search: "error", detail: "success", toc: "success", content: "success" },
+      steps: [
+        { phase: "search", status: "error", error: "CAPTCHA required", response: { title: "验证码" } },
+        { phase: "detail", status: "success", response: { bodyPreview: "<h1>book</h1>" } },
+        { phase: "toc", status: "success", response: { bodyPreview: "<a>chapter</a>" } },
+        { phase: "content", status: "success", response: { bodyPreview: "<p>content</p>" } },
+      ],
+    }), "utf8");
+
+    const blocked = await runBsg(["record-validation", "--run", runDir, "--status", "needs_app_review"], {
+      env: {
+        ...process.env,
+        BSG_TEST_ADB_DEVICES_OUTPUT: "List of devices attached\n",
+      },
+    });
+
+    assert.equal(blocked.status, "blocked");
+    assert.equal(blocked.blockedBy, "android_device_needed");
+    assert.equal(blocked.requiredUserAction, "android_device_needed");
+
+    await runBsg(["resolve-user-action", "--run", runDir, "--action", "android_device_unavailable"]);
+    const accepted = await runBsg(["record-validation", "--run", runDir, "--status", "needs_app_review"], {
+      env: {
+        ...process.env,
+        BSG_TEST_ADB_DEVICES_OUTPUT: "List of devices attached\n",
+      },
+    });
+
+    assert.equal(accepted.status, "needs_app_review");
   });
 
   it("blocks record-validation when site facts changed after record-assessment", async () => {
