@@ -33,14 +33,21 @@ async function initRun(tmpDir, options = {}) {
 async function writeRequiredDeliverFiles(tmpDir, runDir) {
   await writeSiteFacts(runDir);
   await fs.writeFile(path.join(runDir, "assessment.md"), assessmentContent(["- 四链路已记录 evidence:search-1 evidence:detail-1 evidence:toc-1 evidence:content-1"]), "utf8");
+  await runBsg(["record-assessment", "--run", runDir]);
+  await runBsg(["advance", "--run", runDir]);
   await fs.writeFile(path.join(runDir, "analysis.md"), "# 网站分析\n", "utf8");
+  await runBsg(["advance", "--run", runDir]);
+  await writeValidSource(tmpDir);
+  await runBsg(["advance", "--run", runDir]);
   await fs.writeFile(path.join(runDir, "validation-checklist.md"), "# 清单\n", "utf8");
   await fs.writeFile(path.join(runDir, "validator-report.json"), JSON.stringify({ status: "needs_app_review" }), "utf8");
   await fs.writeFile(path.join(runDir, "validator-summary.md"), "# summary\n", "utf8");
+}
 
+async function writeValidSource(tmpDir, overrides = {}) {
   const sourceDir = path.join(tmpDir, "outputs", "example-com");
   await fs.mkdir(sourceDir, { recursive: true });
-  await fs.writeFile(path.join(sourceDir, "book-source.json"), JSON.stringify([{
+  const source = {
     bookSourceUrl: "https://example.com",
     bookSourceName: "Example",
     searchUrl: "https://example.com/search?q={{key}}",
@@ -48,7 +55,9 @@ async function writeRequiredDeliverFiles(tmpDir, runDir) {
     ruleBookInfo: { name: "$.title" },
     ruleToc: { chapterList: "$.chapters", chapterName: "$.title", chapterUrl: "$.url" },
     ruleContent: { content: "$.content" },
-  }]), "utf8");
+    ...overrides,
+  };
+  await fs.writeFile(path.join(sourceDir, "book-source.json"), JSON.stringify([source]), "utf8");
 }
 
 async function advanceToGenerate(tmpDir, runDir) {
@@ -57,6 +66,15 @@ async function advanceToGenerate(tmpDir, runDir) {
   await fs.writeFile(path.join(runDir, "analysis.md"), "# 网站分析\n", "utf8");
   await runBsg(["advance", "--run", runDir]);
   await fs.mkdir(path.join(tmpDir, "outputs", "example-com"), { recursive: true });
+}
+
+async function advanceToValidateWithWebViewSource(tmpDir, runDir) {
+  await advanceToGenerate(tmpDir, runDir);
+  await writeValidSource(tmpDir, {
+    ruleToc: { chapterList: "$.chapters", chapterName: "$.title", chapterUrl: "{{$.url}},{\"webView\":true}" },
+    respondTime: 180000,
+  });
+  await runBsg(["advance", "--run", runDir]);
 }
 
 function assessmentContent(evidenceLines = [], remarkLines = []) {
@@ -494,6 +512,20 @@ describe("bsg workflow user-action gates", () => {
     );
   });
 
+  it("refuses record-validation before validate phase is active", async () => {
+    const runDir = await initRun(tmpDir);
+    await writeValidSource(tmpDir);
+
+    await assert.rejects(
+      () => execFileAsync("node", [BSG, "record-validation", "--run", runDir, "--status", "passed"], { encoding: "utf8" }),
+      (err) => {
+        const result = JSON.parse(err.stdout);
+        assert.match(result.error, /validate 阶段|record-validation/);
+        return true;
+      },
+    );
+  });
+
   it("classifies unauthorized adb devices as user authorization required", async () => {
     const result = await runBsg(["android-status"], {
       env: {
@@ -508,17 +540,12 @@ describe("bsg workflow user-action gates", () => {
 
   it("blocks passed HTTP validation when generated source contains WebView and Android is available", async () => {
     const runDir = await initRun(tmpDir);
-    await writeRequiredDeliverFiles(tmpDir, runDir);
+    await advanceToValidateWithWebViewSource(tmpDir, runDir);
     await fs.writeFile(path.join(runDir, "validator-report.json"), JSON.stringify({
       mode: "http",
       phases: { search: "success", detail: "success", toc: "success", content: "success" },
       steps: [{ phase: "content", status: "success", mode: "http" }],
     }), "utf8");
-
-    const sourcePath = path.join(tmpDir, "outputs", "example-com", "book-source.json");
-    const source = JSON.parse(await fs.readFile(sourcePath, "utf8"));
-    source[0].ruleToc.chapterUrl = "{{$.url}},{\"webView\":true}";
-    await fs.writeFile(sourcePath, JSON.stringify(source), "utf8");
 
     const result = await runBsg(["record-validation", "--run", runDir, "--status", "passed"], {
       env: {
@@ -601,6 +628,57 @@ describe("bsg workflow user-action gates", () => {
     assert.match(result.message, /缺少真实域名键/);
   });
 
+  it("blocks record-validation when site facts changed after record-assessment", async () => {
+    const runDir = await initRun(tmpDir);
+    await advanceToGenerate(tmpDir, runDir);
+    await writeValidSource(tmpDir);
+    await runBsg(["advance", "--run", runDir]);
+    await writeSiteFacts(runDir, { links: { content: { render: "csr" } } });
+    await fs.writeFile(path.join(runDir, "validator-report.json"), JSON.stringify({
+      mode: "http",
+      phases: { search: "success", detail: "success", toc: "success", content: "success" },
+      steps: [{ phase: "content", status: "success", mode: "http" }],
+    }), "utf8");
+
+    await assert.rejects(
+      () => execFileAsync("node", [BSG, "record-validation", "--run", runDir, "--status", "passed"], { encoding: "utf8" }),
+      (err) => {
+        const result = JSON.parse(err.stdout);
+        assert.match(result.error, /site-facts\.json|record-assessment|评估|回退到 assess/);
+        return true;
+      },
+    );
+    const state = JSON.parse(await fs.readFile(path.join(runDir, "run-state.json"), "utf8"));
+    assert.equal(state.phases.assess.status, "in_progress");
+    assert.equal(state.phases.analyze.status, "pending");
+    assert.equal(state.phases.validate.status, "pending");
+  });
+
+  it("blocks record-validation when book-source changed after generate checks", async () => {
+    const runDir = await initRun(tmpDir);
+    await advanceToGenerate(tmpDir, runDir);
+    await writeValidSource(tmpDir);
+    await runBsg(["advance", "--run", runDir]);
+    await writeValidSource(tmpDir, { bookSourceName: "Changed After Generate" });
+    await fs.writeFile(path.join(runDir, "validator-report.json"), JSON.stringify({
+      mode: "http",
+      phases: { search: "success", detail: "success", toc: "success", content: "success" },
+      steps: [{ phase: "content", status: "success", mode: "http" }],
+    }), "utf8");
+
+    await assert.rejects(
+      () => execFileAsync("node", [BSG, "record-validation", "--run", runDir, "--status", "passed"], { encoding: "utf8" }),
+      (err) => {
+        const result = JSON.parse(err.stdout);
+        assert.match(result.error, /book-source\.json|generate|rule-check|回退到 generate/);
+        return true;
+      },
+    );
+    const state = JSON.parse(await fs.readFile(path.join(runDir, "run-state.json"), "utf8"));
+    assert.equal(state.phases.generate.status, "in_progress");
+    assert.equal(state.phases.validate.status, "pending");
+  });
+
   it("blocks needs_app_review when report shows a hard toc rule error", async () => {
     const runDir = await initRun(tmpDir);
     await writeRequiredDeliverFiles(tmpDir, runDir);
@@ -622,7 +700,7 @@ describe("bsg workflow user-action gates", () => {
 
   it("blocks Probe login plus webView source when android report has no WebView render evidence", async () => {
     const runDir = await initRun(tmpDir);
-    await writeRequiredDeliverFiles(tmpDir, runDir);
+    await advanceToValidateWithWebViewSource(tmpDir, runDir);
     await fs.writeFile(path.join(runDir, "validator-report.json"), JSON.stringify({
       mode: "android",
       phases: { search: "success", detail: "success", toc: "success", content: "success" },
@@ -633,10 +711,6 @@ describe("bsg workflow user-action gates", () => {
         request: { headers: { Cookie: "a=b" } },
       }],
     }), "utf8");
-    const sourcePath = path.join(tmpDir, "outputs", "example-com", "book-source.json");
-    const source = JSON.parse(await fs.readFile(sourcePath, "utf8"));
-    source[0].ruleToc.chapterUrl = "{{$.url}},{\"webView\":true}";
-    await fs.writeFile(sourcePath, JSON.stringify(source), "utf8");
     await runBsg(["set-login-features", "--run", runDir, "--flags", JSON.stringify({
       hasEnabledCookieJar: true,
       _loginMethod: "probe",
@@ -650,7 +724,7 @@ describe("bsg workflow user-action gates", () => {
 
   it("accepts Probe login plus webView source when android content step has WebView render evidence", async () => {
     const runDir = await initRun(tmpDir);
-    await writeRequiredDeliverFiles(tmpDir, runDir);
+    await advanceToValidateWithWebViewSource(tmpDir, runDir);
     await fs.writeFile(path.join(runDir, "validator-report.json"), JSON.stringify({
       mode: "android",
       phases: { search: "success", detail: "success", toc: "success", content: "success" },
@@ -662,10 +736,6 @@ describe("bsg workflow user-action gates", () => {
         webViewHtmlPreview: "<html><body><div id=\"J_BookRead\">正文</div></body></html>",
       }],
     }), "utf8");
-    const sourcePath = path.join(tmpDir, "outputs", "example-com", "book-source.json");
-    const source = JSON.parse(await fs.readFile(sourcePath, "utf8"));
-    source[0].ruleToc.chapterUrl = "{{$.url}},{\"webView\":true}";
-    await fs.writeFile(sourcePath, JSON.stringify(source), "utf8");
     await runBsg(["set-login-features", "--run", runDir, "--flags", JSON.stringify({
       hasEnabledCookieJar: true,
       _loginMethod: "probe",

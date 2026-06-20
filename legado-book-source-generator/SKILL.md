@@ -148,6 +148,10 @@ node "<skill-dir>/scripts/bsg.mjs" record-validation --run <run-dir> --status <p
 
 `record-assessment` 返回错误时，不展示评估摘要，不询问后续选择，先修正 `site-facts.json` 或 `assessment.md` 的证据说明。VIP、付费、订阅、会员、登录态、Cookie、Authorization、401/403 由 facts/blocker 推导，不能靠 AI 文本改成无风险。
 
+`record-assessment` 通过后，如果后续发现探测结论错了，必须先改 `site-facts.json` 并重新跑 `record-assessment`；不要只改 `analysis.md` 或 `book-source.json`。`record-validation` / `deliver` 会检查 facts hash，发现 `site-facts.json` 变更会回退到 assess。
+
+generate 阶段通过后，不要再直接改 `outputs/<slug>/book-source.json` 然后继续验证。若 validator 暴露规则错误，改完书源后必须重新通过 generate/official-rule-pack 校验；`record-validation` / `deliver` 会检查 source hash，发现书源变更会回退到 generate。
+
 禁止手工写 `validator-report.json` / `validator-summary.md` 后交付。`deliver` 只接受 `record-validation` 写入的真实状态。
 
 `record-validation` 会生成 `capability-matrix.json` 和 `validator-summary.md`；`generate` 阶段会生成 `rule-check.json`。`deliver` 只从 `capability-matrix.json` / `rule-check.json` / run-state 决定最终状态。缺失或不是脚本生成时，重新运行对应命令，不要手写补齐。

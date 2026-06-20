@@ -358,6 +358,15 @@ function writeJsonFile(filePath, data) {
   fs.writeFileSync(filePath, JSON.stringify(data, null, 2) + "\n", "utf-8");
 }
 
+function sha256Text(text) {
+  return crypto.createHash("sha256").update(text).digest("hex");
+}
+
+function fileSha256(filePath) {
+  if (!fileExists(filePath)) return null;
+  return crypto.createHash("sha256").update(fs.readFileSync(filePath)).digest("hex");
+}
+
 function emptyLinks() {
   return Object.fromEntries(LINK_PHASES.map((phase) => [
     phase,
@@ -712,6 +721,26 @@ function writeRuleCheck(runDir, ruleCheck) {
   writeJsonFile(path.join(runDir, "rule-check.json"), ruleCheck);
 }
 
+function ensureAssessmentFactsFresh(state, runDir) {
+  const recordedHash = state.phases.assess?.factsHash;
+  if (!recordedHash) return null;
+  const currentHash = fileSha256(path.join(runDir, "site-facts.json"));
+  if (currentHash !== recordedHash) {
+    return "site-facts.json 在 record-assessment 后发生变化。必须重新运行 record-assessment，并重新推进后续分析/生成/验证，不能用旧 assessment 交付。";
+  }
+  return null;
+}
+
+function ensureRuleCheckSourceFresh(runDir, bookSourcePath) {
+  const ruleCheck = readJsonFile(path.join(runDir, "rule-check.json"));
+  if (!ruleCheck?.sourceHash) return null;
+  const currentHash = fileSha256(bookSourcePath);
+  if (currentHash !== ruleCheck.sourceHash) {
+    return "book-source.json 在 generate 阶段 rule-check 后发生变化。必须重新完成 generate/official-rule-pack 校验，不能用旧 rule-check 继续验证或交付。";
+  }
+  return null;
+}
+
 function detectStepBlocker(step) {
   const text = [
     step?.error || "",
@@ -851,6 +880,37 @@ function currentPhaseIndex(state) {
     if (p.status !== "completed") return i;
   }
   return PHASE_ORDER.length; // all done
+}
+
+function resetPhasesFrom(state, phase) {
+  const start = PHASE_ORDER.indexOf(phase);
+  if (start < 0) return;
+  for (let i = start; i < PHASE_ORDER.length; i++) {
+    const name = PHASE_ORDER[i];
+    const p = state.phases[name];
+    if (!p) continue;
+    p.status = i === start ? "in_progress" : "pending";
+    delete p.completedAt;
+    if (name === "assess") {
+      p.recorded = false;
+      p.rating = null;
+      delete p.recordedAt;
+      delete p.factsHash;
+    }
+    if (name === "validate") {
+      p.attempts = 0;
+      p.lastStatus = null;
+      p.lastError = "";
+      p.consecutiveSame = 0;
+      delete p.recordedAt;
+    }
+  }
+  if (phase === "assess") {
+    state.loginFeatures.hasWebView = false;
+    state.loginFeatures.hasWebJs = false;
+    state.loginFeatures.hasEnabledCookieJar = false;
+    state.loginFeatures.hasAuthorization = false;
+  }
 }
 
 // ── environment check ──────────────────────────────────────────────────────
@@ -1098,6 +1158,7 @@ function completePhase(phase, state, runDir) {
     if (!assessment.ok) return fail(assessment.error);
     const assessmentSignals = assessment.signals;
     state.phases.assess.rating = assessment.rating;
+    state.phases.assess.factsHash = fileSha256(path.join(runDir, "site-facts.json"));
     if (assessmentSignals.hasWebView) state.loginFeatures.hasWebView = true;
     if (assessmentSignals.hasLoginRiskLabel || assessmentSignals.protectedContent) state.loginFeatures.hasEnabledCookieJar = true;
     if (assessmentSignals.hasEncryptedContent) { state.loginFeatures.hasWebView = true; state.loginFeatures.hasWebJs = true; }
@@ -1254,6 +1315,7 @@ function completePhase(phase, state, runDir) {
     }
 
     const officialRuleCheck = runOfficialRuleCheck(parsed, state);
+    officialRuleCheck.sourceHash = sha256Text(sourceJson);
     writeRuleCheck(runDir, officialRuleCheck);
     if (officialRuleCheck.errors.length > 0) {
       return fail([
@@ -1598,6 +1660,7 @@ function cmdRecordAssessment(args) {
   state.phases.assess.rating = assessment.rating;
   state.phases.assess.recorded = true;
   state.phases.assess.recordedAt = new Date().toISOString();
+  state.phases.assess.factsHash = fileSha256(path.join(runDir, "site-facts.json"));
   saveRunState(runDir, state);
 
   return {
@@ -1924,6 +1987,11 @@ function cmdRecordValidation(args) {
     return fail(`仍有待用户确认动作: ${pendingBlock.requiredUserAction}。请先运行 resolve-user-action。`);
   }
 
+  const current = PHASE_ORDER[currentPhaseIndex(state)];
+  if (current !== "validate" || state.phases.validate.status !== "in_progress") {
+    return fail("record-validation 只能在 validate 阶段 in_progress 时运行。请先按状态机完成 assess/analyze/generate 并进入 validate。");
+  }
+
   const reportArg = parseArg(args, "--report");
   const reportPathForMode = path.join(runDir, "validator-report.json");
   if (reportArg) {
@@ -1945,6 +2013,18 @@ function cmdRecordValidation(args) {
   if (!loadedSource.ok) return fail(loadedSource.error);
   const sourceStructureError = validateBookSourceStructure(loadedSource.sources);
   if (sourceStructureError) return fail(sourceStructureError);
+  const factsFreshError = ensureAssessmentFactsFresh(state, runDir);
+  if (factsFreshError) {
+    resetPhasesFrom(state, "assess");
+    saveRunState(runDir, state);
+    return fail(`${factsFreshError} 已将状态机回退到 assess，请重新运行 record-assessment。`);
+  }
+  const sourceFreshError = ensureRuleCheckSourceFresh(runDir, loadedSource.bookSourcePath);
+  if (sourceFreshError) {
+    resetPhasesFrom(state, "generate");
+    saveRunState(runDir, state);
+    return fail(`${sourceFreshError} 已将状态机回退到 generate，请重新运行 advance 完成规则校验。`);
+  }
 
   const v = state.phases.validate;
   v.attempts += 1;
@@ -2379,6 +2459,18 @@ function cmdDeliverCheck(state, runDir) {
   if (!loadedSource.ok) return fail(loadedSource.error);
   const sourceStructureError = validateBookSourceStructure(loadedSource.sources);
   if (sourceStructureError) return fail(sourceStructureError);
+  const factsFreshError = ensureAssessmentFactsFresh(state, runDir);
+  if (factsFreshError) {
+    resetPhasesFrom(state, "assess");
+    saveRunState(runDir, state);
+    return fail(`${factsFreshError} 已将状态机回退到 assess，请重新运行 record-assessment。`);
+  }
+  const sourceFreshError = ensureRuleCheckSourceFresh(runDir, loadedSource.bookSourcePath);
+  if (sourceFreshError) {
+    resetPhasesFrom(state, "generate");
+    saveRunState(runDir, state);
+    return fail(`${sourceFreshError} 已将状态机回退到 generate，请重新运行 advance 完成规则校验。`);
+  }
 
   const v = state.phases.validate;
   const hasLoginFeatures = Object.values(state.loginFeatures).some((b) => b === true);
