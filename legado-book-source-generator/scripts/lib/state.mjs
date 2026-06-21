@@ -246,3 +246,11 @@ export function blockForPendingUserAction(state) {
   if (!action) return null;
   return pendingUserActionResponse(action);
 }
+
+export function printHint(correctiveAction, nextCommand) {
+  if (!correctiveAction && !nextCommand) return;
+  const parts = ["## 下一步", ""];
+  if (correctiveAction) parts.push(correctiveAction, "");
+  if (nextCommand) parts.push(`运行：${nextCommand}`);
+  process.stderr.write(parts.join("\n") + "\n");
+}

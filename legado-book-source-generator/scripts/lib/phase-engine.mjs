@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import {
-  fail, fileExists, fileSha256, sha256Text, saveRunState, setPendingUserAction,
+  fail, fileExists, fileSha256, printHint, sha256Text, saveRunState, setPendingUserAction,
 } from "./state.mjs";
 import {
   loadAndValidateAssessment, validateCookieFileShape, runOfficialRuleCheck, writeRuleCheck,
@@ -58,7 +58,14 @@ export function completePhase(phase, state, runDir) {
 
   if (phase === "assess") {
     if (state.phases.assess.recorded !== true) {
-      return fail("assessment.md 尚未通过 record-assessment 记录。先运行: node scripts/bsg.mjs record-assessment --run <run-dir>。通过前不要展示评估摘要。");
+      const correctiveAction = "assessment.md 尚未通过 record-assessment 记录。先运行 record-assessment，通过前不要展示评估摘要，也不要 advance。";
+      const nextCommand = `node "<skill-dir>/scripts/bsg.mjs" record-assessment --run ${runDir}`;
+      printHint(correctiveAction, nextCommand);
+      return {
+        ...fail("assessment.md 尚未通过 record-assessment 记录。先运行: node scripts/bsg.mjs record-assessment --run <run-dir>。通过前不要展示评估摘要。"),
+        correctiveAction,
+        nextCommand,
+      };
     }
 
     const assessment = loadAndValidateAssessment(runDir, state);

@@ -1298,3 +1298,30 @@ describe("bsg workflow user-action gates", () => {
     assert.ok(ruleCheck.errors.some((issue) => issue.ruleId === "book-info-intro-field"));
   });
 });
+
+describe("printHint stderr output", () => {
+  it("init stderr contains no ## 下一步 on success", async () => {
+    const tmpDir = await makeTmpDir();
+    const result = await execFileAsync("node", [BSG, "init", "https://example.com", "--cwd", tmpDir], { encoding: "utf8" });
+
+    assert.ok(!result.stderr.includes("## 下一步"));
+    await fs.rm(tmpDir, { recursive: true, force: true });
+  });
+
+  it("advance stderr contains ## 下一步 on wrong-phase error", async () => {
+    const tmpDir = await makeTmpDir();
+    const init = await runBsg(["init", "https://example.com", "--cwd", tmpDir]);
+    await runBsg(["advance", "--run", init.runDir]);
+    await runBsg(["advance", "--run", init.runDir]);
+
+    try {
+      await execFileAsync("node", [BSG, "advance", "--run", init.runDir], { encoding: "utf8" });
+      assert.fail("should have failed");
+    } catch (err) {
+      assert.ok(err.stderr.includes("## 下一步"), "stderr should contain ## 下一步");
+      assert.ok(err.stderr.includes("运行："), "stderr should contain 运行：");
+    } finally {
+      await fs.rm(tmpDir, { recursive: true, force: true });
+    }
+  });
+});
