@@ -1,7 +1,11 @@
 outputs/
 runs/
+debug-bundles/
 legado-book-source-generator/.outputs/
 legado-book-source-generator/.runs/
+legado-book-source-generator/outputs/
+legado-book-source-generator/runs/
+legado-book-source-generator/debug-bundles/
 tests/__pycache__/
 *.pyc
 .playwright-mcp/
@@ -17,6 +21,8 @@ validator/.gradle/
 validator/bin/
 validator/tools/
 legado-book-source-generator/validator/tools/
+android-probe/.gradle/
+android-probe/app/build/
 
 # JAR files (except gradle wrapper)
 *.jar
@@ -25,9 +31,12 @@ legado-book-source-generator/validator/tools/
 
 # Release packages
 release/*.zip
+release/**/*.zip
 
 # Temporary files
 tmp-*
+temp/
+tmp/
 pw-*.txt
 server*.log
 shot-*.png
@@ -35,6 +44,13 @@ screenshot-*.png
 capture.py
 test-*.py
 check*.py
+*.tmp
+*.temp
+*.log
+*.pid
+.validator-pid
+validator-cookies.json
+cookies.json
 
 # AI / Compose agent docs
 docs/compose/

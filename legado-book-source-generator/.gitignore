@@ -1,4 +1,30 @@
 
+# workflow outputs
+runs/
+outputs/
+debug-bundles/
+.runs/
+.outputs/
+
 # validator lifecycle
 .validator-pid
 validator-cookies.json
+
+# local credentials and validator reports
+cookies.json
+**/cookies.json
+validator-report.json
+validator-summary.md
+capability-matrix.json
+run-state.json
+site-facts.json
+rule-check.json
+lesson-check.json
+
+# temporary files
+*.log
+*.tmp
+*.temp
+*.pid
+tmp/
+temp/
