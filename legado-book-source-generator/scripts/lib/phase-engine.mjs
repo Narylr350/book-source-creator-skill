@@ -364,7 +364,14 @@ export function completePhase(phase, state, runDir) {
   }
 
   if (phase === "validate") {
-    return fail("请先运行 record-validation 记录验证结果，再 advance 进入 deliver。");
+    const correctiveAction = "advance 需要先完成 record-validation。运行 record-validation --status <状态> 记录验证结果后再 advance。";
+    const nextCommand = `node "<skill-dir>/scripts/bsg.mjs" record-validation --run ${runDir} --status <passed|failed|needs_app_review|validator_limitation|degraded>`;
+    printHint(correctiveAction, nextCommand);
+    return {
+      ...fail("请先运行 record-validation 记录验证结果，再 advance 进入 deliver。"),
+      correctiveAction,
+      nextCommand,
+    };
   }
 
   if (phase === "deliver") {

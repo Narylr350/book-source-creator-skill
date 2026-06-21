@@ -1120,7 +1120,11 @@ describe("bsg workflow user-action gates", () => {
   });
 
   it("accepts Probe login plus webView source when android content step has WebView render evidence", async () => {
-    const runDir = await initRun(tmpDir);
+    const adbEnv = {
+      ...process.env,
+      BSG_TEST_ADB_DEVICES_OUTPUT: "List of devices attached\nABC123\tdevice\n",
+    };
+    const runDir = await initRun(tmpDir, { env: adbEnv });
     await advanceToValidateWithWebViewSource(tmpDir, runDir);
     await fs.writeFile(path.join(runDir, "validator-report.json"), JSON.stringify({
       mode: "android",
@@ -1141,7 +1145,7 @@ describe("bsg workflow user-action gates", () => {
       _loginMethod: "probe",
     })]);
 
-    const result = await runBsg(["record-validation", "--run", runDir, "--status", "passed"]);
+    const result = await runBsg(["record-validation", "--run", runDir, "--status", "passed"], { env: adbEnv });
 
     assert.equal(result.status, "anonymous_candidate");
     assert.equal(result.nextAction, "advance");
@@ -1384,6 +1388,45 @@ describe("correctiveAction on hash mismatch", () => {
       assert.ok(result.nextCommand, "should have nextCommand");
       assert.ok(result.correctiveAction.includes("generate"), "correctiveAction should mention generate phase");
       assert.ok(err.stderr.includes("## 下一步"), "stderr should contain ## 下一步");
+    } finally {
+      await fs.rm(tmpDir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("correctiveAction on command ordering errors", () => {
+  it("advance in validate in_progress returns correctiveAction", async () => {
+    const tmpDir = await makeTmpDir();
+    const runDir = await initRun(tmpDir);
+    await advanceToGenerate(tmpDir, runDir);
+    await writeValidSource(tmpDir);
+    await runBsg(["advance", "--run", runDir]);
+
+    try {
+      await execFileAsync("node", [BSG, "advance", "--run", runDir], { encoding: "utf8" });
+      assert.fail("should fail");
+    } catch (err) {
+      const result = JSON.parse(err.stdout);
+      assert.ok(result.correctiveAction, "should have correctiveAction");
+      assert.ok(result.nextCommand, "should have nextCommand");
+      assert.ok(result.nextCommand.includes("record-validation"), "nextCommand should suggest record-validation");
+      assert.ok(err.stderr.includes("## 下一步"));
+    } finally {
+      await fs.rm(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  it("record-assessment in probe phase returns correctiveAction", async () => {
+    const tmpDir = await makeTmpDir();
+    const init = await runBsg(["init", "https://example.com", "--cwd", tmpDir]);
+
+    try {
+      await execFileAsync("node", [BSG, "record-assessment", "--run", init.runDir], { encoding: "utf8" });
+      assert.fail("should fail");
+    } catch (err) {
+      const result = JSON.parse(err.stdout);
+      assert.ok(result.correctiveAction, "should have correctiveAction");
+      assert.ok(err.stderr.includes("## 下一步"));
     } finally {
       await fs.rm(tmpDir, { recursive: true, force: true });
     }

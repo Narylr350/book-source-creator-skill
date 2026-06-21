@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import {
   fail, parseArg, fileExists, fileSha256, saveRunState,
-  loadAndVerify, getPendingUserAction,
+  loadAndVerify, getPendingUserAction, printHint,
 } from "./state.mjs";
 import {
   PHASE_ORDER, currentPhaseIndex, diagnoseAndroid,
@@ -21,7 +21,10 @@ export function cmdRecordAssessment(args) {
 
   const current = PHASE_ORDER[currentPhaseIndex(state)];
   if (current !== "assess" || state.phases.assess.status !== "in_progress") {
-    return fail("record-assessment 只能在 assess 阶段 in_progress 时运行。请按 init/advance 状态机推进。");
+    const correctiveAction = `record-assessment 只能在 assess 阶段 in_progress 时运行。当前阶段是 ${current}（${state.phases[current]?.status || "unknown"}）。请先按状态机推进到 assess 阶段。`;
+    const nextCommand = `node "<skill-dir>/scripts/bsg.mjs" advance --run ${runDir}`;
+    printHint(correctiveAction, nextCommand);
+    return { ...fail(correctiveAction), correctiveAction, nextCommand };
   }
 
   const assessment = loadAndValidateAssessment(runDir, state);
@@ -52,6 +55,7 @@ export function cmdRecordAssessment(args) {
       hasEncryptedContent: assessment.signals.hasEncryptedContent,
     },
     message: "assessment.md 已通过一致性检查并记录。现在运行 advance；如返回 requiredUserAction，先让用户确认。",
+    nextCommand: `node "<skill-dir>/scripts/bsg.mjs" advance --run ${runDir}`,
   };
 }
 
