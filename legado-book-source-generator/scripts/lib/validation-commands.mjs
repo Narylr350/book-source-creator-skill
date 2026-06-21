@@ -127,6 +127,9 @@ export function cmdRecordValidation(args) {
     saveRunState(runDir, state);
     writeCapabilityMatrix(runDir, reportPathForMode, "blocked:hard_rule_error");
     writeValidatorSummary(runDir, status, "blocked:hard_rule_error", reportPathForMode);
+    const correctiveAction = "validator 报告包含明确规则错误。修正书源规则后重新验证，不要把规则错误标成 needs_app_review 或 validator_limitation。";
+    const nextCommand = `node "<skill-dir>/scripts/bsg.mjs" advance --run ${runDir}`;
+    printHint(correctiveAction, nextCommand);
     return {
       ok: true,
       status: "blocked",
@@ -134,6 +137,8 @@ export function cmdRecordValidation(args) {
       shouldRetry: true,
       nextAction: "fix_rules_and_retry",
       message: hardRuleBlock,
+      correctiveAction,
+      nextCommand,
     };
   }
 
@@ -363,13 +368,37 @@ export function cmdRecordValidation(args) {
       saveRunState(runDir, state);
       writeCapabilityMatrix(runDir, reportPathForMode, "blocked:android_webview_not_used");
       writeValidatorSummary(runDir, status, "blocked:android_webview_not_used", reportPathForMode);
-      return { ok: true, status: "blocked", blockedBy: "android_webview_not_used", shouldRetry: true, nextAction: "rerun_android_webview_validation", message: androidWarning };
+      const correctiveAction = "生成源含 webView:true 但无 Android WebView 渲染证据。必须用 mode=android 重新验证，并确认报告中有 rendered.html、screenshot 或 webViewHtmlPreview。不能标 passed。";
+      const nextCommand = `node "<skill-dir>/scripts/bsg.mjs" record-validation --run ${runDir} --status <status> --report <validator-report.json>`;
+      printHint(correctiveAction, nextCommand);
+      return {
+        ok: true,
+        status: "blocked",
+        blockedBy: "android_webview_not_used",
+        shouldRetry: true,
+        nextAction: "rerun_android_webview_validation",
+        message: androidWarning,
+        correctiveAction,
+        nextCommand,
+      };
     } else if (!reportHasAndroidWebViewContentEvidence(reportPathForMode) && (state.loginFeatures.hasWebView || state.loginFeatures.hasWebJs)) {
       v.attempts -= 1;
       saveRunState(runDir, state);
       writeCapabilityMatrix(runDir, reportPathForMode, "blocked:android_webview_content_not_verified");
       writeValidatorSummary(runDir, status, "blocked:android_webview_content_not_verified", reportPathForMode);
-      return { ok: true, status: "blocked", blockedBy: "android_webview_content_not_verified", shouldRetry: true, nextAction: "fix_android_webview_content_extraction", message: androidWarning };
+      const correctiveAction = "Android WebView 已渲染但没有正文提取证据。必须修正 ruleContent.content / webJs 并重新用 Android Probe 验证，直到 content preview 或 contentLength 证明正文被提取。不能标 passed。";
+      const nextCommand = `node "<skill-dir>/scripts/bsg.mjs" record-validation --run ${runDir} --status <status> --report <validator-report.json>`;
+      printHint(correctiveAction, nextCommand);
+      return {
+        ok: true,
+        status: "blocked",
+        blockedBy: "android_webview_content_not_verified",
+        shouldRetry: true,
+        nextAction: "fix_android_webview_content_extraction",
+        message: androidWarning,
+        correctiveAction,
+        nextCommand,
+      };
     }
   }
   if (androidWarning) {

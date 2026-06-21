@@ -1432,3 +1432,26 @@ describe("correctiveAction on command ordering errors", () => {
     }
   });
 });
+
+describe("correctiveAction on blocked validation", () => {
+  it("hard_rule_error blocked response has correctiveAction", async () => {
+    const tmpDir = await makeTmpDir();
+    const runDir = await initRun(tmpDir);
+    await writeRequiredDeliverFiles(tmpDir, runDir);
+    await fs.writeFile(path.join(runDir, "validator-report.json"), JSON.stringify({
+      mode: "http",
+      phases: { search: "success", detail: "success", toc: "error" },
+      steps: [
+        { phase: "detail", status: "success", extracted: { tocUrl: "https://example.com/chapter-list/" } },
+        { phase: "toc", status: "error", request: { url: "https://example.com/chapter-list/" } },
+      ],
+    }), "utf8");
+
+    const result = await runBsgBlocked(["record-validation", "--run", runDir, "--status", "passed"]);
+
+    assert.equal(result.blockedBy, "hard_rule_error");
+    assert.ok(result.correctiveAction, "should have correctiveAction");
+    assert.ok(result.nextCommand, "should have nextCommand");
+    await fs.rm(tmpDir, { recursive: true, force: true });
+  });
+});
