@@ -125,14 +125,18 @@ class DebugService {
         // 但如果 Android Probe 已成功渲染 WebView（有 webViewHtmlPreview 或 probeAvailable），
         // 则不追加 "无法执行 WebView" 警告——Probe 已经执行了。
         val probeDidRender = probeAvailable == true || !webViewHtmlPreview.isNullOrBlank()
+        // 只对成功步骤追加 webView 复核标记。
+        // 失败步骤已有具体错误（选择器为空、超时、404 等），不应被 needsAppReview 覆盖。
         if (WebBook.lastAnalyzeUrl?.hasWebView == true && !probeDidRender) {
             if (allWarnings.none { it.feature == "webView" }) {
                 allWarnings.add(DebugStep.CompatibilityWarning(
                     "webView", "URL 包含 webView:true，validator 无法执行 WebView 渲染"
                 ))
             }
-            needsReview = true
-            reviewRsn = reviewRsn ?: "URL 包含 webView:true，需 App/WebView 复核"
+            if (this.status == "success") {
+                needsReview = true
+                reviewRsn = reviewRsn ?: "URL 包含 webView:true，需 App/WebView 复核"
+            }
         }
         return copy(
             compatibilityWarnings = allWarnings.ifEmpty { null },
@@ -1059,8 +1063,11 @@ fun determineFinalStatus(steps: List<DebugStep>, source: BookSource? = null): St
         (!source.header.isNullOrBlank() && source.header!!.contains("Authorization", ignoreCase = true))
     )
     val hasAnonymousLoginFailure = hasLoginVertex && isAnonymous && steps.any { it.status == "error" }
+    // 不带 needsAppReview 标记的真实错误（规则写错、404 等），不应被 needs_app_review 掩盖
+    val hasHardError = steps.any { it.status == "error" && !it.needsAppReview }
 
     return when {
+        hasNeedsAppReview && hasHardError -> "failed"
         hasNeedsAppReview -> "needs_app_review"
         hasProbeUnavailable -> "validator_limitation"
         hasAnonymousLoginFailure -> "needs_app_review"
