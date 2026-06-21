@@ -246,7 +246,7 @@ export function cmdResolveUserAction(args) {
   const runDir = parseArg(args, "--run");
   const action = parseArg(args, "--action");
   if (!runDir || !action) {
-    return fail("用法: node scripts/bsg.mjs resolve-user-action --run {dir} --action <android_device_ready|android_device_unavailable|login_completed|no_account|continue_after_rating_block>");
+    return fail("用法: node scripts/bsg.mjs resolve-user-action --run {dir} --action <android_device_ready|android_device_unavailable|login_completed|no_account|continue_after_rating_block|toc_chapter_count_confirmed>");
   }
 
   const { state, error } = loadAndVerify(runDir);
@@ -259,6 +259,7 @@ export function cmdResolveUserAction(args) {
     android_device_needed: ["android_device_ready", "android_device_unavailable"],
     login_required: ["login_completed", "no_account"],
     rating_blocked: ["continue_after_rating_block"],
+    toc_sample_review: ["toc_chapter_count_confirmed"],
   };
   const allowed = validActions[pending.type] || [];
   if (!allowed.includes(action)) {
@@ -298,6 +299,8 @@ export function cmdResolveUserAction(args) {
     state.loginFeatures._loginVerified = true;
   } else if (action === "continue_after_rating_block") {
     state.userDecisions.ratingBlocked = "continue";
+  } else if (action === "toc_chapter_count_confirmed") {
+    state.userDecisions.tocChapterCount = "confirmed_small_sample";
   }
 
   state.userActionHistory = state.userActionHistory || [];

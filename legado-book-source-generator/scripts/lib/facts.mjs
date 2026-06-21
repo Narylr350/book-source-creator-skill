@@ -81,8 +81,10 @@ export function reportHasAndroidWebViewContentEvidence(reportPath) {
   if (!fileExists(reportPath)) return false;
   try {
     const report = JSON.parse(fs.readFileSync(reportPath, "utf-8"));
-    return (report.steps || []).some((step) => {
-      if (step?.mode !== "android" || step.phase !== "content" || step.status !== "success") return false;
+    const contentSteps = (report.steps || []).filter((step) => step?.mode === "android" && step.phase === "content");
+    if (contentSteps.some((step) => step.status === "error")) return false;
+    return contentSteps.some((step) => {
+      if (step.status !== "success") return false;
       if (step.preview && String(step.preview).trim().length > 0) return true;
       if (step.evidence?.contentPreview && String(step.evidence.contentPreview).trim().length > 0) return true;
       const evidenceLength = Number(step.evidence?.contentLength || 0);
@@ -157,6 +159,44 @@ function firstText(...values) {
   return "";
 }
 
+function contentQualityIssue(contentPreview) {
+  const text = String(contentPreview || "").trim();
+  if (!text) return null;
+
+  const repeatedTokens = text.match(/\b[A-Za-z0-9]{4,16}\b/g) || [];
+  const counts = new Map();
+  for (const token of repeatedTokens) {
+    const key = token.toLowerCase();
+    counts.set(key, (counts.get(key) || 0) + 1);
+  }
+  for (const [token, count] of counts) {
+    if (count >= 5) {
+      return {
+        blockedBy: "content_repeated_noise",
+        message: `validator 报告标记 content success，但正文预览中短 token "${token}" 重复 ${count} 次。正文可能混入反复制/水印/污染内容，不能作为干净正文交付。`,
+      };
+    }
+  }
+
+  const chromeMarkers = [
+    "window.parent",
+    "history.pushState",
+    "<script",
+    "登录",
+    "注册",
+    "举报",
+  ];
+  const markerHits = chromeMarkers.filter((marker) => text.includes(marker));
+  if (markerHits.length >= 3) {
+    return {
+      blockedBy: "content_page_chrome",
+      message: `validator 报告标记 content success，但正文预览混入页面脚本/导航/弹窗标记: ${markerHits.join(", ")}。ruleContent 可能提取到了页面 chrome，不是干净正文。`,
+    };
+  }
+
+  return null;
+}
+
 function hasAnyKey(obj, keys) {
   return Boolean(obj && typeof obj === "object" && keys.some((key) => Object.prototype.hasOwnProperty.call(obj, key)));
 }
@@ -214,6 +254,13 @@ export function reportAcceptanceGateError(reportPath) {
           phase: "content",
           blockedBy: "content_length_too_short",
           message: "validator 报告标记 content success，但 contentLength/contentPreview 不足 100 字符。正文未证明可用，不能交付。",
+        };
+      }
+      const qualityIssue = contentQualityIssue(contentPreview);
+      if (qualityIssue) {
+        return {
+          phase: "content",
+          ...qualityIssue,
         };
       }
     }

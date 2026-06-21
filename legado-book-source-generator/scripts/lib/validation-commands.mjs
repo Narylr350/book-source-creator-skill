@@ -149,27 +149,50 @@ export function cmdRecordValidation(args) {
 
   if (["passed", "needs_app_review", "validator_limitation", "degraded"].includes(status)) {
     const acceptanceError = reportAcceptanceGateError(reportPathForMode);
-    if (acceptanceError) {
+    const confirmedSmallToc = acceptanceError?.blockedBy === "toc_chapter_count_too_low"
+      && state.userDecisions?.tocChapterCount === "confirmed_small_sample";
+    if (acceptanceError && !confirmedSmallToc) {
       v.attempts -= 1;
       v.lastStatus = "failed";
-      saveRunState(runDir, state);
       const finalBlocked = `blocked:${acceptanceError.phase}:${acceptanceError.blockedBy}`;
+      const message = [
+        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+        "⛔ validator 成功结论缺少阅读语义证据",
+        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+        acceptanceError.message,
+        acceptanceError.blockedBy === "toc_chapter_count_too_low"
+          ? "如果这是新书、短篇或样本书导致的短目录，请让用户确认样本语义后运行 resolve-user-action --action toc_chapter_count_confirmed；否则修 ruleToc 后重跑 validator。"
+          : "这类问题不能按后端限制通过，也不能靠经验修完直接交付；必须修规则并重新运行 validator。",
+        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+      ].join("\n");
+      let pending = null;
+      if (acceptanceError.blockedBy === "toc_chapter_count_too_low") {
+        pending = setPendingUserAction(state, "toc_sample_review", "toc_chapter_count_too_low", message, {
+          blockingPhase: "validate",
+          blockedBy: acceptanceError.blockedBy,
+        });
+      }
+      saveRunState(runDir, state);
       writeCapabilityMatrix(runDir, reportPathForMode, finalBlocked);
       writeValidatorSummary(runDir, status, finalBlocked, reportPathForMode);
+      const correctiveAction = acceptanceError.blockedBy === "toc_chapter_count_too_low"
+        ? "validator 报告的目录样本过短。先确认这是目标书本身章节少，还是 ruleToc 只提取到部分章节；确认短目录合理后用 resolve-user-action 记录，否则修 ruleToc 并重跑。"
+        : "validator 报告包含成功状态但缺少阅读语义证据。修正对应规则后重新验证，不要标成后端限制。";
+      const nextCommand = acceptanceError.blockedBy === "toc_chapter_count_too_low"
+        ? `node "<skill-dir>/scripts/bsg.mjs" resolve-user-action --run ${runDir} --action toc_chapter_count_confirmed`
+        : `node "<skill-dir>/scripts/bsg.mjs" advance --run ${runDir}`;
+      printHint(correctiveAction, nextCommand);
       return {
         ok: true,
         status: "blocked",
         blockedBy: acceptanceError.blockedBy,
         shouldRetry: true,
         nextAction: "fix_rules_and_retry",
-        message: [
-          "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
-          "⛔ validator 成功结论缺少阅读语义证据",
-          "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
-          acceptanceError.message,
-          "这类问题不能按后端限制通过，也不能靠经验修完直接交付；必须修规则并重新运行 validator。",
-          "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
-        ].join("\n"),
+        message,
+        requiredUserAction: pending ? "toc_sample_review" : undefined,
+        pendingUserAction: pending,
+        correctiveAction,
+        nextCommand,
       };
     }
   }

@@ -1224,6 +1224,148 @@ describe("bsg workflow user-action gates", () => {
     assert.match(result.message, /阅读语义证据|resultCount/);
   });
 
+  it("acceptance gate blocks include correctiveAction and stderr next step", async () => {
+    const runDir = await initRun(tmpDir);
+    await writeRequiredDeliverFiles(tmpDir, runDir);
+    await fs.writeFile(path.join(runDir, "validator-report.json"), JSON.stringify({
+      status: "passed",
+      mode: "http",
+      summary: {
+        resultCount: 0,
+        firstBook: "",
+        chapterCount: 20,
+        contentPreview: "这是一段足够长的正文预览。".repeat(10),
+      },
+      phases: { search: "success", detail: "success", toc: "success", content: "success" },
+      steps: [
+        { phase: "search", status: "success", response: { bodyPreview: "<li>book</li>" }, extracted: {} },
+        { phase: "detail", status: "success", response: { bodyPreview: "detail" } },
+        { phase: "toc", status: "success", response: { bodyPreview: "toc" } },
+        { phase: "content", status: "success", response: { bodyPreview: "content" }, preview: "这是一段足够长的正文预览。".repeat(10) },
+      ],
+    }), "utf8");
+
+    await assert.rejects(
+      () => execFileAsync("node", [BSG, "record-validation", "--run", runDir, "--status", "passed"], { encoding: "utf8" }),
+      (err) => {
+        const result = JSON.parse(err.stdout);
+        assert.equal(result.status, "blocked");
+        assert.equal(result.blockedBy, "search_result_empty");
+        assert.ok(result.correctiveAction);
+        assert.ok(result.nextCommand);
+        assert.ok(err.stderr.includes("## 下一步"));
+        return true;
+      },
+    );
+  });
+
+  it("short toc sample requires explicit user confirmation instead of permanent rule failure", async () => {
+    const runDir = await initRun(tmpDir);
+    await writeRequiredDeliverFiles(tmpDir, runDir);
+    await fs.writeFile(path.join(runDir, "validator-report.json"), JSON.stringify({
+      status: "passed",
+      mode: "http",
+      summary: {
+        resultCount: 1,
+        firstBook: "新书",
+        chapterCount: 8,
+        contentLength: 180,
+        contentPreview: "这是一段足够长的正文预览。".repeat(10),
+      },
+      phases: { search: "success", detail: "success", toc: "success", content: "success" },
+      steps: [
+        { phase: "search", status: "success", response: { bodyPreview: "search" }, extracted: { name: "新书" } },
+        { phase: "detail", status: "success", response: { bodyPreview: "detail" } },
+        { phase: "toc", status: "success", response: { bodyPreview: "toc" }, extracted: { chapterCount: 8 } },
+        { phase: "content", status: "success", response: { bodyPreview: "content" }, preview: "这是一段足够长的正文预览。".repeat(10) },
+      ],
+    }), "utf8");
+
+    const blocked = await runBsgBlocked(["record-validation", "--run", runDir, "--status", "passed"]);
+    assert.equal(blocked.blockedBy, "toc_chapter_count_too_low");
+    assert.equal(blocked.requiredUserAction, "toc_sample_review");
+    assert.match(blocked.message, /短目录样本|确认/);
+
+    const resolved = await runBsg(["resolve-user-action", "--run", runDir, "--action", "toc_chapter_count_confirmed"]);
+    assert.equal(resolved.action, "toc_chapter_count_confirmed");
+
+    const result = await runBsg(["record-validation", "--run", runDir, "--status", "passed"]);
+    assert.equal(result.nextAction, "advance");
+  });
+
+  it("does not accept Android WebView content evidence when another content step failed", async () => {
+    const adbEnv = {
+      ...process.env,
+      BSG_TEST_ADB_DEVICES_OUTPUT: "List of devices attached\nABC123\tdevice\n",
+    };
+    const runDir = await initRun(tmpDir, { env: adbEnv });
+    await advanceToValidateWithWebViewSource(tmpDir, runDir);
+    await fs.writeFile(path.join(runDir, "validator-report.json"), JSON.stringify({
+      mode: "android",
+      phases: { search: "success", detail: "success", toc: "success", content: "error" },
+      steps: [
+        {
+          phase: "content",
+          status: "success",
+          mode: "android",
+          request: { headers: { Cookie: "a=b" } },
+          webViewHtmlPreview: "<html><body><div id=\"J_BookRead\">正文</div></body></html>",
+          evidence: { contentLength: 160, contentPreview: "这是一段从 Android WebView DOM 中提取出的章节正文。".repeat(4) },
+          preview: "这是一段从 Android WebView DOM 中提取出的章节正文。".repeat(4),
+          extracted: { contentLength: 160 },
+        },
+        {
+          phase: "content",
+          status: "error",
+          mode: "android",
+          errorCode: "CONTENT_IS_CAPTCHA_PAGE",
+          response: { title: "验证码" },
+        },
+      ],
+    }), "utf8");
+    await runBsg(["set-login-features", "--run", runDir, "--flags", JSON.stringify({
+      hasEnabledCookieJar: true,
+      _loginMethod: "probe",
+    })]);
+
+    const result = await runBsgBlocked(["record-validation", "--run", runDir, "--status", "passed"], { env: adbEnv });
+    const matrix = JSON.parse(await fs.readFile(path.join(runDir, "capability-matrix.json"), "utf8"));
+
+    assert.equal(result.blockedBy, "android_webview_content_not_verified");
+    assert.equal(matrix.links.content.status, "blocked");
+    assert.equal(matrix.links.content.blocker, "android_webview_content_not_verified");
+  });
+
+  it("blocks polluted content preview even when validator marks content success", async () => {
+    const runDir = await initRun(tmpDir);
+    await writeRequiredDeliverFiles(tmpDir, runDir);
+    await fs.writeFile(path.join(runDir, "validator-report.json"), JSON.stringify({
+      status: "passed",
+      mode: "http",
+      summary: {
+        resultCount: 1,
+        firstBook: "Example",
+        chapterCount: 20,
+        contentLength: 292,
+        contentPreview: "正文开始 2gtxaw 2gtxaw 2gtxaw 2gtxaw 2gtxaw 2gtxaw 2gtxaw 2gtxaw",
+      },
+      phases: { search: "success", detail: "success", toc: "success", content: "success" },
+      steps: [
+        { phase: "search", status: "success", response: { bodyPreview: "search" }, extracted: { name: "Example" } },
+        { phase: "detail", status: "success", response: { bodyPreview: "detail" } },
+        { phase: "toc", status: "success", response: { bodyPreview: "toc" }, extracted: { chapterCount: 20 } },
+        { phase: "content", status: "success", response: { bodyPreview: "content" }, preview: "正文开始 2gtxaw 2gtxaw 2gtxaw 2gtxaw 2gtxaw 2gtxaw 2gtxaw 2gtxaw", evidence: { contentLength: 292 } },
+      ],
+    }), "utf8");
+
+    const result = await runBsgBlocked(["record-validation", "--run", runDir, "--status", "passed"]);
+    const matrix = JSON.parse(await fs.readFile(path.join(runDir, "capability-matrix.json"), "utf8"));
+
+    assert.equal(result.blockedBy, "content_repeated_noise");
+    assert.equal(matrix.links.content.status, "blocked");
+    assert.equal(matrix.links.content.blocker, "content_repeated_noise");
+  });
+
   it("capability matrix keeps search CAPTCHA as partial candidate, not full pass", async () => {
     const runDir = await initRun(tmpDir);
     await writeRequiredDeliverFiles(tmpDir, runDir);
