@@ -33,7 +33,12 @@ export function cmdRecordValidation(args) {
   }
 
   const { state, error } = loadAndVerify(runDir);
-  if (error) return fail(error);
+  if (error) {
+    const correctiveAction = "指定的 --run 目录无效或 run-state.json 不可用。请确认 run 目录来自 bsg.mjs init 输出；如果还没有 run，请先运行 init。";
+    const nextCommand = `node "<skill-dir>/scripts/bsg.mjs" init <site-url> --cwd <工作目录>`;
+    printHint(correctiveAction, nextCommand);
+    return { ...fail(error), correctiveAction, nextCommand };
+  }
 
   const pendingBlock = blockForPendingUserAction(state);
   if (pendingBlock) {

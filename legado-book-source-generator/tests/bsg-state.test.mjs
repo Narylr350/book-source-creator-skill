@@ -1328,6 +1328,17 @@ describe("printHint stderr output", () => {
       await fs.rm(tmpDir, { recursive: true, force: true });
     }
   });
+
+  it("record-validation stderr contains ## 下一步 when run dir is invalid", async () => {
+    try {
+      await execFileAsync("node", [BSG, "record-validation", "--run", "/nonexistent", "--status", "passed"], { encoding: "utf8" });
+      assert.fail("should have failed");
+    } catch (err) {
+      const result = JSON.parse(err.stdout);
+      assert.ok(result.correctiveAction, "should have correctiveAction");
+      assert.ok(err.stderr.includes("## 下一步"), "stderr should contain ## 下一步");
+    }
+  });
 });
 
 describe("advance response fields", () => {
