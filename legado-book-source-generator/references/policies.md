@@ -59,3 +59,21 @@
 - 只有 validator 标记硬边界时，才进入人工调试协作模式。
 - 一旦进入调试协作模式，必须先按 `references/debugging-collaboration.md` 选择对应故障模板，先索取该阶段最小证据包。
 - 在拿到当前阶段最小证据包之前，禁止把本地文件、历史输出或模型推断优先于用户当前 Legado App 内实际使用的规则与源码。
+
+## 登录态丢失处理
+
+触发条件：当前操作中出现页面跳转到登录页、API 返回 401/403、或 Cookie 失效。
+
+立即停止当前操作，告知用户登录态已失效，询问是否重新登录。不要反复重试相同操作。
+
+## Probe 登录 vs mode=android 的区别
+
+这是两个独立的事情：
+
+| 操作 | 证明的事 |
+|------|---------|
+| Probe 原生登录（`/login`） | 登录态来自手机/模拟器环境 |
+| `mode=android` 验证 | validator 走过 Android/WebView 通道 |
+
+Probe 登录后的验证报告必须看到登录态证据（非 anonymous sessionMode，或 Cookie/Authorization 请求头）。
+如果报告仍是匿名会话，说明登录动作没有进入验证请求，需要重新排查。

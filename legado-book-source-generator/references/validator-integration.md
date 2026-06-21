@@ -273,3 +273,15 @@ curl -s http://localhost:1111/api/sources >nul 2>&1 && echo Running || echo Not 
 - `setup-android-probe.bat` 是唯一入口：检测 adb、必要时调用 `setup-adb.bat`、安装 APK、启动 Probe、配置端口转发并检查 `http://127.0.0.1:18888/ping`
 - 如果脚本失败，停止并向用户报告脚本输出。不要手工 `adb install` 绕过脚本
 - 找不到真机或模拟器：返回 `validator_limitation` / `Android Probe 不可用`
+
+## record-validation 前置条件
+
+`record-validation` 必须在 `advance` 之前运行，且只能在 validate 阶段 `in_progress` 时调用。
+
+正确顺序：
+
+```text
+advance（进入 validate）→ 运行 validator → 保存 validator-report.json → record-validation → advance（进入 deliver）
+```
+
+常见错误：validate 阶段结束后直接 advance，跳过 record-validation。此时状态机会返回错误，`nextCommand` 字段会给出正确命令。

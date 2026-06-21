@@ -1,5 +1,9 @@
 # 验证策略
 
+> **validate 阶段核心约束**：进入 validate 阶段后，禁止修改 `book-source.json`。
+> 如果 validator 暴露规则错误，必须先通过状态机回到 generate 阶段修好规则，
+> 再重新进入 validate。直接改文件会触发 hash 检测并自动回退到 generate。
+
 ## 回修动作参考
 
 | 失败类型 | 证据来源 | 回修动作 |
