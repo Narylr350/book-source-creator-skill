@@ -34,6 +34,14 @@ class AnalyzeUrl(
         private set
     var hasWebView: Boolean = false
         private set
+    var webJs: String? = null
+        private set
+    var urlJs: String? = null
+        private set
+    var type: String? = null
+        private set
+    var retryCount: Int = 0
+        private set
 
     init {
         if (baseUrl.isEmpty()) {
@@ -116,9 +124,20 @@ class AnalyzeUrl(
                     opts.get("headers")?.asJsonObject?.let { h ->
                         h.entrySet().forEach { headerMap[it.key] = it.value.asString }
                     }
-                    if (opts.has("webView") && opts.get("webView").asBoolean) {
-                        hasWebView = true
+                    // 匹配 Legado useWebView(): 非 null、非空、非 false、非 "false" 即为真
+                    opts.get("webView")?.let { wv ->
+                        if (!wv.isJsonNull) {
+                            val raw = try { wv.asString } catch (_: Exception) { null }
+                            if (!raw.isNullOrEmpty() && raw != "false") {
+                                hasWebView = true
+                            }
+                        }
                     }
+                    opts.get("webJs")?.asString?.let { webJs = it }
+                    opts.get("js")?.asString?.let { urlJs = it }
+                    opts.get("type")?.asString?.let { type = it }
+                    opts.get("retry")?.asInt?.let { retryCount = it }
+                    opts.get("serverID")?.asString?.let { /* serverID, stored for potential future use */ }
                     mUrl = urlPart
                 } catch (_: Exception) { /* not valid JSON, treat as part of URL */ }
             }
