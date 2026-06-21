@@ -1360,3 +1360,32 @@ describe("advance response fields", () => {
     await fs.rm(tmpDir, { recursive: true, force: true });
   });
 });
+
+describe("correctiveAction on hash mismatch", () => {
+  it("record-validation returns correctiveAction when source changed", async () => {
+    const tmpDir = await makeTmpDir();
+    const runDir = await initRun(tmpDir);
+    await advanceToGenerate(tmpDir, runDir);
+    await writeValidSource(tmpDir);
+    await runBsg(["advance", "--run", runDir]);
+    await writeValidSource(tmpDir, { bookSourceName: "Changed After Generate" });
+    await fs.writeFile(path.join(runDir, "validator-report.json"), JSON.stringify({
+      mode: "http",
+      phases: { search: "success", detail: "success", toc: "success", content: "success" },
+      steps: [{ phase: "content", status: "success", mode: "http" }],
+    }), "utf8");
+
+    try {
+      await execFileAsync("node", [BSG, "record-validation", "--run", runDir, "--status", "passed"], { encoding: "utf8" });
+      assert.fail("should fail");
+    } catch (err) {
+      const result = JSON.parse(err.stdout);
+      assert.ok(result.correctiveAction, "should have correctiveAction");
+      assert.ok(result.nextCommand, "should have nextCommand");
+      assert.ok(result.correctiveAction.includes("generate"), "correctiveAction should mention generate phase");
+      assert.ok(err.stderr.includes("## 下一步"), "stderr should contain ## 下一步");
+    } finally {
+      await fs.rm(tmpDir, { recursive: true, force: true });
+    }
+  });
+});

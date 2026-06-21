@@ -3,7 +3,7 @@ import path from "node:path";
 import crypto from "node:crypto";
 import {
   fail, parseArg, fileExists, saveRunState, loadAndVerify,
-  blockForPendingUserAction, setPendingUserAction,
+  blockForPendingUserAction, printHint, setPendingUserAction,
 } from "./state.mjs";
 import {
   PHASE_ORDER, currentPhaseIndex, resetPhasesFrom, checkAdb,
@@ -70,13 +70,27 @@ export function cmdRecordValidation(args) {
   if (factsFreshError) {
     resetPhasesFrom(state, "assess");
     saveRunState(runDir, state);
-    return fail(`${factsFreshError} 已将状态机回退到 assess，请重新运行 record-assessment。`);
+    const correctiveAction = "site-facts.json 发生变化，状态机已回退到 assess。重新运行 record-assessment 确认事实后再继续。";
+    const nextCommand = `node "<skill-dir>/scripts/bsg.mjs" record-assessment --run ${runDir}`;
+    printHint(correctiveAction, nextCommand);
+    return {
+      ...fail(`${factsFreshError} 已将状态机回退到 assess，请重新运行 record-assessment。`),
+      correctiveAction,
+      nextCommand,
+    };
   }
   const sourceFreshError = ensureRuleCheckSourceFresh(runDir, loadedSource.bookSourcePath);
   if (sourceFreshError) {
     resetPhasesFrom(state, "generate");
     saveRunState(runDir, state);
-    return fail(`${sourceFreshError} 已将状态机回退到 generate，请重新运行 advance 完成规则校验。`);
+    const correctiveAction = "validate 阶段不能修改 book-source.json。状态机已回退到 generate。在 generate 阶段改好所有规则并通过 rule-check，再重新进入 validate。";
+    const nextCommand = `node "<skill-dir>/scripts/bsg.mjs" advance --run ${runDir}`;
+    printHint(correctiveAction, nextCommand);
+    return {
+      ...fail(`${sourceFreshError} 已将状态机回退到 generate，请重新运行 advance 完成规则校验。`),
+      correctiveAction,
+      nextCommand,
+    };
   }
 
   const v = state.phases.validate;
