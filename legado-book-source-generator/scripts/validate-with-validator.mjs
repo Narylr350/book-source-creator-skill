@@ -100,15 +100,17 @@ function determineStatus(result) {
     return { status: 'passed', reason: null };
   }
 
-  // 检查 Cloudflare/验证码（之前先看有没有硬错误被掩盖）
+  // 检查 Cloudflare/验证码（仅检查失败步骤，不扫描成功步的页面文字）
+  // "登录" 在中文站页面中极其常见，不在此处检测；由服务端 hasAnonymousLoginFailure 处理
   const beforeCloudflare = failIfHardError();
   if (beforeCloudflare) return beforeCloudflare;
   for (const step of steps) {
+    if (step.status !== 'error') continue;
     const err = step.error || '';
     const rawStep = (result.steps || []).find(s => s.phase === step.phase);
     const rawBody = rawStep?.response?.bodyPreview || '';
-    if (/Cloudflare|Turnstile|challenge|验证码|登录|WebView/i.test(err + rawBody)) {
-      const match = (err + rawBody).match(/Cloudflare|Turnstile|challenge|验证码|登录|WebView/i);
+    if (/Cloudflare|Turnstile|challenge|captcha|验证码|极验|geetest/i.test(err + rawBody)) {
+      const match = (err + rawBody).match(/Cloudflare|Turnstile|challenge|captcha|验证码|极验|geetest/i);
       return { status: 'needs_app_review', reason: match ? match[0] + ' 检测' : err };
     }
   }

@@ -1069,6 +1069,7 @@ fun determineFinalStatus(steps: List<DebugStep>, source: BookSource? = null): St
     return when {
         hasNeedsAppReview && hasHardError -> "failed"
         hasNeedsAppReview -> "needs_app_review"
+        hasProbeUnavailable && hasHardError -> "failed"
         hasProbeUnavailable -> "validator_limitation"
         hasAnonymousLoginFailure -> "needs_app_review"
         allPassed && isAnonymous && hasLoginVertex -> "anonymous_candidate"
