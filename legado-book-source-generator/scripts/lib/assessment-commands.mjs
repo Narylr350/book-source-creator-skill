@@ -285,7 +285,7 @@ export function cmdResolveUserAction(args) {
     if (adbOnline) {
       const probeCookies = checkProbeCookies();
       if (!probeCookies.ok) {
-        return fail("Android 真机或模拟器在线时，login_completed 必须先通过 Probe /cookie-check 确认 Cookie。请运行 validator/setup-android-probe.bat，在手机/模拟器登录完成后再重试。");
+        return fail("Android 真机或模拟器在线时，login_completed 必须先通过 Probe /cookie-check 确认 Cookie。请运行 node scripts/bsg.mjs login，在手机/模拟器登录完成后再重试。");
       }
       state.loginFeatures._loginMethod = "probe";
     } else {

@@ -321,6 +321,31 @@ export function validateBookSourceStructure(sources) {
 
 // ── site facts / assessment ────────────────────────────────────────────────
 
+export function bookSourceHasWebView(runDir, state) {
+  const sourcePath = path.join(state.workingDir, "outputs", state.siteSlug, "book-source.json");
+  if (!fileExists(sourcePath)) return false;
+  try {
+    const json = JSON.parse(fs.readFileSync(sourcePath, "utf-8"));
+    const source = Array.isArray(json) ? json[0] : json;
+    const jsonStr = JSON.stringify(source);
+    return jsonStr.includes('"webView":true') || jsonStr.includes("'webView':true");
+  } catch { return false; }
+}
+
+export function factsSuggestWebView(runDir) {
+  const factsFile = path.join(runDir, "site-facts.json");
+  if (!fileExists(factsFile)) return false;
+  try {
+    const facts = JSON.parse(fs.readFileSync(factsFile, "utf-8"));
+    const links = facts.links || {};
+    for (const key of Object.keys(links)) {
+      const render = links[key]?.render;
+      if (render && /webview|csr/i.test(render)) return true;
+    }
+  } catch {}
+  return false;
+}
+
 export function loadSiteFacts(runDir) {
   const factsPath = path.join(runDir, "site-facts.json");
   const facts = readJsonFile(factsPath);

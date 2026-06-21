@@ -36,7 +36,7 @@
 2. AI 通过 `browser_network_requests` 找到 API 请求的 Cookie 或 Authorization header（注意：HttpOnly cookie 无法通过 `document.cookie` 获取，必须从网络请求头提取）
 3. AI 将凭据保存为 `{"www.example.com": "cookie_string"}` JSON 格式；或保存为 `{"domain":"www.example.com","cookie":"cookie_string"}`
 4. 保存到 `runs/<site-slug>/cookies.json`
-5. 调用 `node scripts/validate-with-validator.mjs <source> <keyword> --cookie=runs/<site-slug>/cookies.json`
+5. 调用 `node scripts/bsg.mjs validate --run runs/<site-slug>（自动检测 cookies.json）`
 
 ## 风险升级
 

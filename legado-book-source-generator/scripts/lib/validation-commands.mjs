@@ -3,7 +3,7 @@ import path from "node:path";
 import crypto from "node:crypto";
 import {
   fail, parseArg, fileExists, saveRunState, loadAndVerify,
-  blockForPendingUserAction, printHint, setPendingUserAction,
+  blockForPendingUserAction, printHint, setPendingUserAction, fileSha256,
 } from "./state.mjs";
 import {
   PHASE_ORDER, currentPhaseIndex, resetPhasesFrom, checkAdb,
@@ -18,9 +18,37 @@ import {
   reportAcceptanceGateError, writeCapabilityMatrix, writeValidatorSummary,
 } from "./facts.mjs";
 
+function validateReportProvenance(reportPath, runDir, bookSourcePath) {
+  if (!fileExists(reportPath)) {
+    return { ok: false, error: "validator-report.json 不存在。必须先运行 validate-with-validator.mjs 并让它写入当前 run 目录。" };
+  }
+
+  let report;
+  try {
+    report = JSON.parse(fs.readFileSync(reportPath, "utf-8"));
+  } catch (e) {
+    return { ok: false, error: `validator-report.json 不是合法 JSON: ${e.message}` };
+  }
+
+  if (report._generatedBy !== "validate-with-validator.mjs") {
+    return { ok: false, error: "validator-report.json 来源无效：必须由 validate-with-validator.mjs 生成，不能手写或用 node -e 拼接。" };
+  }
+  if (report._schemaVersion !== "1.0") {
+    return { ok: false, error: "validator-report.json 缺少有效 _schemaVersion。请重新运行当前版本 validate-with-validator.mjs。" };
+  }
+  if (report._runDir && path.resolve(report._runDir) !== path.resolve(runDir)) {
+    return { ok: false, error: "validator-report.json 的 _runDir 与当前 run 目录不匹配。请在当前 run 目录重新运行 validate-with-validator.mjs。" };
+  }
+  const currentSourceHash = fileSha256(bookSourcePath);
+  if (!report._sourceHash || report._sourceHash !== currentSourceHash) {
+    return { ok: false, error: "validator-report.json 的 _sourceHash 与当前 book-source.json 不匹配。请重新运行 validate-with-validator.mjs，不能复用旧报告。" };
+  }
+  return { ok: true, report };
+}
+
 export function cmdRecordValidation(args) {
   const runDir = parseArg(args, "--run");
-  if (!runDir) return fail("用法: node scripts/bsg.mjs record-validation --run {dir} --status <status> [--report <file>]");
+  if (!runDir) return fail("用法: node scripts/bsg.mjs record-validation --run {dir} --status <status>");
 
   const statusIdx = args.indexOf("--status");
   if (statusIdx < 0) return fail("缺少 --status 参数 (passed|failed|needs_app_review|validator_limitation|degraded)");
@@ -50,21 +78,9 @@ export function cmdRecordValidation(args) {
     return fail("record-validation 只能在 validate 阶段 in_progress 时运行。请先按状态机完成 assess/analyze/generate 并进入 validate。");
   }
 
-  const reportArg = parseArg(args, "--report");
   const reportPathForMode = path.join(runDir, "validator-report.json");
-  if (reportArg) {
-    const reportSrc = path.resolve(reportArg);
-    if (!fileExists(reportSrc)) {
-      return fail(`--report 指定的 validator-report.json 不存在: ${reportSrc}`);
-    }
-    try {
-      JSON.parse(fs.readFileSync(reportSrc, "utf-8"));
-      if (path.resolve(reportSrc) !== path.resolve(reportPathForMode)) {
-        fs.copyFileSync(reportSrc, reportPathForMode);
-      }
-    } catch (e) {
-      return fail(`validator-report.json 不是合法 JSON: ${e.message}`);
-    }
+  if (args.includes("--report")) {
+    return fail("record-validation 不再接受 --report。必须运行 validate-with-validator.mjs，让脚本把 validator-report.json 写入当前 run 目录。");
   }
 
   const loadedSource = loadBookSource(runDir, state);
@@ -97,6 +113,8 @@ export function cmdRecordValidation(args) {
       nextCommand,
     };
   }
+  const reportProvenance = validateReportProvenance(reportPathForMode, runDir, loadedSource.bookSourcePath);
+  if (!reportProvenance.ok) return fail(reportProvenance.error);
 
   const v = state.phases.validate;
   v.attempts += 1;
@@ -264,7 +282,7 @@ export function cmdRecordValidation(args) {
         "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
         "本轮登录态来自 Android Probe，但 validator-report.json 不是 mode=android。",
         "这会把手机端登录环境降级成 HTTP+Cookie 验证，不能代表阅读 App/WebView 行为。",
-        "立即执行: validator/setup-android-probe.bat → validate-with-validator.mjs ... android → record-validation。",
+        "立即执行: node scripts/bsg.mjs login → bsg.mjs validate --run dir --mode android → record-validation。",
         "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
       ].join("\n");
     } else if (state.adbDetected) {
@@ -274,7 +292,7 @@ export function cmdRecordValidation(args) {
         "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
         "本轮登录态来自 Android Probe，但现在 adb 找不到真机或模拟器，不能退回 HTTP+Cookie 验证。",
         "请重新连接真机并确认 USB 调试授权，或启动模拟器并确认 adb devices 可见。",
-        "然后运行: validator/setup-android-probe.bat → validate-with-validator.mjs ... android → record-validation。",
+        "然后运行: node scripts/bsg.mjs login → bsg.mjs validate --run dir --mode android → record-validation。",
         "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
       ].join("\n");
     }
@@ -325,7 +343,7 @@ export function cmdRecordValidation(args) {
             "⛔ WebView 未验证 — Android 真机或模拟器已连接但未使用",
             "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
             "adb 检测到真机或模拟器，但你用了 mode=http 验证 WebView 正文。",
-            "立即执行: validator/setup-android-probe.bat → 重新验证 → record-validation。",
+            "立即执行: node scripts/bsg.mjs login → 重新验证 → record-validation。",
             "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
           ].join("\n");
         } else if (androidWasUsed && !androidWebViewWasUsed) {
@@ -356,7 +374,7 @@ export function cmdRecordValidation(args) {
             "init 时检测到 Android 真机或模拟器，但现在 adb 找不到。",
             "可能原因：手机息屏后 USB 断开、adb 授权过期、数据线松动，或模拟器已关闭。",
             "请重新连接真机并确认 USB 调试授权，或启动模拟器并确认 adb devices 可见。",
-            "然后运行: validator/setup-android-probe.bat → 重新用 mode=android 验证。",
+            "然后运行: node scripts/bsg.mjs login → 重新用 mode=android 验证。",
             "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
           ].join("\n");
         } else {
@@ -367,7 +385,7 @@ export function cmdRecordValidation(args) {
             "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
             "无可用 Android 真机或模拟器，WebView 正文无法在本机验证。",
             "书源状态将标为 needs_app_review——需在 Legado App 内实测正文。",
-            "如果用户后续连接真机或启动模拟器，可用 validator/setup-android-probe.bat 重新验证。",
+            "如果用户后续连接真机或启动模拟器，可用 node scripts/bsg.mjs login 重新验证。",
             "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
           ].join("\n");
         }
@@ -397,7 +415,7 @@ export function cmdRecordValidation(args) {
       writeCapabilityMatrix(runDir, reportPathForMode, "blocked:android_webview_not_used");
       writeValidatorSummary(runDir, status, "blocked:android_webview_not_used", reportPathForMode);
       const correctiveAction = "生成源含 webView:true 但无 Android WebView 渲染证据。必须用 mode=android 重新验证，并确认报告中有 rendered.html、screenshot 或 webViewHtmlPreview。不能标 passed。";
-      const nextCommand = `node "<skill-dir>/scripts/bsg.mjs" record-validation --run ${runDir} --status <status> --report <validator-report.json>`;
+      const nextCommand = `node "<skill-dir>/scripts/bsg.mjs" validate --run ${runDir} --mode android`;
       printHint(correctiveAction, nextCommand);
       return {
         ok: true,
@@ -415,7 +433,7 @@ export function cmdRecordValidation(args) {
       writeCapabilityMatrix(runDir, reportPathForMode, "blocked:android_webview_content_not_verified");
       writeValidatorSummary(runDir, status, "blocked:android_webview_content_not_verified", reportPathForMode);
       const correctiveAction = "Android WebView 已渲染但没有正文提取证据。必须修正 ruleContent.content / webJs 并重新用 Android Probe 验证，直到 content preview 或 contentLength 证明正文被提取。不能标 passed。";
-      const nextCommand = `node "<skill-dir>/scripts/bsg.mjs" record-validation --run ${runDir} --status <status> --report <validator-report.json>`;
+      const nextCommand = `node "<skill-dir>/scripts/bsg.mjs" validate --run ${runDir} --mode android`;
       printHint(correctiveAction, nextCommand);
       return {
         ok: true,
@@ -447,7 +465,7 @@ export function cmdRecordValidation(args) {
         "Android/Probe 不可用时，必须先让用户完成 Browser 登录并提取 Cookie 注入 validator：",
         "1. browser_network_requests 找 API 请求的 Cookie/Authorization header",
         "2. 保存 {\"www.example.com\": \"cookie_string\"} 到 runs/<slug>/cookies.json",
-        "3. 重新验证: validate-with-validator.mjs ... --cookie=runs/<slug>/cookies.json",
+        "3. 重新验证: node scripts/bsg.mjs validate --run runs/<slug>（自动检测 cookies.json）",
         "4. 再次运行 record-validation",
         "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
       ].join("\n");
@@ -478,7 +496,7 @@ export function cmdRecordValidation(args) {
       `当前 Android/adb 状态: ${android.state}。${android.message}`,
       "",
       android.state === "device_ready"
-        ? "已检测到 Android 真机或模拟器：请优先用 validator/setup-android-probe.bat 后重新进行 Android 验证，不要直接交付 needs_app_review。"
+        ? "已检测到 Android 真机或模拟器：请优先用 node scripts/bsg.mjs login 后重新进行 Android 验证，不要直接交付 needs_app_review。"
         : "未检测到可用 Android 真机或模拟器：必须先问用户是否有 Android 真机/模拟器可用于 App 复核。",
       "",
       "如果用户确认没有可用 Android 真机或模拟器，运行 resolve-user-action --action android_device_unavailable 后再记录 needs_app_review。",

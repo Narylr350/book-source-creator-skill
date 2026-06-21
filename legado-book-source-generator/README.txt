@@ -20,7 +20,7 @@ Legado 书源生成与验证工具
 ## 给人类用（调试/手动验证）
 
 1. 解压本 zip
-2. 双击 `validator\run.bat`，等待窗口显示服务地址
+2. 运行 `node scripts\bsg.mjs validator-start`，等待窗口显示服务地址
 3. 浏览器打开 http://localhost:1111
 4. 导入 book-source.json，输入关键词，选择 HTTP / Browser / Android / Auto 模式后运行
 5. 生成的书源在 `outputs\<站点>\book-source.json`
@@ -35,7 +35,7 @@ Legado 书源生成与验证工具
 可选：
 
 - Node.js 18+：运行 scripts\ 里的辅助脚本时需要
-- adb / Android SDK Platform Tools：使用 Android WebView Probe 时需要；可用 validator\setup-adb.bat 自动下载
+- adb / Android SDK Platform Tools：使用 Android WebView Probe 时需要；运行 node scripts\bsg.mjs login 自动下载
 
 Windows 常见 adb 路径：
 
@@ -45,7 +45,7 @@ validator 会自动查找 validator\tools\platform-tools、ANDROID_HOME、ANDROI
 
 自动安装 adb：
 
-双击 validator\setup-adb.bat
+运行 node scripts\bsg.mjs login（自动检测/下载 adb）
 
 该脚本会从 Google 官方地址下载 Windows Platform-Tools，并解压到 validator\tools\platform-tools。它不会把 adb.exe 写入系统目录。
 
@@ -65,11 +65,11 @@ Android Probe 用于复核带 webView:true / webJs 的书源链路。
 
 1. 插入 Android 真机并打开 USB 调试，或启动 Android 模拟器
 2. 确认 adb devices 能看到设备
-3. 双击 validator\setup-android-probe.bat
+3. 运行 node scripts\bsg.mjs login
 
 setup 脚本会：
 
-- 找不到 adb 时自动调用 validator\setup-adb.bat
+- 找不到 adb 时自动下载
 - 安装 validator\android-probe.apk
 - 启动 io.legado.probe/.WebViewProbeActivity
 - 建立 localhost:18888 -> device:18888 端口转发
@@ -101,7 +101,7 @@ validator 支持导入和管理 Cookie，用于验证需要登录态或 CookieJa
 
 CLI：
 
-node scripts\validate-with-validator.mjs book-source.json 关键词 auto --cookie=cookies.json
+node scripts\bsg.mjs validate --run runs\<slug> [--keyword 关键词] [--mode http|browser|android]
 
 cookies.json 格式：
 
@@ -119,8 +119,7 @@ Android Probe 渲染后，WebView 的 Set-Cookie 会自动回存到本地 Cookie
 
 ## 停止服务
 
-- 在 run.bat 窗口按 Ctrl+C
-- 或双击 validator\stop.bat
+- 运行 node scripts\bsg.mjs validator-stop
 
 ## 结果状态说明
 
@@ -150,9 +149,6 @@ legado-book-source-generator\
   scripts\                    # 辅助脚本
   tests\                      # 测试
   validator\                  # 内置 validator
-    run.bat                   # 启动服务
-    stop.bat                  # 停止服务
-    setup-android-probe.bat   # 安装并启动 Android Probe
     android-probe.apk         # Android WebView Probe
     app\                      # JAR 文件
     examples\                 # 测试样例（sources/cases/candidates）

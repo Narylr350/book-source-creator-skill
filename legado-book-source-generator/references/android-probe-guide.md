@@ -13,11 +13,11 @@
 ```bash
 node "<skill-dir>/scripts/bsg.mjs" android-status
 node "<skill-dir>/scripts/bsg.mjs" validator-start
-validator/setup-android-probe.bat
-node "<skill-dir>/scripts/validate-with-validator.mjs" ... android
+node "<skill-dir>/scripts/bsg.mjs" login --run <run-dir>
+node "<skill-dir>/scripts/bsg.mjs" validate --run <run-dir> --mode android
 ```
 
-`validator/setup-android-probe.bat` 是单入口脚本：检测 adb，必要时安装 adb，安装 APK，启动 Probe，检查 `/ping`。
+`bsg.mjs login` 是单入口脚本：检测 adb，必要时安装 adb，安装 APK，启动 Probe，检查 `/ping`。
 
 ## 登录优先级
 
@@ -48,7 +48,7 @@ node "<skill-dir>/scripts/bsg.mjs" resolve-user-action --run <run-dir> --action 
 
 ## 禁止事项
 
-- 不问用户直接跑 setup 脚本
-- `setup-android-probe.bat` 失败后手工 `adb install` 绕过
+- 不问用户直接跑 `bsg.mjs login`
+- `bsg.mjs login` 失败后手工 `adb install` 绕过
 - HTTP mode 通过但源含 `webView:true` / `webJs` 时标 passed
 - adb 在线时用 Browser Cookie 代替 Probe 登录

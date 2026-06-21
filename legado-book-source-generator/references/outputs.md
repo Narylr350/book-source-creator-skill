@@ -44,8 +44,8 @@ npm run validate -- .\outputs\example-com\book-source.json
 npm run audit -- .\outputs\example-com\book-source.json --keyword 凡人修仙 --page 1
 
 # 真实链路验证（需 validator 运行中）
-node scripts/validate-with-validator.mjs .\outputs\example-com\book-source.json 凡人修仙 http --output .\runs\example-com
+node scripts/bsg.mjs validate --run .\runs\example-com --mode http
 ```
 
 `audit-source.mjs` 只做静态审计、占位检测、嵌入式 JS 语法检查和搜索 URL 预览，不能据此判断最终运行可用性。
-`validate-with-validator.mjs` 调用 validator API 跑真实链路，输出 `validator-report.json`。
+`bsg.mjs validate` 自动读取 book-source.json、分析关键词、检测 adb 设备决定 mode，并把结果写入 run 目录下的 `validator-report.json`。不要手写或复制旧报告。

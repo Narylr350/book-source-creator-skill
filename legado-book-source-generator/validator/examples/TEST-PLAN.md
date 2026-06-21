@@ -49,7 +49,7 @@ Legado 书源验证器 — 测试样例
 ## 使用方式
 
 ### 浏览器测试
-1. 启动 `run.bat`
+1. 启动 `node scripts/bsg.mjs validator-start`
 2. 打开 `http://localhost:1111`
 3. 粘贴书源 JSON，点"导入"
 4. 输入关键词，点"运行"

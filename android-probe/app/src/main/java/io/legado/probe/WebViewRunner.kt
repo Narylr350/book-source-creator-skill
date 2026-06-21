@@ -205,8 +205,13 @@ class WebViewRunner(private val context: Context) {
         }
         webView.loadUrl(loginUrl)
         // Show WebView on screen so user can interact
-        WebViewProbeActivity.instance?.showLoginWebView(webView)
-        LoginSessionResponse(ok = true, message = "登录 WebView 已显示在手机上")
+        if (WebViewProbeActivity.instance != null) {
+            WebViewProbeActivity.instance!!.showLoginWebView(webView)
+            LoginSessionResponse(ok = true, message = "登录 WebView 已显示在手机上")
+        } else {
+            webView.destroy()
+            LoginSessionResponse(ok = false, message = "Probe Activity 不可用，无法显示登录页")
+        }
     }
 
     data class LoginSessionResponse(val ok: Boolean, val message: String)

@@ -2,12 +2,12 @@ Legado 书源验证器 v1.0
 ========================
 
 启动方式：
-  双击 run.bat，或命令行执行 java -jar app\legado-source-validator.jar
+  node scripts/bsg.mjs validator-start，或命令行执行 java -jar app\legado-source-validator.jar
   打开浏览器访问 http://localhost:1111
 
 需要：
   - Java 17 或更高版本
-  - Android WebView Probe 可选需要 adb；可双击 setup-adb.bat 自动下载到 tools\platform-tools
+  - Android WebView Probe 可选需要 adb；运行 node scripts/bsg.mjs login 自动下载到 tools\platform-tools
 
 用途：
   - 导入 book-source.json
@@ -20,12 +20,15 @@ Legado 书源验证器 v1.0
   - 遇到 Cloudflare / 验证码 / 登录页时标记"需 App 复核"
 
 Android Probe：
-  1. 双击 setup-adb.bat（如本机已有 adb 可跳过）
-  2. 插入 Android 真机并打开 USB 调试，或启动 Android 模拟器
-  3. 双击 setup-android-probe.bat
+  1. 连接 Android 真机并打开 USB 调试，或启动 Android 模拟器
+  2. 运行 node scripts/bsg.mjs login（自动下载 adb、安装 Probe APK、建立端口转发）
+  3. 在手机上完成登录后，运行 node scripts/bsg.mjs resolve-user-action --action login_completed
 
-setup-adb.bat 会从 Google 官方地址下载 Windows Platform-Tools，
-解压到当前目录 tools\platform-tools，不写入系统目录。
+bsg.mjs login 会从 Google 官方地址下载 Windows Platform-Tools（如本机无 adb），
+解压到 validator\tools\platform-tools，不写入系统目录。
+
+停止 Probe：
+  node scripts/bsg.mjs validator-stop
 
 样例书源：
   examples/biquges-com-book-source.json — 蚂蚁文学，搜索"凡人修仙传"可验证全链路

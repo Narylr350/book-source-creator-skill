@@ -44,7 +44,7 @@ export function checkEnvironment() {
       tool: "adb",
       ok: false,
       version: null,
-      message: "⚠️ 未找到 adb。Android Probe 不可用。运行 validator/setup-android-probe.bat，由脚本检测并安装 adb。",
+      message: "⚠️ 未找到 adb。Android Probe 不可用。运行 node scripts/bsg.mjs login，由脚本检测并安装 adb。",
     });
   }
 
@@ -124,7 +124,7 @@ export function diagnoseAndroid() {
         adbPath: null,
         state: "adb_missing",
         devices: [],
-        message: "未找到 adb。请确认是否要运行 validator/setup-android-probe.bat，由脚本检测并安装 adb。",
+        message: "未找到 adb。请确认是否要运行 node scripts/bsg.mjs login，由脚本检测并安装 adb。",
         requiredUserAction: "install_adb",
       };
     }

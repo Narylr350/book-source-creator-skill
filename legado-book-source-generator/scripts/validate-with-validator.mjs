@@ -19,6 +19,7 @@
  *   如果指定 --output <dir>，则写入 <dir>/validator-report.json
  */
 
+import { createHash } from 'crypto';
 import { readFileSync, writeFileSync, mkdirSync } from 'fs';
 import { join } from 'path';
 import { pathToFileURL } from 'url';
@@ -52,11 +53,18 @@ function determineStatus(result) {
   const steps = result.steps || [];
   
   // 优先使用服务端 finalStatus（P8.5 状态门禁）
+  // 但 needs_app_review / validator_limitation 不能掩盖 step 真错误
   if (result.finalStatus) {
+    if (['needs_app_review', 'validator_limitation'].includes(result.finalStatus)) {
+      const hardError = steps.find(s => s.status === 'error' && !s.needsAppReview);
+      if (hardError) {
+        return { status: 'failed', reason: `${hardError.phase}: ${hardError.error}` };
+      }
+    }
     const warnings = result.compatibilityWarnings || [];
     const warningDesc = warnings.map(w => w.description).join('; ');
-    return { 
-      status: result.finalStatus, 
+    return {
+      status: result.finalStatus,
       reason: warningDesc || null,
       warnings: warnings
     };
@@ -190,8 +198,12 @@ async function main() {
   const running = await checkValidator();
   if (!running) {
     const report = {
+      _generatedBy: 'validate-with-validator.mjs',
+      _schemaVersion: '1.0',
+      _runDir: outputDir || null,
+      _sourceHash: null,
       status: 'skipped',
-      reason: 'Validator 未运行，请先启动: run.bat 或 java -jar legado-source-validator.jar',
+      reason: 'Validator 未运行，请先启动: node scripts/bsg.mjs validator-start 或 java -jar legado-source-validator.jar',
       timestamp: new Date().toISOString()
     };
     console.log(JSON.stringify(report, null, 2));
@@ -204,6 +216,7 @@ async function main() {
   
   // 读取书源
   const sourceJson = readFileSync(sourceFile, 'utf-8');
+  const sourceHash = createHash('sha256').update(sourceJson).digest('hex');
   let sourceUrl;
   try {
     const parsed = JSON.parse(sourceJson);
@@ -244,6 +257,10 @@ async function main() {
   
   // 构建报告
   const report = {
+    _generatedBy: 'validate-with-validator.mjs',
+    _schemaVersion: '1.0',
+    _runDir: outputDir || null,
+    _sourceHash: sourceHash,
     status,
     reason,
     phase,

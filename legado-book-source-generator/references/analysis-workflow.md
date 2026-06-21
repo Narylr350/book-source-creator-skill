@@ -100,7 +100,7 @@
 node scripts/audit-source.mjs outputs/<site-slug>/book-source.json
 
 # 全链路验证（需要 validator 运行中）
-node scripts/validate-with-validator.mjs outputs/<site-slug>/book-source.json <关键词> auto --output runs/<site-slug>/
+node scripts/bsg.mjs validate --run runs/<site-slug>/
 ```
 
 **自检清单**：

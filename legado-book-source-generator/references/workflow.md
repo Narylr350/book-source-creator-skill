@@ -61,7 +61,7 @@
 
 ## 5. Validator 验证
 
-生成 `book-source.json` 后，必须用 validator 跑真实链路验证。重试次数和状态判定由 `bsg.mjs record-validation` 强制管理。
+生成 `book-source.json` 后，必须用 `bsg.mjs validate --run runs/<slug>` 跑真实链路验证，自动写入 `validator-report.json`。重试次数和状态判定由 `bsg.mjs record-validation` 强制管理；`record-validation` 不接受手写 report 或外部 report 路径。
 
 `record-validation` 会生成 `capability-matrix.json`。最终交付状态只从 matrix、`rule-check.json` 和 run-state 推导；不要把局部链路成功写成 full pass。
 

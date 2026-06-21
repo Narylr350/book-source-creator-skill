@@ -33,6 +33,23 @@ class ProbeHttpServer(
     // all subsequent WebViews share the same cookies.
     private fun handleLogin(session: IHTTPSession): Response {
         return try {
+            // If Activity was destroyed (user swiped away), relaunch it
+            if (WebViewProbeActivity.instance == null) {
+                val intent = android.content.Intent(context, WebViewProbeActivity::class.java).apply {
+                    addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                context.startActivity(intent)
+                // Wait briefly for Activity to initialize
+                repeat(10) {
+                    if (WebViewProbeActivity.instance != null) return@repeat
+                    Thread.sleep(200)
+                }
+                if (WebViewProbeActivity.instance == null) {
+                    return newFixedLengthResponse(Response.Status.INTERNAL_ERROR, "application/json",
+                        """{"ok":false,"error":"Probe Activity not running and failed to relaunch"}""")
+                }
+            }
+
             val bodyMap = HashMap<String, String>()
             session.parseBody(bodyMap)
             val jsonBody = bodyMap["postData"] ?: return newFixedLengthResponse(

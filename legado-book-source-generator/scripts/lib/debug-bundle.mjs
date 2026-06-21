@@ -1,3 +1,11 @@
+// 用法: node scripts/bsg.mjs debug-bundle [--cwd <工作目录>] [--run <run目录>] [--claude-session <sessionId>]
+// 说明: 打包当前 run 目录的工件 + claude-code-log 导出的对话 Markdown
+//   --cwd           指定项目根目录（默认当前目录）。脚本会去 runs/ 找最新 run
+//   --run           直接指定 run 目录，跳过自动查找
+//   --claude-session  指定 session ID 导出对话（不加则取最近的一个）
+//   输出到 <cwd>/debug-bundles/<slug>-<timestamp>/
+// 不能直接用 node scripts/lib/debug-bundle.mjs，必须通过 bsg.mjs 入口
+
 import fs from "node:fs";
 import path from "node:path";
 import { execFileSync } from "node:child_process";

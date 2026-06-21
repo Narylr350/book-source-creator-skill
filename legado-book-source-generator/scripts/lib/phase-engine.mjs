@@ -4,7 +4,7 @@ import {
   fail, fileExists, fileSha256, printHint, sha256Text, saveRunState, setPendingUserAction,
 } from "./state.mjs";
 import {
-  loadAndValidateAssessment, validateCookieFileShape, runOfficialRuleCheck, writeRuleCheck,
+  bookSourceHasWebView, factsSuggestWebView, loadAndValidateAssessment, validateCookieFileShape, runOfficialRuleCheck, writeRuleCheck,
 } from "./facts.mjs";
 import {
   diagnoseAndroid, checkAdb, checkProbeCookies, detectAuthFromAnalysis,
@@ -73,7 +73,7 @@ export function startPhase(phase, state, runDir) {
     assess:  { nextAction: "record_assessment", message: "写 assessment.md 后必须先运行 record-assessment。record-assessment 通过前不要展示评估摘要，也不要 advance。" },
     analyze: { nextAction: "write_analysis",   message: "按 search→detail→toc→content 顺序分析，写 analysis.md。完成后 advance。" },
     generate:{ nextAction: "generate_json",     message: "生成 book-source.json 到 outputs/<slug>/。完成后 advance。" },
-    validate:{ nextAction: "run_validator",     message: "运行 validator，保存 validator-report.json。完成后 record-validation。" },
+    validate:{ nextAction: "run_validator",     message: "运行 bsg.mjs validate --run {dir}，让它写入 validator-report.json。完成后 record-validation。" },
     deliver: { nextAction: "deliver",           message: "运行 deliver 完成最终交付。" },
   };
 
@@ -189,7 +189,19 @@ export function completePhase(phase, state, runDir) {
             : "登录方式：",
           "",
           adbOk
-            ? "方式1（推荐）：Probe 原生登录 — POST http://localhost:18888/login 打开手机/模拟器网页登录页 → 用户在手机/模拟器里输入账号密码并完成验证码/短信/扫码 → 看到已登录状态后回复 → /cookie-check 确认"
+            ? "步骤："
+            : "",
+          adbOk
+            ? "1. 运行 node scripts/bsg.mjs login --run <dir>——安装 Probe APK、设置 adb 端口转发 (localhost:18888→device:18888)、确认 /ping 正常"
+            : "",
+          adbOk
+            ? "2. 自动推送登录页到手机（或手动 adb shell am start）"
+            : "",
+          adbOk
+            ? "3. 用户在手机/模拟器里输入账号密码并完成验证码/短信/扫码"
+            : "",
+          adbOk
+            ? "4. 看到已登录状态后运行 resolve-user-action --action login_completed（内部检查 /cookie-check 确认 Cookie）"
             : "",
           adbOk
             ? "Browser MCP 登录不是当前默认路径；如需改用浏览器，必须先断开/声明 Android 真机或模拟器不可用，再按 Browser Cookie 路径继续。"
@@ -217,7 +229,7 @@ export function completePhase(phase, state, runDir) {
       }
     }
 
-    if ((state.loginFeatures.hasWebView || state.loginFeatures.hasWebJs) && !checkAdb() && state.userDecisions?.androidDevice !== "unavailable") {
+    if ((state.loginFeatures.hasWebView || state.loginFeatures.hasWebJs || factsSuggestWebView(runDir) || bookSourceHasWebView(runDir, state)) && !checkAdb() && state.userDecisions?.androidDevice !== "unavailable") {
       const android = diagnoseAndroid();
       const message = [
         "评估发现站点需要 WebView/CSR 渲染正文，但未检测到可用 Android 真机或模拟器。",
@@ -227,7 +239,7 @@ export function completePhase(phase, state, runDir) {
         "请确认：你是否有满足以下条件的 Android 真机或模拟器？",
         "  • Android 真机（已开启 USB 调试）或 Android 模拟器",
         "  • 真机通过 USB 数据线连接电脑；模拟器已启动并能被 adb 看到",
-        "  • 电脑可运行 validator/setup-android-probe.bat（脚本会检测并安装 adb，并通过 adb 连接真机/模拟器）",
+        "  • 电脑可运行 node scripts/bsg.mjs login（脚本会检测并安装 adb，并通过 adb 连接真机/模拟器）",
         "",
         "如果有，请连接真机或启动模拟器并完成授权后，再运行 resolve-user-action --action android_device_ready。",
         "如果没有可用 Android 真机或模拟器，运行 resolve-user-action --action android_device_unavailable；后续正文验证只能标 needs_app_review / validator_limitation，不能标 passed。",
@@ -408,7 +420,7 @@ export function moveToNext(fromPhase, state, runDir) {
     }
   }
 
-  let validateMessage = `运行 validator (第 ${(state.phases.validate.attempts || 0) + 1} 次)。保存 validator-report.json。完成后运行 record-validation。`;
+  let validateMessage = `运行 bsg.mjs validate --run "${runDir}" (第 ${(state.phases.validate.attempts || 0) + 1} 次)。完成后运行 record-validation。`;
   let validateWebViewInstruction = null;
 
   if (state.loginFeatures.hasWebView || state.loginFeatures.hasWebJs) {
@@ -417,9 +429,10 @@ export function moveToNext(fromPhase, state, runDir) {
       "⚠️  WebView/CSR 正文 — 必须用 Android Probe",
       "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
       "1. validator-start（窗口必须可见）",
-      "2. validator/setup-android-probe.bat（单入口：检测 adb、安装 APK、启动 Probe、检查 /ping）",
-      "4. validate-with-validator.mjs ... android",
-      "5. Android 不可用时: mode=http + 正文失败标 validator_limitation",
+      "2. node scripts/bsg.mjs login（单入口：检测 adb、安装 APK、启动 Probe、检查 /ping）",
+      "3. node scripts/bsg.mjs validate --run dir --mode android（自动读取书源和关键词，auto android）",
+      "4. record-validation",
+      "5. Android 不可用时: --mode http + 正文失败标 validator_limitation",
       "",
       "禁止跳过 Android Probe 直接用 mode=http 标 passed！",
       "",
@@ -448,14 +461,14 @@ export function moveToNext(fromPhase, state, runDir) {
         : "Android/Probe 不可用时，必须先让用户完成 Browser 登录并提取 Cookie 注入 validator，否则正文鉴权失败。",
       "",
       loggedInViaProbe
-        ? "1. 确认 validator/setup-android-probe.bat 已启动并通过 /ping"
+        ? "1. 确认 node scripts/bsg.mjs login 已启动并通过 /ping"
         : "1. browser_network_requests 找到 API 请求头的 Cookie 或 Authorization",
       loggedInViaProbe
-        ? "2. 运行 validate-with-validator.mjs ... android"
+        ? "2. node scripts/bsg.mjs validate --run dir（自动 mode=android）"
         : "2. 保存为 runs/<slug>/cookies.json: {\"www.example.com\": \"full_cookie_string\"}",
       loggedInViaProbe
-        ? "3. 保存 validator-report.json 后运行 record-validation"
-        : "3. 传给 validator: --cookie=runs/<slug>/cookies.json",
+        ? "3. validator-report.json 写入后运行 record-validation"
+        : "3. bsg.mjs validate 自动检测 cookies.json 并注入",
       "",
       "未注入 Cookie 的验证结果不能标 passed，只能标 anonymous_candidate。",
       "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
