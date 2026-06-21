@@ -4,13 +4,21 @@ import com.google.gson.Gson
 import com.google.gson.JsonObject
 import io.legado.validator.analyzeRule.AnalyzeUrl
 import io.legado.validator.debug.DebugStep
+import io.legado.validator.debug.ErrorCode
+import io.legado.validator.debug.ErrorCodeRegistry
 import io.legado.validator.debug.classifyHtmlKind
 import io.legado.validator.debug.containsAppReviewChallenge
 import io.legado.validator.debug.determineFinalStatus
+import io.legado.validator.debug.detectAndroidContentWebViewDeclarationError
+import io.legado.validator.debug.selectSearchEmptyErrorCode
+import io.legado.validator.help.http.StrResponse
+import io.legado.validator.model.BookChapter
 import io.legado.validator.model.BookSource
+import io.legado.validator.model.rule.ContentRule
 import io.legado.validator.webBook.WebBook
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeoutOrNull
+import okhttp3.Headers
 import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.TestInstance
@@ -133,6 +141,56 @@ class P8RegressionTest {
     }
 
     @Test
+    fun `android content with webJs must keep chapter url webView marker`() {
+        val source = BookSource(
+            bookSourceUrl = "https://example.test",
+            ruleContent = ContentRule(
+                content = "@css:#reader@text",
+                webJs = "document.querySelector('#reader')?.innerText"
+            )
+        )
+        val chapter = BookChapter(url = "https://example.test/reader/1")
+
+        val step = detectAndroidContentWebViewDeclarationError(source, chapter)
+
+        assertNotNull(step)
+        assertEquals("error", step!!.status)
+        assertEquals(ErrorCode.CHAPTER_URL_MISSING_WEBVIEW.name, step.errorCode)
+        assertEquals("ruleToc.chapterUrl", step.failedField)
+    }
+
+    @Test
+    fun `android content accepts declared chapter url webView marker`() {
+        val source = BookSource(
+            bookSourceUrl = "https://example.test",
+            ruleContent = ContentRule(
+                content = "@css:#reader@text",
+                webJs = "document.querySelector('#reader')?.innerText"
+            )
+        )
+        val chapter = BookChapter(url = """https://example.test/reader/1,{"webView":true}""")
+
+        assertNull(detectAndroidContentWebViewDeclarationError(source, chapter))
+    }
+
+    @Test
+    fun `webview render timeout points agents at webJs`() {
+        assertEquals("ruleContent.webJs", ErrorCodeRegistry.WEBVIEW_RENDER_TIMEOUT_META.failedField)
+    }
+
+    @Test
+    fun `search http 200 with body but no matched books is selector error`() {
+        val res = StrResponse(
+            url = "https://example.test/search?q=abc",
+            body = "<html><body><div class='book'>Book exists in response</div></body></html>",
+            headers = Headers.headersOf("Content-Type", "text/html"),
+            code = 200
+        )
+
+        assertEquals(ErrorCode.SEARCH_SELECTOR_EMPTY, selectSearchEmptyErrorCode(res))
+    }
+
+    @Test
     fun `anonymous login vertex pass becomes anonymous candidate`() {
         val source = loadSource("novalpie-com.json")
         val steps = listOf(
@@ -151,6 +209,21 @@ class P8RegressionTest {
             DebugStep("search", "error", errorCode = "SEARCH_EMPTY", sessionMode = "anonymous")
         )
         assertEquals("needs_app_review", determineFinalStatus(steps, source))
+    }
+
+    @Test
+    fun `anonymous login vertex must not hide hard source rule errors`() {
+        val source = loadSource("novalpie-com.json")
+        val steps = listOf(
+            DebugStep(
+                "content",
+                "error",
+                errorCode = ErrorCode.CHAPTER_URL_MISSING_WEBVIEW.name,
+                failedField = "ruleToc.chapterUrl",
+                sessionMode = "anonymous"
+            )
+        )
+        assertEquals("failed", determineFinalStatus(steps, source))
     }
 
     @Test

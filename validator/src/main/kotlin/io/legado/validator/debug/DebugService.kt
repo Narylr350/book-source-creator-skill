@@ -25,6 +25,45 @@ internal fun containsAppReviewChallenge(text: String): Boolean {
         || text.contains("验证码", ignoreCase = true)
 }
 
+internal fun selectSearchEmptyErrorCode(res: StrResponse?): ErrorCode {
+    val body = res?.body ?: ""
+    return when {
+        res != null && containsAppReviewChallenge(body) -> ErrorCode.APP_REVIEW_REQUIRED
+        res != null && res.code != 200 -> ErrorCode.HTTP_BLOCKED
+        res != null && body.isNotBlank() -> ErrorCode.SEARCH_SELECTOR_EMPTY
+        else -> ErrorCode.SEARCH_EMPTY
+    }
+}
+
+internal fun hasWebViewTrueOption(url: String?): Boolean {
+    if (url.isNullOrBlank()) return false
+    return Regex("""["']?webView["']?\s*:\s*true""", RegexOption.IGNORE_CASE).containsMatchIn(url)
+}
+
+internal fun detectAndroidContentWebViewDeclarationError(source: BookSource, chapter: BookChapter): DebugStep? {
+    if (source.getContentRule().webJs.isNullOrBlank()) return null
+    if (hasWebViewTrueOption(chapter.url)) return null
+
+    val meta = ErrorCodeRegistry.CHAPTER_URL_MISSING_WEBVIEW_META
+    return DebugStep(
+        phase = "content",
+        status = "error",
+        mode = "android",
+        request = DebugStep.RequestInfo(url = chapter.url, method = "GET", headers = source.getHeaderMap(), body = null),
+        error = meta.messageTemplate,
+        errorCode = meta.code.name,
+        subphase = meta.subphase.name.lowercase(),
+        failedField = meta.failedField,
+        allowedFixes = meta.allowedFixes,
+        forbiddenFixes = meta.forbiddenFixes,
+        evidence = mapOf(
+            "chapterUrl" to chapter.url,
+            "hasWebJs" to true,
+            "mode" to "android"
+        )
+    )
+}
+
 internal fun containsCaptchaChallenge(text: String): Boolean {
     val patterns = listOf(
         "recaptcha", "hcaptcha", "geetest", "verify you are a human", "are you a robot",
@@ -323,13 +362,7 @@ class DebugService {
                             else -> "搜索结果为空 (HTTP ${res.code}, 列表大小:0)"
                         }
                     } else "搜索结果为空"
-                    val sErrorCode = when {
-                        errorMsg.contains(Regex("Cloudflare|Turnstile|challenge|验证码|captcha|App 复核", RegexOption.IGNORE_CASE)) ->
-                            ErrorCode.APP_REVIEW_REQUIRED.name
-                        errorMsg.contains(Regex("403|Forbidden|404|503", RegexOption.IGNORE_CASE)) ->
-                            ErrorCode.HTTP_BLOCKED.name
-                        else -> ErrorCode.SEARCH_EMPTY.name
-                    }
+                    val sErrorCode = selectSearchEmptyErrorCode(res).name
                     val sMeta = try { ErrorCodeRegistry.get(ErrorCode.valueOf(sErrorCode)) } catch (_: Exception) { null }
                     val needsReview = sErrorCode == ErrorCode.APP_REVIEW_REQUIRED.name
                     DebugStep(
@@ -764,14 +797,25 @@ class DebugService {
                         androidWebViewVersion = probeInfo.webViewVersion,
                         webViewHtmlPreview = probeRes.html?.take(2000),
                         webViewScreenshotBase64 = probeRes.screenshotBase64
-                    ) else DebugStep(
+                    ) else {
+                        val sErrorCode = selectSearchEmptyErrorCode(
+                            StrResponse(analyzeUrl.url, probeRes.html ?: "", okhttp3.Headers.headersOf("Content-Type", "text/html"), 200)
+                        )
+                        val sMeta = ErrorCodeRegistry.get(sErrorCode)
+                        DebugStep(
                         phase = "search", status = "error", mode = "android",
                         error = "Probe 搜索渲染成功但未提取到结果",
+                        errorCode = sErrorCode.name,
+                        subphase = sMeta?.subphase?.name?.lowercase(),
+                        failedField = sMeta?.failedField,
+                        allowedFixes = sMeta?.allowedFixes ?: emptyList(),
+                        forbiddenFixes = sMeta?.forbiddenFixes ?: emptyList(),
                         probeAvailable = true, probeDevice = probeInfo.device?.serial,
                         androidWebViewVersion = probeInfo.webViewVersion,
                         webViewHtmlPreview = probeRes.html?.take(2000),
                         webViewScreenshotBase64 = probeRes.screenshotBase64
                     )
+                    }
                 } else {
                     val books = WebBook.searchBookAwait(source, keyword)
                     val res = WebBook.lastResponse
@@ -785,12 +829,21 @@ class DebugService {
                         extracted = mapOf("resultCount" to books.size, "firstBook" to first, "books" to books.take(10)),
                         probeAvailable = true, probeDevice = probeInfo.device?.serial,
                         androidWebViewVersion = probeInfo.webViewVersion
-                    ) else DebugStep(
+                    ) else {
+                        val sErrorCode = selectSearchEmptyErrorCode(res)
+                        val sMeta = ErrorCodeRegistry.get(sErrorCode)
+                        DebugStep(
                         phase = "search", status = "error", mode = "android",
                         request = reqInfo, response = resInfo, error = "搜索结果为空",
+                        errorCode = sErrorCode.name,
+                        subphase = sMeta?.subphase?.name?.lowercase(),
+                        failedField = sMeta?.failedField,
+                        allowedFixes = sMeta?.allowedFixes ?: emptyList(),
+                        forbiddenFixes = sMeta?.forbiddenFixes ?: emptyList(),
                         probeAvailable = true, probeDevice = probeInfo.device?.serial,
                         androidWebViewVersion = probeInfo.webViewVersion
                     )
+                    }
                 }
             } catch (e: Exception) {
                 DebugStep(
@@ -805,6 +858,7 @@ class DebugService {
 
     private suspend fun runContentAndroid(source: BookSource, book: Book, chapter: BookChapter, cIdx: Int = 0): DebugStep {
         return withContext(Dispatchers.IO) {
+            detectAndroidContentWebViewDeclarationError(source, chapter)?.let { return@withContext it }
             val probeInfo = AndroidProbeService.probeCheck()
             if (!probeInfo.available) {
                 return@withContext DebugStep(
@@ -1051,6 +1105,19 @@ class DebugService {
     }
 }
 
+private fun isAnonymousLoginCandidate(step: DebugStep): Boolean {
+    if (step.status != "error") return false
+    if (step.needsAppReview) return true
+    return when (step.errorCode) {
+        null,
+        ErrorCode.SEARCH_EMPTY.name,
+        ErrorCode.CONTENT_IS_LOGIN_PAGE.name,
+        ErrorCode.CONTENT_IS_VIP_LOCK_PAGE.name,
+        ErrorCode.COOKIE_REQUIRED.name -> true
+        else -> false
+    }
+}
+
 fun determineFinalStatus(steps: List<DebugStep>, source: BookSource? = null): String {
     val hasNeedsAppReview = steps.any { it.needsAppReview }
     val hasUnsupportedFeature = steps.any { !it.compatibilityWarnings.isNullOrEmpty() }
@@ -1062,15 +1129,17 @@ fun determineFinalStatus(steps: List<DebugStep>, source: BookSource? = null): St
         source.enabledCookieJar == true ||
         (!source.header.isNullOrBlank() && source.header!!.contains("Authorization", ignoreCase = true))
     )
-    val hasAnonymousLoginFailure = hasLoginVertex && isAnonymous && steps.any { it.status == "error" }
+    val hasAnonymousLoginFailure = hasLoginVertex && isAnonymous && steps.any { isAnonymousLoginCandidate(it) }
     // 不带 needsAppReview 标记的真实错误（规则写错、404 等），不应被 needs_app_review 掩盖
     val hasHardError = steps.any { it.status == "error" && !it.needsAppReview }
+    val hasHardSourceRuleError = steps.any { it.status == "error" && !it.needsAppReview && !isAnonymousLoginCandidate(it) }
 
     return when {
         hasNeedsAppReview && hasHardError -> "failed"
         hasNeedsAppReview -> "needs_app_review"
         hasProbeUnavailable && hasHardError -> "failed"
         hasProbeUnavailable -> "validator_limitation"
+        hasHardSourceRuleError -> "failed"
         hasAnonymousLoginFailure -> "needs_app_review"
         allPassed && isAnonymous && hasLoginVertex -> "anonymous_candidate"
         hasUnsupportedFeature && allPassed -> "validator_limitation"

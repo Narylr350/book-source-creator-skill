@@ -235,7 +235,7 @@ object ErrorCodeRegistry {
         subphase = Subphase.RENDER,
         severity = Severity.FIXABLE,
         category = Category.RENDER,
-        failedField = null,
+        failedField = "ruleContent.webJs",
         allowedFixes = listOf("respondTime", "ruleContent.webJs"),
         forbiddenFixes = listOf("searchUrl", "ruleSearch", "ruleBookInfo", "ruleToc", "header"),
         requiredCapabilities = listOf(Capability.ANDROID_PROBE),

@@ -72,8 +72,12 @@ class ProbeHttpServer(
     // Check CookieManager for cookies after user completed login
     private fun handleCookieCheck(session: IHTTPSession): Response {
         val domain = session.parms["domain"] ?: ""
+        if (domain.isEmpty()) {
+            return newFixedLengthResponse(Response.Status.BAD_REQUEST, "application/json",
+                """{"error":"domain is required"}""")
+        }
         val cm = android.webkit.CookieManager.getInstance()
-        val url = if (domain.isNotEmpty()) "https://$domain" else "https://www.ciweimao.com"
+        val url = "https://$domain"
         val cookies = cm.getCookie(url) ?: ""
         val hasCookies = cookies.isNotEmpty()
         return newFixedLengthResponse(Response.Status.OK, "application/json", gson.toJson(mapOf(
