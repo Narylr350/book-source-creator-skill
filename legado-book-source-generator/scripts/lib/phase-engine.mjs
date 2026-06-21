@@ -21,6 +21,38 @@ export { PHASE_ORDER, currentPhaseIndex, resetPhasesFrom } from "./phase-order.m
 
 // ── phase state machine ────────────────────────────────────────────────────
 
+export const PHASE_READ_NEXT = {
+  probe: ["references/probe-guide.md", "references/assessment-template.md"],
+  assess: ["references/assessment-template.md"],
+  analyze: ["references/analysis-workflow.md"],
+  generate: [
+    "references/official-rule-pack.json",
+    "references/legado-json-structure.md",
+    "references/legado-source-behavior.md",
+  ],
+  validate: ["references/validator-integration.md", "references/validation-policy.md"],
+  deliver: ["references/outputs.md"],
+};
+
+export function phaseNextCommand(runDir, phase) {
+  const commands = {
+    probe: `node "<skill-dir>/scripts/bsg.mjs" advance --run ${runDir}`,
+    assess: `node "<skill-dir>/scripts/bsg.mjs" record-assessment --run ${runDir}`,
+    analyze: `node "<skill-dir>/scripts/bsg.mjs" advance --run ${runDir}`,
+    generate: `node "<skill-dir>/scripts/bsg.mjs" advance --run ${runDir}`,
+    validate: `node "<skill-dir>/scripts/bsg.mjs" record-validation --run ${runDir} --status <passed|failed|needs_app_review|validator_limitation|degraded>`,
+    deliver: `node "<skill-dir>/scripts/bsg.mjs" deliver --run ${runDir}`,
+  };
+  return commands[phase] || "";
+}
+
+function phaseHints(runDir, phase) {
+  return {
+    readNext: PHASE_READ_NEXT[phase] || [],
+    nextCommand: phaseNextCommand(runDir, phase),
+  };
+}
+
 export function startPhase(phase, state, runDir) {
   if (phase === "probe") {
     state.phases.probe.status = "in_progress";
@@ -30,6 +62,7 @@ export function startPhase(phase, state, runDir) {
       nextAction: "probe_site",
       message: "匿名初探：用 HTTP fetch 或 Browser MCP 探索 search/detail/toc/content 四条链路。",
       requiredUserAction: null,
+      ...phaseHints(runDir, "probe"),
     };
   }
 
@@ -45,7 +78,7 @@ export function startPhase(phase, state, runDir) {
   };
 
   const a = actions[phase] || { nextAction: phase, message: `阶段: ${phase}` };
-  return { ok: true, ...a, requiredUserAction: null };
+  return { ok: true, ...a, requiredUserAction: null, ...phaseHints(runDir, phase) };
 }
 
 export function completePhase(phase, state, runDir) {
@@ -344,7 +377,12 @@ export function completePhase(phase, state, runDir) {
 export function moveToNext(fromPhase, state, runDir) {
   const nextIdx = PHASE_ORDER.indexOf(fromPhase) + 1;
   if (nextIdx >= PHASE_ORDER.length) {
-    return { ok: true, message: "所有阶段已完成。运行 deliver。", nextAction: "deliver" };
+    return {
+      ok: true,
+      message: "所有阶段已完成。运行 deliver。",
+      nextAction: "deliver",
+      ...phaseHints(runDir, "deliver"),
+    };
   }
   const next = PHASE_ORDER[nextIdx];
   state.phases[next].status = "in_progress";
@@ -438,5 +476,6 @@ export function moveToNext(fromPhase, state, runDir) {
     message: a.message,
     ...(authReminder ? { authReminder } : {}),
     requiredUserAction: null,
+    ...phaseHints(runDir, next),
   };
 }

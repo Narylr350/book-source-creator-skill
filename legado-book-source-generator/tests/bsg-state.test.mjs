@@ -1325,3 +1325,38 @@ describe("printHint stderr output", () => {
     }
   });
 });
+
+describe("advance response fields", () => {
+  it("init response has nextCommand", async () => {
+    const tmpDir = await makeTmpDir();
+    const result = await runBsg(["init", "https://example.com", "--cwd", tmpDir]);
+
+    assert.ok(result.nextCommand, "init should return nextCommand");
+    assert.ok(result.nextCommand.includes("advance"), "nextCommand should suggest advance");
+    await fs.rm(tmpDir, { recursive: true, force: true });
+  });
+
+  it("advance probe to assess response has readNext and nextCommand", async () => {
+    const tmpDir = await makeTmpDir();
+    const init = await runBsg(["init", "https://example.com", "--cwd", tmpDir]);
+    await runBsg(["advance", "--run", init.runDir]);
+    const result = await runBsg(["advance", "--run", init.runDir]);
+
+    assert.ok(Array.isArray(result.readNext), "readNext should be array");
+    assert.ok(result.readNext.length > 0, "readNext should not be empty for assess");
+    assert.ok(result.nextCommand, "nextCommand should exist");
+    await fs.rm(tmpDir, { recursive: true, force: true });
+  });
+
+  it("advance generate to validate response has readNext", async () => {
+    const tmpDir = await makeTmpDir();
+    const runDir = await initRun(tmpDir);
+    await advanceToGenerate(tmpDir, runDir);
+    await writeValidSource(tmpDir);
+    const result = await runBsg(["advance", "--run", runDir]);
+
+    assert.ok(Array.isArray(result.readNext), "readNext should be array for validate");
+    assert.ok(result.readNext.some((f) => f.includes("validator")), "readNext should include validator reference");
+    await fs.rm(tmpDir, { recursive: true, force: true });
+  });
+});

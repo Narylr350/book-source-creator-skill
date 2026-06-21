@@ -8,7 +8,7 @@ import {
 } from "./state.mjs";
 import {
   PHASE_ORDER, currentPhaseIndex, startPhase, completePhase,
-  checkEnvironment, checkAdb,
+  checkEnvironment, checkAdb, PHASE_READ_NEXT, phaseNextCommand,
 } from "./phase-engine.mjs";
 
 export function cmdInit(args) {
@@ -67,6 +67,8 @@ export function cmdInit(args) {
       stateFile: path.join(runDir, "run-state.json"),
       bookSourceDir: path.join(cwd, "outputs", siteSlug),
     },
+    readNext: PHASE_READ_NEXT.probe,
+    nextCommand: phaseNextCommand(runDir, "probe"),
   };
 }
 
@@ -113,6 +115,8 @@ export function cmdStatus(args) {
     pending,
     inProgress: inProgress ? inProgress.phase : null,
     nextAction,
+    readNext: PHASE_READ_NEXT[currentPhase] || [],
+    nextCommand: phaseNextCommand(runDir, currentPhase),
     loginFeatures: state.loginFeatures,
     phases,
   };
@@ -130,7 +134,13 @@ export function cmdAdvance(args) {
 
   const idx = currentPhaseIndex(state);
   if (idx >= PHASE_ORDER.length) {
-    return { ok: true, message: "所有阶段已完成。运行 deliver 完成交付。", nextAction: "all_done" };
+    return {
+      ok: true,
+      message: "所有阶段已完成。运行 deliver 完成交付。",
+      nextAction: "all_done",
+      readNext: PHASE_READ_NEXT.deliver,
+      nextCommand: phaseNextCommand(runDir, "deliver"),
+    };
   }
 
   const current = PHASE_ORDER[idx];
