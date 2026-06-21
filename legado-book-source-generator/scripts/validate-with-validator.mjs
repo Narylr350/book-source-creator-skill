@@ -72,26 +72,37 @@ function determineStatus(result) {
   
   // fallback: 客户端判定（旧版 validator 兼容）
   const phases = result.phases || {};
-  
-  // 检查 needsAppReview
+
+  // 记 failIfHardError：如果有不标记 needsAppReview 的步骤真挂了，就返回 failed
+  function failIfHardError() {
+    const hardError = steps.find(s => s.status === 'error' && !s.needsAppReview);
+    if (hardError) return { status: 'failed', reason: `${hardError.phase}: ${hardError.error}` };
+    return null;
+  }
+
+  // 检查 needsAppReview（之前先看有没有硬错误被掩盖）
+  const beforeAppReview = failIfHardError();
+  if (beforeAppReview) return beforeAppReview;
   for (const step of steps) {
     if (step.needsAppReview) {
       return { status: 'needs_app_review', reason: step.reviewReason || step.error };
     }
   }
-  
+
   // 检查 compatibilityWarnings
   const warnings = result.compatibilityWarnings || [];
   if (warnings.length > 0 && Object.values(phases).every(s => s === 'success')) {
     return { status: 'validator_limitation', reason: warnings.map(w => w.description).join('; '), warnings };
   }
-  
+
   // 全部成功
   if (Object.values(phases).every(s => s === 'success')) {
     return { status: 'passed', reason: null };
   }
-  
-  // 检查 Cloudflare/验证码
+
+  // 检查 Cloudflare/验证码（之前先看有没有硬错误被掩盖）
+  const beforeCloudflare = failIfHardError();
+  if (beforeCloudflare) return beforeCloudflare;
   for (const step of steps) {
     const err = step.error || '';
     const rawStep = (result.steps || []).find(s => s.phase === step.phase);
@@ -101,14 +112,14 @@ function determineStatus(result) {
       return { status: 'needs_app_review', reason: match ? match[0] + ' 检测' : err };
     }
   }
-  
+
   // 有失败
   for (const step of steps) {
     if (step.status === 'error') {
       return { status: 'failed', reason: step.error, phase: step.phase, ruleHits: step.ruleHits };
     }
   }
-  
+
   return { status: 'failed', reason: 'Unknown failure' };
 }
 
