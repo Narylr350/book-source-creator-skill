@@ -47,18 +47,21 @@ async function runDebug(sourceJson, sourceUrl, keyword, mode = 'http', debugDir 
   return res.json();
 }
 
-function determineStatus(result) {
+export function determineStatus(result) {
   if (!result.ok) return { status: 'error', reason: result.error };
   
   const steps = result.steps || [];
   
   // 优先使用服务端 finalStatus（P8.5 状态门禁）
-  // 但 needs_app_review / validator_limitation 不能掩盖 step 真错误
+  // 但任何顶层结论都不能丢失 step 里的硬错误原因。
   if (result.finalStatus) {
+    const hardError = steps.find(s => s.status === 'error' && !s.needsAppReview);
+    if (result.finalStatus === 'failed' && hardError) {
+      return { status: 'failed', reason: `${hardError.phase}: ${hardError.error}`, phase: hardError.phase };
+    }
     if (['needs_app_review', 'validator_limitation'].includes(result.finalStatus)) {
-      const hardError = steps.find(s => s.status === 'error' && !s.needsAppReview);
       if (hardError) {
-        return { status: 'failed', reason: `${hardError.phase}: ${hardError.error}` };
+        return { status: 'failed', reason: `${hardError.phase}: ${hardError.error}`, phase: hardError.phase };
       }
     }
     const warnings = result.compatibilityWarnings || [];
@@ -168,6 +171,47 @@ export function normalizeCookieFile(cookies) {
     }
     return { domain, cookie };
   });
+}
+
+export function mapReportStep(s) {
+  return {
+    phase: s.phase,
+    status: s.status,
+    mode: s.mode,
+    error: s.error,
+    // ── 诊断字段 (P11) ──
+    errorCode: s.errorCode,
+    subphase: s.subphase,
+    failedField: s.failedField,
+    allowedFixes: s.allowedFixes || [],
+    forbiddenFixes: s.forbiddenFixes || [],
+    evidence: s.evidence || {},
+    debugArtifacts: s.debugArtifacts,
+    webViewHtmlPreview: s.webViewHtmlPreview,
+    webViewScreenshotBase64: s.webViewScreenshotBase64,
+    // ── 原有字段 ──
+    needsAppReview: s.needsAppReview,
+    ruleHits: s.ruleHits || [],
+    extracted: s.extracted || {},
+    probeAvailable: s.probeAvailable,
+    compatibilityWarnings: s.compatibilityWarnings,
+    reviewReason: s.reviewReason,
+    request: s.request ? {
+      url: s.request.url,
+      method: s.request.method,
+      headers: s.request.headers,
+      body: s.request.body,
+    } : null,
+    response: s.response ? {
+      code: s.response.code,
+      bodyLength: s.response.bodyLength,
+      bodyPreview: s.response.bodyPreview,
+      headers: s.response.headers,
+      rendered: s.response.rendered,
+    } : null,
+    preview: s.preview?.slice(0, 200),
+    sessionMode: s.sessionMode,
+  };
 }
 
 async function main() {
@@ -283,31 +327,7 @@ async function main() {
     timestamp: new Date().toISOString(),
     summary,
     phases: result.phases || {},
-    steps: (result.steps || []).map(s => ({
-      phase: s.phase,
-      status: s.status,
-      mode: s.mode,
-      error: s.error,
-      // ── 诊断字段 (P11) ──
-      errorCode: s.errorCode,
-      subphase: s.subphase,
-      failedField: s.failedField,
-      allowedFixes: s.allowedFixes || [],
-      forbiddenFixes: s.forbiddenFixes || [],
-      evidence: s.evidence || {},
-      debugArtifacts: s.debugArtifacts,
-      // ── 原有字段 ──
-      needsAppReview: s.needsAppReview,
-      ruleHits: s.ruleHits || [],
-      extracted: s.extracted || {},
-      probeAvailable: s.probeAvailable,
-      compatibilityWarnings: s.compatibilityWarnings,
-      reviewReason: s.reviewReason,
-      request: s.request ? { url: s.request.url, method: s.request.method } : null,
-      response: s.response ? { code: s.response.code, bodyLength: s.response.bodyLength } : null,
-      preview: s.preview?.slice(0, 200),
-      sessionMode: s.sessionMode,
-    })),
+    steps: (result.steps || []).map(mapReportStep),
     raw: result,
     finalStatus: result.finalStatus,
     compatibilityWarnings: result.compatibilityWarnings

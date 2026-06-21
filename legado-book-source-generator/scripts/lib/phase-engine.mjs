@@ -40,7 +40,7 @@ export function phaseNextCommand(runDir, phase) {
     assess: `node "<skill-dir>/scripts/bsg.mjs" record-assessment --run ${runDir}`,
     analyze: `node "<skill-dir>/scripts/bsg.mjs" advance --run ${runDir}`,
     generate: `node "<skill-dir>/scripts/bsg.mjs" advance --run ${runDir}`,
-    validate: `node "<skill-dir>/scripts/bsg.mjs" record-validation --run ${runDir} --status <passed|failed|needs_app_review|validator_limitation|degraded>`,
+    validate: `node "<skill-dir>/scripts/bsg.mjs" validate --run ${runDir}`,
     deliver: `node "<skill-dir>/scripts/bsg.mjs" deliver --run ${runDir}`,
   };
   return commands[phase] || "";
@@ -128,6 +128,43 @@ export function completePhase(phase, state, runDir) {
       };
     }
 
+    if (
+      assessmentSignals.hasEntryAntiBotRisk &&
+      state.userDecisions?.entryRisk !== "accepted_skip" &&
+      state.userDecisions?.entryRisk !== "android_ready" &&
+      state.userDecisions?.entryRisk !== "android_unavailable"
+    ) {
+      const android = diagnoseAndroid();
+      const message = [
+        "搜索/入口链路存在验证码、Cloudflare 或反爬阻塞。",
+        "",
+        `当前 Android/adb 状态: ${android.state}。${android.message}`,
+        "",
+        "这类风险可能在桌面浏览器、HTTP validator、Android WebView/阅读 App 中表现不同。",
+        "必须先确认是否用 Android 真机或模拟器复核入口链路，不能直接用排行榜/书库替代搜索并继续。",
+        "",
+        android.state === "device_ready"
+          ? "已检测到 Android 真机或模拟器：请优先用 Android Probe 复核入口链路。"
+          : "未检测到可用 Android 真机或模拟器：请确认是否有设备或模拟器可用。",
+        "如果用户明确接受入口不完整/跳过 Android 复核，运行 resolve-user-action --action continue_after_entry_risk。",
+      ].join("\n");
+      const pending = setPendingUserAction(state, "android_entry_review_needed", "entry_antibot_requires_android_decision", message, {
+        blockingPhase: "assess",
+        android,
+        blockers: assessment.derived.blockers,
+      });
+      saveRunState(runDir, state);
+      return {
+        ok: true,
+        nextAction: "stop",
+        requiredUserAction: "android_entry_review_needed",
+        reason: "entry_antibot_requires_android_decision",
+        message,
+        android,
+        pendingUserAction: pending,
+      };
+    }
+
     if (state.loginFeatures.hasEnabledCookieJar || state.loginFeatures.hasAuthorization) {
       const android = diagnoseAndroid();
       const adbOk = android.state === "device_ready";
@@ -165,7 +202,7 @@ export function completePhase(phase, state, runDir) {
         saveRunState(runDir, state);
       } else if (state.userDecisions?.login === "completed") {
         if (adbOk) {
-          const probeCookies = checkProbeCookies();
+          const probeCookies = checkProbeCookies(state.siteUrl);
           if (!probeCookies.ok) {
             return fail("Android 真机或模拟器在线时，已完成登录状态必须来自 Probe /cookie-check。请重新运行登录流程，不要用 Browser Cookie 或口头确认绕过。");
           }
@@ -316,6 +353,21 @@ export function completePhase(phase, state, runDir) {
       }
     }
 
+    const missingSearch = [];
+    if (!source.searchUrl || !String(source.searchUrl).trim()) missingSearch.push("searchUrl");
+    for (const field of ["bookList", "name", "bookUrl"]) {
+      const value = source.ruleSearch?.[field];
+      if (!value || !String(value).trim()) missingSearch.push(`ruleSearch.${field}`);
+    }
+    if (missingSearch.length > 0) {
+      return fail([
+        "搜索入口不完整，不能进入 validate。",
+        `缺失字段: ${missingSearch.join(", ")}`,
+        "enabledExplore、排行榜、书库不能自动替代搜索。",
+        "如果用户明确接受无搜索/入口不完整书源，必须先在 assess 阶段处理 entry risk 用户确认，并在 analysis.md 说明限制。",
+      ].join("\n"));
+    }
+
     const jsonStr = JSON.stringify(parsed);
     const hasWebView = jsonStr.includes('"webView":true') || jsonStr.includes("'webView':true");
     const hasWebJs = jsonStr.includes('"webJs"') || jsonStr.includes("'webJs'");
@@ -371,6 +423,8 @@ export function completePhase(phase, state, runDir) {
 
     state.phases.generate.status = "completed";
     state.phases.generate.completedAt = new Date().toISOString();
+    delete state.phases.generate.repairContext;
+    delete state.repairContext;
     saveRunState(runDir, state);
     return moveToNext(phase, state, runDir);
   }

@@ -23,6 +23,18 @@ node "<skill-dir>/scripts/bsg.mjs" init <url> [--cwd <输出目录>]
 
 **3. `requiredUserAction` 非 null 时停止自动操作，等用户确认后再运行 `resolve-user-action`。**
 
+## 红旗
+
+出现以下想法时停止自动发挥，读命令返回的 `correctiveAction` / `requiredUserAction`：
+
+- “搜索被验证码拦了，所以用排行榜/书库代替搜索。”
+- “电脑端能看到正文，所以阅读 App 一定可用。”
+- “adb/Probe 麻烦，先用 HTTP 验证。”
+- “validate 阶段发现问题，直接改 book-source.json。”
+- “规则错误可以标 needs_app_review / validator_limitation。”
+
+这些情况必须由脚本门禁或用户确认解除，不能靠经验跳过。
+
 ## 输出
 
 - `outputs/<site-slug>/book-source.json` — 唯一交付物

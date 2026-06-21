@@ -23,6 +23,10 @@
 
 停止后不要检查 localStorage，不翻源码，不研究 WebSocket，直接问用户是否可以提供账号或登录协助。
 
+## 入口反爬处理
+
+搜索、详情、目录任一入口链路出现验证码、Cloudflare、极验、人机验证，属于入口链路阻塞。不得自行写“改用排行榜/书库”继续生成；先记录 `site-facts.json` 的 `blocker`，后续由 `record-assessment` / `advance` 生成用户确认或 Android 复核动作。
+
 ## site-facts.json 写法
 
 四链路每条一个对象：

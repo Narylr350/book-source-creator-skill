@@ -8,3 +8,4 @@ export { cmdDebugBundle } from "./debug-bundle.mjs";
 export { cmdAndroidStatus } from "./phase-engine.mjs";
 export { cmdLogin } from "./login.mjs";
 export { cmdValidate } from "./validate-runner.mjs";
+export { cmdSource } from "./source-commands.mjs";

@@ -7,6 +7,7 @@
 - 先匿名访问 search/detail/toc/content 四条链路，只判断站点结构、接口路径、是否有反爬、是否需要 WebView。
 - 检查登录入口、会员限制、匿名降级、登录后能力变化。
 - 如果站点需要登录态且 Android 真机或模拟器在线，必须使用 Probe 原生登录；Android 不可用时才使用 Browser MCP Cookie 路径。
+- 如果搜索/详情/目录入口链路出现验证码、Cloudflare、极验或人机验证，必须写入 `site-facts.json` blocker。脚本会要求用户确认 Android/App 复核或接受入口不完整；不要自行用排行榜/书库替代搜索继续。
 
 ## 2. 可生成性评估
 
@@ -54,6 +55,8 @@
   - `examples/pattern-api-webview-auth/book-source.json`（复杂站点参考）
 
 至少包含：`bookSourceUrl`、`bookSourceName`、`searchUrl`、`ruleSearch`、`ruleBookInfo`、`ruleToc`、`ruleContent`。
+
+`searchUrl` 和 `ruleSearch.bookList/name/bookUrl` 不能为空。`enabledExplore`、排行榜、书库不能自动替代搜索入口。
 
 使用 `references/legado-json-structure.md` 检查最终 JSON。
 

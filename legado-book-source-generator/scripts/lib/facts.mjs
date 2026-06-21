@@ -385,6 +385,14 @@ export function riskFromBlocker(blocker) {
   return null;
 }
 
+export function isAntiBotBlocker(blocker) {
+  return /captcha|验证码|cloudflare|turnstile|challenge|geetest|anti[_-]?bot|man_machine/i.test(String(blocker || ""));
+}
+
+export function isEntryPhase(phase) {
+  return ["search", "detail", "toc"].includes(phase);
+}
+
 export function risksFromRender(render) {
   const value = String(render || "");
   const risks = [];
@@ -397,6 +405,7 @@ export function deriveAssessmentFromFacts(facts) {
   const links = facts.links || {};
   const risks = new Set();
   const blockers = [];
+  let hasEntryAntiBotRisk = false;
   const statuses = LINK_PHASES.map((phase) => {
     const link = links[phase] || { status: "unknown" };
     const status = normalizeLinkStatus(link.status);
@@ -404,7 +413,12 @@ export function deriveAssessmentFromFacts(facts) {
     const risk = riskFromBlocker(link.blocker);
     if (risk) risks.add(risk);
     for (const renderRisk of risksFromRender(link.render)) risks.add(renderRisk);
-    if (link.blocker) blockers.push(`${phase}:${link.blocker}`);
+    if (link.blocker) {
+      blockers.push(`${phase}:${link.blocker}`);
+      if (isEntryPhase(phase) && isAntiBotBlocker(link.blocker)) {
+        hasEntryAntiBotRisk = true;
+      }
+    }
     return status;
   });
 
@@ -418,6 +432,7 @@ export function deriveAssessmentFromFacts(facts) {
   const requiredActions = [];
   if (risks.has("需登录态")) requiredActions.push("login_required");
   if (risks.has("WebView 依赖")) requiredActions.push("android_device_needed");
+  if (hasEntryAntiBotRisk) requiredActions.push("android_entry_review_needed");
 
   return {
     rating,
@@ -433,6 +448,7 @@ export function deriveAssessmentFromFacts(facts) {
       hasPaymentRisk: blockers.some((b) => /vip|paid|subscribe|payment/i.test(b)),
       hasWebView: risks.has("WebView 依赖"),
       hasEncryptedContent: risks.has("加密正文"),
+      hasEntryAntiBotRisk,
     },
   };
 }

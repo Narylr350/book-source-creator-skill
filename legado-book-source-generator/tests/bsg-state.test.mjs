@@ -175,6 +175,17 @@ async function writeAssessmentAndRecord(runDir, lines = [], factsOverrides = nul
   return runBsg(["record-assessment", "--run", runDir]);
 }
 
+function searchCaptchaFacts() {
+  return {
+    links: {
+      search: { status: "blocked", blocker: "captcha" },
+      detail: { status: "success" },
+      toc: { status: "success" },
+      content: { status: "success", render: "ssr_or_http" },
+    },
+  };
+}
+
 describe("bsg workflow user-action gates", () => {
   let tmpDir;
 
@@ -214,6 +225,18 @@ describe("bsg workflow user-action gates", () => {
     assert.match(content, /<!-- AUTO:HASH [a-f0-9]{16} -->/);
     assert.match(content, /- 总体状态: full_pass_candidate/);
     assert.match(content, /- full pass: 是/);
+  });
+
+  it("derives Android entry review action from search CAPTCHA blocker", async () => {
+    const runDir = await initRun(tmpDir);
+    const result = await writeAssessmentAndRecord(runDir, [], searchCaptchaFacts());
+    const content = await fs.readFile(path.join(runDir, "assessment.md"), "utf8");
+
+    assert.equal(result.summary.overallStatus, "partial_candidate");
+    assert.deepEqual(result.summary.blockers, ["search:captcha"]);
+    assert.ok(result.summary.requiredActions.includes("android_entry_review_needed"));
+    assert.equal(result.signals.hasEntryAntiBotRisk, true);
+    assert.match(content, /- 待确认动作: .*android_entry_review_needed/);
   });
 
   it("rejects assessment when site facts are incomplete", async () => {
@@ -297,6 +320,38 @@ describe("bsg workflow user-action gates", () => {
     assert.equal(result.requiredUserAction, "android_device_needed");
     assert.equal(state.pendingUserAction?.type, "android_device_needed");
     assert.equal(state.pendingUserAction?.resolved, false);
+  });
+
+  it("blocks after assessment when search CAPTCHA needs entry-chain Android review and no device is available", async () => {
+    const runDir = await initRun(tmpDir);
+    await writeAssessmentAndRecord(runDir, [], searchCaptchaFacts());
+
+    const result = await runBsg(["advance", "--run", runDir], {
+      env: {
+        ...process.env,
+        BSG_TEST_ADB_DEVICES_OUTPUT: "List of devices attached\n",
+      },
+    });
+
+    assert.equal(result.requiredUserAction, "android_entry_review_needed");
+    assert.equal(result.reason, "entry_antibot_requires_android_decision");
+    assert.match(result.message, /搜索|入口|Android|模拟器/);
+  });
+
+  it("blocks after assessment when adb is online and search CAPTCHA needs Android Probe recheck", async () => {
+    const runDir = await initRun(tmpDir);
+    await writeAssessmentAndRecord(runDir, [], searchCaptchaFacts());
+
+    const result = await runBsg(["advance", "--run", runDir], {
+      env: {
+        ...process.env,
+        BSG_TEST_ADB_DEVICES_OUTPUT: "List of devices attached\nABC123\tdevice\n",
+      },
+    });
+
+    assert.equal(result.requiredUserAction, "android_entry_review_needed");
+    assert.equal(result.android?.state, "device_ready");
+    assert.match(result.message, /Android Probe|入口|搜索/);
   });
 
   it("blocks record-validation while android user action is pending", async () => {
@@ -570,6 +625,7 @@ describe("bsg workflow user-action gates", () => {
         env: {
           ...process.env,
           BSG_TEST_ADB_DEVICES_OUTPUT: "List of devices attached\nABC123\tdevice\n",
+          BSG_TEST_PROBE_COOKIE_CHECK: JSON.stringify({ hasCookies: false, cookies: "", url: "https://example.com" }),
         },
       }),
       (err) => {
@@ -629,6 +685,84 @@ describe("bsg workflow user-action gates", () => {
 
     const delivered = await runBsg(["deliver", "--run", runDir]);
     assert.equal(delivered.finalStatus, "passed");
+  });
+
+  it("moves back to generate after validator failed so the source can be repaired", async () => {
+    const runDir = await initRun(tmpDir);
+    await advanceToGenerate(tmpDir, runDir);
+    await writeValidSource(tmpDir);
+    await runBsg(["advance", "--run", runDir]);
+    await writeGeneratedValidatorReport(runDir, {
+      status: "failed",
+      phases: { search: "success", detail: "success", toc: "success", content: "error" },
+      steps: [{
+        phase: "content",
+        status: "error",
+        errorCode: "CONTENT_EMPTY",
+        failedField: "ruleContent.content",
+        error: "内容为空",
+        request: { url: "https://example.com/chapter/1" },
+      }],
+    });
+
+    const recorded = await runBsg(["record-validation", "--run", runDir, "--status", "failed"]);
+    assert.equal(recorded.status, "failed");
+    assert.equal(recorded.nextAction, "repair_in_generate");
+    assert.equal(recorded.repairContext.phase, "content");
+    assert.equal(recorded.repairContext.failedField, "ruleContent.content");
+    assert.match(recorded.message, /回退到 generate/);
+
+    const state = JSON.parse(await fs.readFile(path.join(runDir, "run-state.json"), "utf8"));
+    assert.equal(state.phases.generate.status, "in_progress");
+    assert.equal(state.phases.validate.status, "pending");
+    assert.equal(state.repairContext.failedField, "ruleContent.content");
+
+    const changed = await runBsg([
+      "source", "set",
+      "--run", runDir,
+      "--path", "ruleContent.content",
+      "--value", "$.body",
+    ]);
+    assert.equal(changed.phase, "generate");
+
+    const advanced = await runBsg(["advance", "--run", runDir]);
+    assert.equal(advanced.nextAction, "run_validator");
+    const repairedState = JSON.parse(await fs.readFile(path.join(runDir, "run-state.json"), "utf8"));
+    assert.equal(repairedState.repairContext, undefined);
+  });
+
+  it("preserves repeated validator failure counts across generate repair rounds", async () => {
+    const runDir = await initRun(tmpDir);
+    await advanceToGenerate(tmpDir, runDir);
+    await writeValidSource(tmpDir);
+    await runBsg(["advance", "--run", runDir]);
+
+    async function recordSameFailure() {
+      await writeGeneratedValidatorReport(runDir, {
+        status: "failed",
+        phases: { search: "success", detail: "success", toc: "success", content: "error" },
+        steps: [{
+          phase: "content",
+          status: "error",
+          errorCode: "CONTENT_EMPTY",
+          failedField: "ruleContent.content",
+          error: "内容为空",
+          request: { url: "https://example.com/chapter/1" },
+        }],
+      });
+      return runBsg(["record-validation", "--run", runDir, "--status", "failed"]);
+    }
+
+    const first = await recordSameFailure();
+    assert.equal(first.consecutiveSame, 1);
+    await runBsg(["advance", "--run", runDir]);
+
+    const second = await recordSameFailure();
+    assert.equal(second.consecutiveSame, 2);
+    assert.match(second.message, /同一错误第 2 次/);
+    const state = JSON.parse(await fs.readFile(path.join(runDir, "run-state.json"), "utf8"));
+    assert.equal(state.phases.generate.status, "in_progress");
+    assert.equal(state.phases.validate.consecutiveSame, 2);
   });
 
   it("refuses record-validation before validate phase is active", async () => {
@@ -908,6 +1042,8 @@ describe("bsg workflow user-action gates", () => {
     assert.equal(result.status, "blocked");
     assert.equal(result.blockedBy, "android_probe_not_used");
     assert.match(result.message, /Probe 登录/);
+    assert.doesNotMatch(result.message, /login\s*→/i);
+    assert.match(result.message, /validate --run dir --mode android/);
   });
 
   it("blocks HTTP validation after Probe login when Android disconnected", async () => {
@@ -1496,6 +1632,31 @@ describe("bsg workflow user-action gates", () => {
     assert.equal(ruleCheck.status, "failed");
     assert.ok(ruleCheck.errors.some((issue) => issue.ruleId === "book-info-intro-field"));
   });
+
+  it("rejects empty searchUrl and ruleSearch before validate", async () => {
+    const runDir = await initRun(tmpDir);
+    await advanceToGenerate(tmpDir, runDir);
+    await fs.writeFile(path.join(tmpDir, "outputs", "example-com", "book-source.json"), JSON.stringify([{
+      bookSourceUrl: "https://example.com",
+      bookSourceName: "Example",
+      searchUrl: "",
+      enabledExplore: true,
+      exploreUrl: "排行https://example.com/rank",
+      ruleSearch: { bookList: "", name: "", bookUrl: "" },
+      ruleBookInfo: { name: "$.title" },
+      ruleToc: { chapterList: "$.chapters", chapterName: "$.title", chapterUrl: "$.url" },
+      ruleContent: { content: "$.content" },
+    }]), "utf8");
+
+    await assert.rejects(
+      () => execFileAsync("node", [BSG, "advance", "--run", runDir], { encoding: "utf8" }),
+      (err) => {
+        const result = JSON.parse(err.stdout);
+        assert.match(result.error, /searchUrl|ruleSearch|搜索入口/);
+        return true;
+      },
+    );
+  });
 });
 
 describe("printHint stderr output", () => {
@@ -1567,6 +1728,26 @@ describe("advance response fields", () => {
 
     assert.ok(Array.isArray(result.readNext), "readNext should be array for validate");
     assert.ok(result.readNext.some((f) => f.includes("validator")), "readNext should include validator reference");
+    assert.ok(result.nextCommand.includes("bsg.mjs\" validate"), "nextCommand should run validator before record-validation");
+    assert.ok(!result.nextCommand.includes("record-validation"), "nextCommand should not skip directly to record-validation");
+    await fs.rm(tmpDir, { recursive: true, force: true });
+  });
+
+  it("validate command tells the agent to start validator when the report is skipped", async () => {
+    const tmpDir = await makeTmpDir();
+    const runDir = await initRun(tmpDir);
+    await advanceToGenerate(tmpDir, runDir);
+    await writeValidSource(tmpDir);
+    await runBsg(["advance", "--run", runDir]);
+
+    const result = await runBsg(["validate", "--run", runDir], {
+      env: { ...process.env, VALIDATOR_URL: "http://127.0.0.1:1" },
+    });
+
+    assert.equal(result.status, "skipped");
+    assert.ok(result.nextCommand.includes("validator-start"), "skipped validation should tell the agent to start validator");
+    assert.ok(!result.nextCommand.includes("--status skipped"), "nextCommand must not suggest an unsupported record-validation status");
+    assert.ok(!/验证完成/.test(result.message), "skipped validator should not be described as completed validation");
     await fs.rm(tmpDir, { recursive: true, force: true });
   });
 });

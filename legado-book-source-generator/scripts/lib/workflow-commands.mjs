@@ -110,6 +110,7 @@ export function cmdStatus(args) {
     mode: state.mode,
     currentPhase,
     pendingUserAction: getPendingUserAction(state),
+    repairContext: state.repairContext || null,
     userDecisions: state.userDecisions || {},
     completed,
     pending,

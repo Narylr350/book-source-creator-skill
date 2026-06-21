@@ -53,6 +53,7 @@ export function cmdRecordAssessment(args) {
       hasPaymentRisk: assessment.signals.hasPaymentRisk,
       hasWebView: assessment.signals.hasWebView,
       hasEncryptedContent: assessment.signals.hasEncryptedContent,
+      hasEntryAntiBotRisk: assessment.signals.hasEntryAntiBotRisk,
     },
     message: "assessment.md 已通过一致性检查并记录。现在运行 advance；如返回 requiredUserAction，先让用户确认。",
     nextCommand: `node "<skill-dir>/scripts/bsg.mjs" advance --run ${runDir}`,
@@ -246,7 +247,7 @@ export function cmdResolveUserAction(args) {
   const runDir = parseArg(args, "--run");
   const action = parseArg(args, "--action");
   if (!runDir || !action) {
-    return fail("用法: node scripts/bsg.mjs resolve-user-action --run {dir} --action <android_device_ready|android_device_unavailable|login_completed|no_account|continue_after_rating_block|toc_chapter_count_confirmed>");
+    return fail("用法: node scripts/bsg.mjs resolve-user-action --run {dir} --action <android_device_ready|android_device_unavailable|continue_after_entry_risk|login_completed|no_account|continue_after_rating_block|toc_chapter_count_confirmed>");
   }
 
   const { state, error } = loadAndVerify(runDir);
@@ -257,6 +258,7 @@ export function cmdResolveUserAction(args) {
 
   const validActions = {
     android_device_needed: ["android_device_ready", "android_device_unavailable"],
+    android_entry_review_needed: ["android_device_ready", "android_device_unavailable", "continue_after_entry_risk"],
     login_required: ["login_completed", "no_account"],
     rating_blocked: ["continue_after_rating_block"],
     toc_sample_review: ["toc_chapter_count_confirmed"],
@@ -269,12 +271,14 @@ export function cmdResolveUserAction(args) {
   state.userDecisions = state.userDecisions || {};
   if (action === "android_device_unavailable") {
     state.userDecisions.androidDevice = "unavailable";
+    if (pending.type === "android_entry_review_needed") state.userDecisions.entryRisk = "android_unavailable";
   } else if (action === "android_device_ready") {
     const android = diagnoseAndroid();
     if (android.state !== "device_ready") {
       return fail(`Android 真机或模拟器尚未可用: ${android.state}。${android.message}`);
     }
     state.userDecisions.androidDevice = "ready";
+    if (pending.type === "android_entry_review_needed") state.userDecisions.entryRisk = "android_ready";
   } else if (action === "no_account") {
     state.userDecisions.login = "no_account";
     state.loginFeatures._loginDeclined = true;
@@ -283,7 +287,7 @@ export function cmdResolveUserAction(args) {
     const android = diagnoseAndroid();
     const adbOnline = pending.details?.adbAvailable === true || pendingAndroid?.state === "device_ready" || android.state === "device_ready";
     if (adbOnline) {
-      const probeCookies = checkProbeCookies();
+      const probeCookies = checkProbeCookies(state.siteUrl);
       if (!probeCookies.ok) {
         return fail("Android 真机或模拟器在线时，login_completed 必须先通过 Probe /cookie-check 确认 Cookie。请运行 node scripts/bsg.mjs login，在手机/模拟器登录完成后再重试。");
       }
@@ -299,6 +303,8 @@ export function cmdResolveUserAction(args) {
     state.loginFeatures._loginVerified = true;
   } else if (action === "continue_after_rating_block") {
     state.userDecisions.ratingBlocked = "continue";
+  } else if (action === "continue_after_entry_risk") {
+    state.userDecisions.entryRisk = "accepted_skip";
   } else if (action === "toc_chapter_count_confirmed") {
     state.userDecisions.tocChapterCount = "confirmed_small_sample";
   }

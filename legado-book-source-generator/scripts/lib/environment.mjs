@@ -154,12 +154,37 @@ export function cmdAndroidStatus() {
 
 // ── probe cookie check ─────────────────────────────────────────────────────
 
-export function checkProbeCookies() {
+export function targetDomainFromSiteUrl(siteUrl) {
+  const raw = String(siteUrl || "").trim();
+  if (!raw) return "";
   try {
+    return new URL(raw).hostname.toLowerCase();
+  } catch {}
+  try {
+    return new URL(`https://${raw}`).hostname.toLowerCase();
+  } catch {
+    return "";
+  }
+}
+
+export function buildProbeCookieCheckUrl(siteUrl) {
+  const domain = targetDomainFromSiteUrl(siteUrl);
+  if (!domain) throw new Error("Probe cookie-check requires a target domain");
+  return `http://localhost:18888/cookie-check?domain=${encodeURIComponent(domain)}`;
+}
+
+export function checkProbeCookies(siteUrl) {
+  try {
+    const targetDomain = targetDomainFromSiteUrl(siteUrl);
+    if (!targetDomain) return { ok: false, error: "Probe cookie-check requires a target domain" };
     const raw = process.env.BSG_TEST_PROBE_COOKIE_CHECK != null
       ? process.env.BSG_TEST_PROBE_COOKIE_CHECK
-      : execSync("curl -s http://localhost:18888/cookie-check 2>&1", { encoding: "utf-8", timeout: 3000 });
+      : execSync(`curl -s "${buildProbeCookieCheckUrl(siteUrl)}" 2>&1`, { encoding: "utf-8", timeout: 3000 });
     const parsed = JSON.parse(raw);
+    const checkedDomain = targetDomainFromSiteUrl(parsed.url || parsed.domain || "");
+    if (checkedDomain && checkedDomain !== targetDomain) {
+      return { ok: false, parsed, error: `Probe cookies belong to ${checkedDomain}, expected ${targetDomain}` };
+    }
     return { ok: parsed.hasCookies === true, parsed };
   } catch (e) {
     return { ok: false, error: String(e.message || e) };

@@ -46,6 +46,64 @@ function validateReportProvenance(reportPath, runDir, bookSourcePath) {
   return { ok: true, report };
 }
 
+function firstFailedStep(report) {
+  return (report?.steps || []).find((step) => ["error", "failed", "blocked"].includes(step?.status)) || null;
+}
+
+function validationErrorSignature(report, status) {
+  const failedStep = firstFailedStep(report);
+  if (!failedStep) return status;
+
+  const phase = failedStep.phase || "unknown";
+  const eCode = failedStep.errorCode || (failedStep.error || "unknown").slice(0, 40);
+  const field = failedStep.failedField || "";
+  const reqUrl = failedStep.request?.url || "";
+  const reqUrlHash = reqUrl
+    ? crypto.createHash("sha256").update(reqUrl).digest().toString("hex").slice(0, 12)
+    : "no-url";
+  let chapterUrlHash = "";
+  if (phase === "content") {
+    const contentSteps = (report.steps || []).filter((step) => step.phase === "content");
+    if (contentSteps.length >= 2) {
+      const url1 = contentSteps[0].request?.url || "";
+      const url2 = contentSteps[1].request?.url || "";
+      if (url1 !== url2) {
+        chapterUrlHash = "|ch:" + crypto.createHash("sha256").update(url1 + url2).digest().toString("hex").slice(0, 8);
+      }
+    }
+  }
+  return `${phase}|${eCode}|${field}|${reqUrlHash}${chapterUrlHash}`;
+}
+
+function buildRepairContext(report, status, reason, sourceHash) {
+  const failedStep = firstFailedStep(report);
+  return {
+    reason,
+    validatorStatus: status,
+    sourceHash,
+    phase: failedStep?.phase || null,
+    errorCode: failedStep?.errorCode || null,
+    failedField: failedStep?.failedField || null,
+    message: failedStep?.error || failedStep?.message || null,
+    requestUrl: failedStep?.request?.url || null,
+    recordedAt: new Date().toISOString(),
+  };
+}
+
+function enterGenerateRepair(state, repairContext) {
+  state.phases.generate.status = "in_progress";
+  delete state.phases.generate.completedAt;
+  state.phases.generate.repairContext = repairContext;
+
+  state.phases.validate.status = "pending";
+  delete state.phases.validate.completedAt;
+
+  state.phases.deliver.status = "pending";
+  delete state.phases.deliver.completedAt;
+
+  state.repairContext = repairContext;
+}
+
 export function cmdRecordValidation(args) {
   const runDir = parseArg(args, "--run");
   if (!runDir) return fail("用法: node scripts/bsg.mjs record-validation --run {dir} --status <status>");
@@ -102,7 +160,17 @@ export function cmdRecordValidation(args) {
   }
   const sourceFreshError = ensureRuleCheckSourceFresh(runDir, loadedSource.bookSourcePath);
   if (sourceFreshError) {
-    resetPhasesFrom(state, "generate");
+    enterGenerateRepair(state, {
+      reason: "source_changed_during_validate",
+      validatorStatus: "not_recorded",
+      sourceHash: fileSha256(loadedSource.bookSourcePath),
+      phase: null,
+      errorCode: "SOURCE_CHANGED_AFTER_RULE_CHECK",
+      failedField: "book-source.json",
+      message: sourceFreshError,
+      requestUrl: null,
+      recordedAt: new Date().toISOString(),
+    });
     saveRunState(runDir, state);
     const correctiveAction = "validate 阶段不能修改 book-source.json。状态机已回退到 generate。在 generate 阶段改好所有规则并通过 rule-check，再重新进入 validate。";
     const nextCommand = `node "<skill-dir>/scripts/bsg.mjs" advance --run ${runDir}`;
@@ -115,6 +183,7 @@ export function cmdRecordValidation(args) {
   }
   const reportProvenance = validateReportProvenance(reportPathForMode, runDir, loadedSource.bookSourcePath);
   if (!reportProvenance.ok) return fail(reportProvenance.error);
+  const report = reportProvenance.report;
 
   const v = state.phases.validate;
   v.attempts += 1;
@@ -147,10 +216,11 @@ export function cmdRecordValidation(args) {
   if (hardRuleBlock) {
     v.attempts -= 1;
     v.lastStatus = "failed";
+    enterGenerateRepair(state, buildRepairContext(report, status, "hard_rule_error", fileSha256(loadedSource.bookSourcePath)));
     saveRunState(runDir, state);
     writeCapabilityMatrix(runDir, reportPathForMode, "blocked:hard_rule_error");
     writeValidatorSummary(runDir, status, "blocked:hard_rule_error", reportPathForMode);
-    const correctiveAction = "validator 报告包含明确规则错误。修正书源规则后重新验证，不要把规则错误标成 needs_app_review 或 validator_limitation。";
+    const correctiveAction = "validator 报告包含明确规则错误。状态机已回退到 generate；修正书源规则后运行 advance 重新做 rule-check，再进入 validate 重跑验证。不要把规则错误标成 needs_app_review 或 validator_limitation。";
     const nextCommand = `node "<skill-dir>/scripts/bsg.mjs" advance --run ${runDir}`;
     printHint(correctiveAction, nextCommand);
     return {
@@ -158,7 +228,8 @@ export function cmdRecordValidation(args) {
       status: "blocked",
       blockedBy: "hard_rule_error",
       shouldRetry: true,
-      nextAction: "fix_rules_and_retry",
+      nextAction: "repair_in_generate",
+      repairContext: state.repairContext,
       message: hardRuleBlock,
       correctiveAction,
       nextCommand,
@@ -190,12 +261,25 @@ export function cmdRecordValidation(args) {
           blockedBy: acceptanceError.blockedBy,
         });
       }
+      if (!pending) {
+        enterGenerateRepair(state, {
+          reason: acceptanceError.blockedBy,
+          validatorStatus: status,
+          sourceHash: fileSha256(loadedSource.bookSourcePath),
+          phase: acceptanceError.phase,
+          errorCode: acceptanceError.blockedBy,
+          failedField: null,
+          message: acceptanceError.message,
+          requestUrl: null,
+          recordedAt: new Date().toISOString(),
+        });
+      }
       saveRunState(runDir, state);
       writeCapabilityMatrix(runDir, reportPathForMode, finalBlocked);
       writeValidatorSummary(runDir, status, finalBlocked, reportPathForMode);
       const correctiveAction = acceptanceError.blockedBy === "toc_chapter_count_too_low"
         ? "validator 报告的目录样本过短。先确认这是目标书本身章节少，还是 ruleToc 只提取到部分章节；确认短目录合理后用 resolve-user-action 记录，否则修 ruleToc 并重跑。"
-        : "validator 报告包含成功状态但缺少阅读语义证据。修正对应规则后重新验证，不要标成后端限制。";
+        : "validator 报告包含成功状态但缺少阅读语义证据。状态机已回退到 generate；修正对应规则后运行 advance 重新做 rule-check，再进入 validate 重跑验证。不要标成后端限制。";
       const nextCommand = acceptanceError.blockedBy === "toc_chapter_count_too_low"
         ? `node "<skill-dir>/scripts/bsg.mjs" resolve-user-action --run ${runDir} --action toc_chapter_count_confirmed`
         : `node "<skill-dir>/scripts/bsg.mjs" advance --run ${runDir}`;
@@ -205,7 +289,8 @@ export function cmdRecordValidation(args) {
         status: "blocked",
         blockedBy: acceptanceError.blockedBy,
         shouldRetry: true,
-        nextAction: "fix_rules_and_retry",
+        nextAction: pending ? "resolve_user_action" : "repair_in_generate",
+        repairContext: state.repairContext || null,
         message,
         requiredUserAction: pending ? "toc_sample_review" : undefined,
         pendingUserAction: pending,
@@ -282,7 +367,8 @@ export function cmdRecordValidation(args) {
         "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
         "本轮登录态来自 Android Probe，但 validator-report.json 不是 mode=android。",
         "这会把手机端登录环境降级成 HTTP+Cookie 验证，不能代表阅读 App/WebView 行为。",
-        "立即执行: node scripts/bsg.mjs login → bsg.mjs validate --run dir --mode android → record-validation。",
+        "不要重新登录。立即执行: node scripts/bsg.mjs validate --run dir --mode android → record-validation。",
+        "validate 会从 Android Probe /cookie-check 读取目标域 Cookie 并注入 validator。",
         "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
       ].join("\n");
     } else if (state.adbDetected) {
@@ -539,34 +625,7 @@ export function cmdRecordValidation(args) {
     finalStatus = "degraded";
     v.status = "completed";
   } else if (status === "failed") {
-    let errorSig = status;
-    if (fileExists(reportPathForMode)) {
-      try {
-        const report = JSON.parse(fs.readFileSync(reportPathForMode, "utf-8"));
-        const failedStep = (report.steps || []).find((s) => s.status === "error");
-        if (failedStep) {
-          const phase = failedStep.phase || "unknown";
-          const eCode = failedStep.errorCode || (failedStep.error || "unknown").slice(0, 40);
-          const field = failedStep.failedField || "";
-          const reqUrl = failedStep.request?.url || "";
-          const reqUrlHash = reqUrl
-            ? crypto.createHash("sha256").update(reqUrl).digest().toString("hex").slice(0, 12)
-            : "no-url";
-          let chapterUrlHash = "";
-          if (phase === "content") {
-            const contentSteps = (report.steps || []).filter((s) => s.phase === "content");
-            if (contentSteps.length >= 2) {
-              const url1 = contentSteps[0].request?.url || "";
-              const url2 = contentSteps[1].request?.url || "";
-              if (url1 !== url2) {
-                chapterUrlHash = "|ch:" + crypto.createHash("sha256").update(url1 + url2).digest().toString("hex").slice(0, 8);
-              }
-            }
-          }
-          errorSig = `${phase}|${eCode}|${field}|${reqUrlHash}${chapterUrlHash}`;
-        }
-      } catch { /* keep raw status as sig */ }
-    }
+    const errorSig = validationErrorSignature(report, status);
 
     if (errorSig === v.lastError) {
       v.consecutiveSame = (v.consecutiveSame || 0) + 1;
@@ -582,7 +641,8 @@ export function cmdRecordValidation(args) {
     } else {
       shouldRetry = true;
       finalStatus = "failed";
-      nextAction = "fix_and_retry";
+      nextAction = "repair_in_generate";
+      enterGenerateRepair(state, buildRepairContext(report, status, "validator_failed", fileSha256(loadedSource.bookSourcePath)));
     }
   } else if (status === "needs_app_review") {
     finalStatus = "needs_app_review";
@@ -599,7 +659,7 @@ export function cmdRecordValidation(args) {
 
   let baseMessage;
   if (shouldRetry) {
-    baseMessage = `验证失败 (第 ${v.attempts} 次${v.consecutiveSame > 1 ? `，同一错误第 ${v.consecutiveSame} 次` : ""})。请根据错误证据回修规则。${v.consecutiveSame >= 2 ? "⚠️ 已连续 " + v.consecutiveSame + " 次相同错误，再失败将停止自动修。" : ""}`;
+    baseMessage = `验证失败 (第 ${v.attempts} 次${v.consecutiveSame > 1 ? `，同一错误第 ${v.consecutiveSame} 次` : ""})。状态机已回退到 generate；请根据 validator-report.json / repairContext 回修 book-source.json，修完运行 advance 重新做 rule-check，再进入 validate 重跑。${v.consecutiveSame >= 2 ? "⚠️ 已连续 " + v.consecutiveSame + " 次相同错误，再失败将停止自动修。" : ""}`;
   } else if (convergenceBlock) {
     baseMessage = convergenceBlock;
   } else {
@@ -613,6 +673,8 @@ export function cmdRecordValidation(args) {
     consecutiveSame: v.consecutiveSame,
     shouldRetry,
     nextAction,
+    repairContext: state.repairContext || null,
+    ...(shouldRetry ? { nextCommand: `node "<skill-dir>/scripts/bsg.mjs" advance --run ${runDir}` } : {}),
     message: baseMessage + (state._androidWarning ? "\n" + state._androidWarning : ""),
     ...(state._androidWarning ? { androidWarning: state._androidWarning } : {}),
     ...(convergenceBlock ? { convergenceBlock } : {}),

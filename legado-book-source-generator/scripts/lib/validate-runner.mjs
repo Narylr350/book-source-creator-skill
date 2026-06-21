@@ -1,8 +1,46 @@
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { execSync } from "node:child_process";
 import { SKILL_ROOT, fileExists, parseArg, fail } from "./state.mjs";
 import { checkAdb } from "./phase-engine.mjs";
+import { checkProbeCookies, targetDomainFromSiteUrl } from "./environment.mjs";
+
+function shellQuote(value) {
+  return `"${String(value).replace(/"/g, '\\"')}"`;
+}
+
+export function resolveValidateCookieFile(runDir, state, mode) {
+  const cookieFile = path.join(runDir, "cookies.json");
+  if (fileExists(cookieFile)) {
+    return { ok: true, cookieFile, source: "cookies.json" };
+  }
+
+  if (mode !== "android" || state.loginFeatures?._loginMethod !== "probe" || state.loginFeatures?._loginVerified !== true) {
+    return { ok: true, cookieFile: null, source: null };
+  }
+
+  const domain = targetDomainFromSiteUrl(state.siteUrl);
+  const probeCookies = checkProbeCookies(state.siteUrl);
+  const cookie = probeCookies.parsed?.cookies || probeCookies.parsed?.cookie || "";
+  if (!probeCookies.ok || !cookie) {
+    return {
+      ok: false,
+      error: `Probe 登录已记录，但 /cookie-check 没有返回 ${domain || "目标站"} Cookie。请先运行 login 并确认手机/模拟器内已登录目标域。`,
+    };
+  }
+
+  const tempFile = path.join(os.tmpdir(), `bsg-probe-cookies-${process.pid}-${Date.now()}.json`);
+  fs.writeFileSync(tempFile, JSON.stringify({ [domain]: cookie }, null, 2), "utf-8");
+  return {
+    ok: true,
+    cookieFile: tempFile,
+    source: "probe",
+    cleanup: () => {
+      try { fs.unlinkSync(tempFile); } catch { /* ignore */ }
+    },
+  };
+}
 
 export function cmdValidate(args) {
   const runDir = parseArg(args, "--run");
@@ -50,40 +88,58 @@ export function cmdValidate(args) {
   }
 
   const validatorScript = path.join(SKILL_ROOT, "scripts", "validate-with-validator.mjs");
-  const cookieFile = path.join(runDir, "cookies.json");
+  const cookiePlan = resolveValidateCookieFile(runDir, state, mode);
+  if (!cookiePlan.ok) return fail(cookiePlan.error);
   let cmd = `node "${validatorScript}" "${bookSourcePath}" "${keyword}" ${mode} --output "${runDir}"`;
-  if (fileExists(cookieFile)) cmd += ` --cookie="${cookieFile}"`;
+  if (cookiePlan.cookieFile) cmd += ` --cookie=${shellQuote(cookiePlan.cookieFile)}`;
 
   console.error(`验证中: ${bookSourcePath}`);
   console.error(`关键词: ${keyword}, mode: ${mode}`);
-  if (fileExists(cookieFile)) console.error("检测到 cookies.json，自动注入 Cookie");
+  if (cookiePlan.source === "cookies.json") console.error("检测到 cookies.json，自动注入 Cookie");
+  if (cookiePlan.source === "probe") console.error("检测到 Android Probe Cookie，自动注入 validator");
 
   try {
     const out = execSync(cmd, { encoding: "utf-8", timeout: 180000, maxBuffer: 10 * 1024 * 1024 });
     const report = JSON.parse(out);
+    const nextCommand = report.status === "skipped"
+      ? `node "<skill-dir>/scripts/bsg.mjs" validator-start`
+      : `node "<skill-dir>/scripts/bsg.mjs" record-validation --run ${runDir} --status ${report.status}`;
+    const message = report.status === "skipped"
+      ? `validator 未运行，已写入 skipped 报告。请先启动 validator 后重跑 validate。`
+      : `validator-report.json 已写入。状态: ${report.status}${report.reason ? `, 原因: ${report.reason}` : ""}。现在运行 record-validation。`;
     return {
       ok: true,
       status: report.status,
       keyword,
       mode,
       reportPath: path.join(runDir, "validator-report.json"),
-      message: `验证完成。状态: ${report.status}${report.reason ? `, 原因: ${report.reason}` : ""}`,
+      message,
+      nextCommand,
     };
   } catch (e) {
     // On exec error, try to extract JSON from stdout (script may have errored after writing output)
     try {
       const report = JSON.parse(e.stdout || "{}");
       if (report.status) {
+        const nextCommand = report.status === "skipped"
+          ? `node "<skill-dir>/scripts/bsg.mjs" validator-start`
+          : `node "<skill-dir>/scripts/bsg.mjs" record-validation --run ${runDir} --status ${report.status}`;
+        const message = report.status === "skipped"
+          ? `validator 未运行，已写入 skipped 报告。请先启动 validator 后重跑 validate。`
+          : `validator-report.json 已写入。状态: ${report.status}${report.reason ? `, 原因: ${report.reason}` : ""}。现在运行 record-validation。`;
         return {
           ok: true,
           status: report.status,
           keyword,
           mode,
           reportPath: path.join(runDir, "validator-report.json"),
-          message: `验证完成。状态: ${report.status}${report.reason ? `, 原因: ${report.reason}` : ""}`,
+          message,
+          nextCommand,
         };
       }
     } catch {}
     return fail(`validator 运行失败: ${e.stderr || e.message}`);
+  } finally {
+    cookiePlan.cleanup?.();
   }
 }
