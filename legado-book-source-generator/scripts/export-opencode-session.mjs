@@ -8,6 +8,7 @@ import { execFileSync } from "node:child_process";
 function usage() {
   return [
     "用法:",
+    "  node scripts/export-opencode-session.mjs [work-dir] [--out <file-or-dir>]",
     "  node scripts/export-opencode-session.mjs [--cwd <work-dir>] [--out <file-or-dir>]",
     "  node scripts/export-opencode-session.mjs --session <session-id> [--out <file-or-dir>]",
     "",
@@ -23,6 +24,7 @@ function usage() {
 
 function parseArgs(argv) {
   const args = {};
+  const positional = [];
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
     if (arg === "--sanitize") {
@@ -33,9 +35,12 @@ function parseArgs(argv) {
       args[arg.slice(2)] = value;
       i += 1;
     } else {
-      throw new Error(`未知参数: ${arg}`);
+      positional.push(arg);
     }
   }
+  if (positional.length > 1) throw new Error(`只能指定一个工作目录参数: ${positional.join(" ")}`);
+  if (positional.length === 1 && args.cwd) throw new Error("工作目录只能用位置参数或 --cwd 指定一种");
+  if (positional.length === 1) args.cwd = positional[0];
   return args;
 }
 
@@ -108,8 +113,8 @@ function findLatestSession(opencode, cwd, maxCount) {
   return matches[0];
 }
 
-function resolveOutPath(outArg, cwd, sessionId) {
-  const defaultFile = `opencode-session-${sessionId}.json`;
+function resolveOutPath(outArg, cwd) {
+  const defaultFile = "opencode-session-export.json";
   if (!outArg) return path.join(cwd, defaultFile);
   const resolved = path.resolve(outArg);
   if (fs.existsSync(resolved) && fs.statSync(resolved).isDirectory()) {

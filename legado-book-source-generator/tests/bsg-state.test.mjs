@@ -1105,6 +1105,11 @@ describe("bsg workflow user-action gates", () => {
 
     assert.equal(result.status, "blocked");
     assert.equal(result.blockedBy, "android_probe_not_used");
+    assert.equal(result.forbiddenActions.includes("deliver"), true);
+    assert.equal(result.forbiddenActions.includes("validate_http"), true);
+    assert.equal(result.forbiddenActions.includes("record_needs_app_review"), true);
+    assert.match(result.correctiveAction, /禁止.*deliver|禁止.*交付/);
+    assert.match(result.correctiveAction, /validate --run .* --mode android/);
   });
 
   it("blocks HTTP validation after Probe login when Android is available", async () => {

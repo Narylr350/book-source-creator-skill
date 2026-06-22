@@ -93,11 +93,29 @@ class ProbeHttpServer(
         return try {
             val cm = android.webkit.CookieManager.getInstance()
             val latch = java.util.concurrent.CountDownLatch(1)
-            cm.removeAllCookies {
-                latch.countDown()
+            var clearError: String? = null
+            android.os.Handler(android.os.Looper.getMainLooper()).post {
+                try {
+                    cm.removeAllCookies {
+                        try {
+                            cm.flush()
+                        } finally {
+                            latch.countDown()
+                        }
+                    }
+                } catch (e: Exception) {
+                    clearError = e.message ?: e.javaClass.simpleName
+                    latch.countDown()
+                }
             }
-            latch.await(5, java.util.concurrent.TimeUnit.SECONDS)
-            cm.flush()
+            if (!latch.await(5, java.util.concurrent.TimeUnit.SECONDS)) {
+                return newFixedLengthResponse(Response.Status.INTERNAL_ERROR, "application/json",
+                    """{"ok":false,"error":"Cookie clear timed out"}""")
+            }
+            if (clearError != null) {
+                return newFixedLengthResponse(Response.Status.INTERNAL_ERROR, "application/json",
+                    """{"ok":false,"error":"${clearError?.replace("\"", "\\\"")}"}""")
+            }
             newFixedLengthResponse(Response.Status.OK, "application/json", gson.toJson(mapOf(
                 "ok" to true,
                 "message" to "All WebView cookies cleared"

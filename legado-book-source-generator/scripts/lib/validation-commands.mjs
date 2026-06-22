@@ -104,6 +104,32 @@ function enterGenerateRepair(state, repairContext) {
   state.repairContext = repairContext;
 }
 
+function androidProbeNotUsedBlock(runDir, state, message) {
+  const probeLoggedIn = state.loginFeatures?._loginMethod === "probe";
+  const nextCommand = probeLoggedIn
+    ? `node "<skill-dir>/scripts/bsg.mjs" validate --run ${runDir} --mode android`
+    : `node "<skill-dir>/scripts/bsg.mjs" login`;
+  const nextStep = probeLoggedIn
+    ? `下一步只能执行: ${nextCommand} → record-validation。`
+    : `下一步只能执行: ${nextCommand} → node "<skill-dir>/scripts/bsg.mjs" validate --run ${runDir} --mode android → record-validation。`;
+  const correctiveAction = [
+    "禁止 deliver，禁止改记 needs_app_review，禁止退回 HTTP 验证。",
+    "当前书源含 webView:true 或 webJs，且检测到 Android 真机或模拟器；必须使用 Android Probe 产生验证证据。",
+    nextStep,
+  ].join("\n");
+  return {
+    ok: true,
+    status: "blocked",
+    blockedBy: "android_probe_not_used",
+    shouldRetry: true,
+    nextAction: "setup_android_probe_and_retry",
+    message: `${message}\n${correctiveAction}`,
+    correctiveAction,
+    forbiddenActions: ["deliver", "validate_http", "record_needs_app_review", "record_passed"],
+    nextCommand,
+  };
+}
+
 export function cmdRecordValidation(args) {
   const runDir = parseArg(args, "--run");
   if (!runDir) return fail("用法: node scripts/bsg.mjs record-validation --run {dir} --status <status>");
@@ -490,7 +516,7 @@ export function cmdRecordValidation(args) {
         v.attempts -= 1;
         saveRunState(runDir, state);
         writeCapabilityMatrix(runDir, reportPathForMode, "blocked:android_probe_not_used");
-        return { ok: true, status: "blocked", blockedBy: "android_probe_not_used", shouldRetry: true, nextAction: "setup_android_probe_and_retry", message: androidWarning };
+        return androidProbeNotUsedBlock(runDir, state, androidWarning);
       }
       if (state.adbDetected) {
         v.attempts -= 1;
