@@ -49,13 +49,15 @@
 ## 判断原则
 
 - 先匿名初探：只判断站点结构、接口路径、是否有反爬、是否需要 WebView。
+- **不要把浏览器 JS 探测作为默认初探方式**。搜索页、登录页、人机验证页和入口页优先用 HTTP 原始响应、curl 或 validator 证据；`browser_evaluate`、自动 DOM 扫描和页面内 `fetch` 可能触发反爬，只能作为高风险补充证据。
 - **SPA/CSR 页面每次交互后等 2-3 秒再取快照**。Vue/React/Nuxt 页面需要 JS 执行后才能看到内容。页面跳转后立即 snapshot 拿到的是加载态/空白页，不是目标内容。
 - 如果 snapshot 显示登录页/空白页/骨架屏，等待后重新 snapshot。不要直接判断"站点不可访问"。
 - 模型负责解释页面结构、接口字段语义和 Legado 规则映射。
-- Browser MCP 负责验证观察到的入口、请求和渲染结果。
+- Browser MCP 只负责观察页面可视行为和渲染结果；如果需要 JS 探测，必须记录它是 `browser_js` 证据，不能把它等同于 HTTP 原始源码或 Android WebView 证据。
 - 若模型推断与实测冲突，以实测为事实基线，并在分析文档中写明修正原因。
 - 正文链路必须分开记录"直接请求能否拿到正文"和"浏览器最终是否已经渲染出稳定正文"，两者不是一回事。
-- **判断 SSR vs CSR 的方法**：Browser MCP 默认执行 JS，看到的 DOM 是渲染后的。必须用 `browser_evaluate` 执行 `document.documentElement.outerHTML` 获取的原始 HTML 来判断正文是否在源码里。**浏览器里能看到正文 ≠ SSR。** Nuxt/Vue/React 等框架即使在 CSR 模式下，渲染后的 DOM 也有正文，但 HTTP fetch 拿到的是空壳 `<div id="__nuxt"></div>`。如果原始 HTML 里没有正文文本，即使浏览器渲染后有，也必须标 CSR/WebView。
+- **判断 SSR vs CSR 的方法**：以 HTTP 原始响应、validator 报告或保存的 `response.body` 为事实基线。Browser MCP 默认执行 JS，看到的 DOM 是渲染后的；浏览器里能看到正文 ≠ SSR。只有当 HTTP 原始响应里确实有正文文本时，才标 `ssr_or_http`。如果 HTTP 原始响应是 `<div id="__nuxt"></div>`、`<div id="app"></div>`、`__next` 等空壳，而浏览器渲染后有正文，标 CSR/WebView。
+- 如果 JS/浏览器探测后才出现验证码，必须在证据里写明可能是 `probe-induced anti-bot`，不能直接断言该链路天然 CAPTCHA；需要用 HTTP 原始响应或 Android Probe 复核。
 - **Browser MCP ≠ Android WebView。** Browser MCP 是桌面浏览器，不等价于 Android Legado WebView。不得写"Legado App WebView 可渲染"，只能写"浏览器渲染后有正文；需 App/WebView 复核"。
 - 若正文接口带签名、返回密文，或阅读页只有 CSR 空壳，但 Browser MCP 能稳定看到已渲染正文，先进入 `WebView` 判定，不得直接下 `不建议生成` 结论。
 - **WebView 不解密。** 正文 API 返回 AES-GCM / 加密 / 签名数据但浏览器能渲染 → 直接标 `webView: true`，从 DOM 提取正文。不要分析加密算法、密钥派生、签名逻辑。WebView 负责执行页面 JS，页面 JS 负责解密——书源不需要知道怎么解的。

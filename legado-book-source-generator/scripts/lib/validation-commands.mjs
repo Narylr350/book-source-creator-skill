@@ -394,7 +394,7 @@ export function cmdRecordValidation(args) {
         "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
         "⛔ Probe 登录后未用 Android 验证",
         "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
-        "本轮登录态来自 Android Probe，但 validator-report.json 没有 androidProbeUsed/androidBackend=probe_* 证据。",
+        "本轮登录态来自 Android Probe，但 validator-report.json 没有 androidProbeUsed=true 或 androidBackend=probe_webview 证据。",
         "仅有 mode=android 或 PC HTTP Cookie 请求不能代表阅读 App/WebView 行为。",
         "不要重新登录。立即执行: node scripts/bsg.mjs validate --run dir --mode android → record-validation。",
         "validate 会从 Android Probe /cookie-check 读取目标域 Cookie 并注入 validator。",

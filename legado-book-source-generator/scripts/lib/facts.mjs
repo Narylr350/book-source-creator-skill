@@ -63,8 +63,9 @@ export function reportUsedAndroidMode(reportPath) {
 
 function stepUsedAndroidProbe(step) {
   if (!step || step.mode !== "android") return false;
+  if (step.androidProbeUsed === false) return false;
   if (step.androidProbeUsed === true) return true;
-  if (/^probe/i.test(String(step.androidBackend || ""))) return true;
+  if (String(step.androidBackend || "") === "probe_webview") return true;
   if (step.phase === "content" && (step.webViewHtmlPreview || step.webViewScreenshotBase64)) return true;
   const artifacts = step.debugArtifacts || {};
   return step.phase === "content" && Boolean(artifacts["response.rendered.html"] || artifacts["screenshot.png"]);

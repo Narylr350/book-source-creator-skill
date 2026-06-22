@@ -1464,6 +1464,36 @@ describe("bsg workflow user-action gates", () => {
     );
   });
 
+  it("does not count probe_unavailable as Android Probe evidence", async () => {
+    const runDir = await initRun(tmpDir);
+    await advanceToGenerate(tmpDir, runDir);
+    await writeValidSource(tmpDir);
+    await runBsg(["advance", "--run", runDir]);
+    await fs.writeFile(path.join(runDir, "validation-checklist.md"), "# 清单\n", "utf8");
+    await writeGeneratedValidatorReport(runDir, {
+      mode: "android",
+      phases: { search: "error" },
+      steps: [{
+        phase: "search",
+        status: "error",
+        mode: "android",
+        error: "Android Probe 不可用: Probe not responding on port 18888",
+        androidBackend: "probe_unavailable",
+        androidProbeUsed: false,
+      }],
+    });
+
+    const result = await runBsg(["record-validation", "--run", runDir, "--status", "failed"]);
+    const matrix = JSON.parse(await fs.readFile(path.join(runDir, "capability-matrix.json"), "utf8"));
+    const summary = await fs.readFile(path.join(runDir, "validator-summary.md"), "utf8");
+
+    assert.equal(result.status, "failed");
+    assert.equal(matrix.links.search.androidBackend, "probe_unavailable");
+    assert.equal(matrix.links.search.androidProbeUsed, false);
+    assert.match(summary, /Android mode: 有/);
+    assert.match(summary, /Android Probe 证据: 无/);
+  });
+
   it("blocks Android WebView validation without extracted content evidence", async () => {
     const runDir = await initRun(tmpDir);
     await advanceToValidateWithWebViewSource(tmpDir, runDir);
