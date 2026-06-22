@@ -270,6 +270,10 @@ export function cmdResolveUserAction(args) {
 
   state.userDecisions = state.userDecisions || {};
   if (action === "android_device_unavailable") {
+    const android = diagnoseAndroid();
+    if (android.state === "device_ready") {
+      return fail("已检测到 Android 真机或模拟器在线，不能记录 android_device_unavailable。若用户要使用设备，请运行 resolve-user-action --action android_device_ready。");
+    }
     state.userDecisions.androidDevice = "unavailable";
     if (pending.type === "android_entry_review_needed") state.userDecisions.entryRisk = "android_unavailable";
   } else if (action === "android_device_ready") {
@@ -304,6 +308,10 @@ export function cmdResolveUserAction(args) {
   } else if (action === "continue_after_rating_block") {
     state.userDecisions.ratingBlocked = "continue";
   } else if (action === "continue_after_entry_risk") {
+    const android = diagnoseAndroid();
+    if (android.state === "device_ready") {
+      return fail("已检测到 Android 真机或模拟器在线，不能跳过入口链路 Android 复核。请运行 resolve-user-action --action android_device_ready。");
+    }
     state.userDecisions.entryRisk = "accepted_skip";
   } else if (action === "toc_chapter_count_confirmed") {
     state.userDecisions.tocChapterCount = "confirmed_small_sample";

@@ -13,8 +13,8 @@ import { diagnoseAndroid } from "./environment.mjs";
 import {
   loadBookSource, validateBookSourceStructure, validateCookieFileShape,
   ensureAssessmentFactsFresh, ensureRuleCheckSourceFresh,
-  reportHardRuleError, reportUsedAndroidMode, reportUsedAndroidWebView,
-  reportHasAndroidWebViewContentEvidence, reportHasLoginSessionEvidence,
+  reportHardRuleError, reportUsedAndroidWebView,
+  reportUsedAndroidProbe, reportHasAndroidWebViewContentEvidence, reportHasLoginSessionEvidence,
   reportAcceptanceGateError, writeCapabilityMatrix, writeValidatorSummary,
 } from "./facts.mjs";
 
@@ -184,6 +184,9 @@ export function cmdRecordValidation(args) {
   const reportProvenance = validateReportProvenance(reportPathForMode, runDir, loadedSource.bookSourcePath);
   if (!reportProvenance.ok) return fail(reportProvenance.error);
   const report = reportProvenance.report;
+  if (report.status && report.status !== status) {
+    return fail(`--status ${status} 与 validator-report.json status ${report.status} 不一致。必须使用 validate 返回的 nextCommand 记录真实状态，不能把 failed 改写成 degraded / needs_app_review。`);
+  }
 
   const v = state.phases.validate;
   v.attempts += 1;
@@ -359,14 +362,14 @@ export function cmdRecordValidation(args) {
     }
   }
 
-  if (state.loginFeatures._loginMethod === "probe" && !reportUsedAndroidMode(reportPathForMode)) {
+  if (state.loginFeatures._loginMethod === "probe" && !reportUsedAndroidProbe(reportPathForMode)) {
     if (checkAdb()) {
       androidWarning = [
         "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
         "⛔ Probe 登录后未用 Android 验证",
         "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
-        "本轮登录态来自 Android Probe，但 validator-report.json 不是 mode=android。",
-        "这会把手机端登录环境降级成 HTTP+Cookie 验证，不能代表阅读 App/WebView 行为。",
+        "本轮登录态来自 Android Probe，但 validator-report.json 没有 androidProbeUsed/androidBackend=probe_* 证据。",
+        "仅有 mode=android 或 PC HTTP Cookie 请求不能代表阅读 App/WebView 行为。",
         "不要重新登录。立即执行: node scripts/bsg.mjs validate --run dir --mode android → record-validation。",
         "validate 会从 Android Probe /cookie-check 读取目标域 Cookie 并注入 validator。",
         "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
@@ -384,7 +387,7 @@ export function cmdRecordValidation(args) {
     }
   }
 
-  if (state.loginFeatures._loginMethod === "probe" && reportUsedAndroidMode(reportPathForMode) && !reportHasLoginSessionEvidence(reportPathForMode)) {
+  if (state.loginFeatures._loginMethod === "probe" && reportUsedAndroidProbe(reportPathForMode) && !reportHasLoginSessionEvidence(reportPathForMode)) {
     v.attempts -= 1;
     saveRunState(runDir, state);
     writeCapabilityMatrix(runDir, reportPathForMode, "blocked:android_probe_cookie_not_used");
@@ -419,7 +422,7 @@ export function cmdRecordValidation(args) {
         state.loginFeatures.hasWebJs = !!hasWJ;
         hasLoginFeatures = Object.values(state.loginFeatures).some((b) => b === true);
         const adbOk = checkAdb();
-        const androidWasUsed = reportUsedAndroidMode(reportPathForMode);
+        const androidWasUsed = reportUsedAndroidProbe(reportPathForMode);
         const androidWebViewWasUsed = reportUsedAndroidWebView(reportPathForMode);
         const androidWebViewContentVerified = reportHasAndroidWebViewContentEvidence(reportPathForMode);
 
@@ -428,7 +431,7 @@ export function cmdRecordValidation(args) {
             "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
             "⛔ WebView 未验证 — Android 真机或模拟器已连接但未使用",
             "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
-            "adb 检测到真机或模拟器，但你用了 mode=http 验证 WebView 正文。",
+            "adb 检测到真机或模拟器，但 validator-report.json 没有 Android Probe 证据。",
             "立即执行: node scripts/bsg.mjs login → 重新验证 → record-validation。",
             "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
           ].join("\n");
@@ -481,7 +484,7 @@ export function cmdRecordValidation(args) {
   }
 
   if (androidWarning) {
-    const actuallyUsedAndroid = reportUsedAndroidMode(reportPathForMode);
+    const actuallyUsedAndroid = reportUsedAndroidProbe(reportPathForMode);
     if (!actuallyUsedAndroid) {
       if (checkAdb()) {
         v.attempts -= 1;
@@ -537,7 +540,10 @@ export function cmdRecordValidation(args) {
     state._androidWarning = androidWarning;
   }
 
-  if (state.loginFeatures.hasEnabledCookieJar && (status === "failed" || status === "needs_app_review")) {
+  const probeCookieAlreadyInjected = state.loginFeatures._loginMethod === "probe"
+    && reportUsedAndroidProbe(reportPathForMode)
+    && reportHasLoginSessionEvidence(reportPathForMode);
+  if (state.loginFeatures.hasEnabledCookieJar && (status === "failed" || status === "needs_app_review") && !probeCookieAlreadyInjected) {
     const cookieFile = path.join(runDir, "cookies.json");
     const cookieShape = validateCookieFileShape(cookieFile);
     if (!cookieShape.ok) {
@@ -572,13 +578,13 @@ export function cmdRecordValidation(args) {
     };
   }
 
-  if (status === "needs_app_review" && state.userDecisions?.androidDevice !== "unavailable" && !reportUsedAndroidMode(reportPathForMode)) {
+  if (status === "needs_app_review" && state.userDecisions?.androidDevice !== "unavailable" && !reportUsedAndroidProbe(reportPathForMode)) {
     const android = diagnoseAndroid();
     const message = [
       "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
       "⛔ needs_app_review 需要先确认 Android/App 复核条件",
       "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
-      "本轮验证结论是 needs_app_review，但 validator-report.json 没有 Android mode 证据。",
+      "本轮验证结论是 needs_app_review，但 validator-report.json 没有 Android Probe 证据。",
       `当前 Android/adb 状态: ${android.state}。${android.message}`,
       "",
       android.state === "device_ready"

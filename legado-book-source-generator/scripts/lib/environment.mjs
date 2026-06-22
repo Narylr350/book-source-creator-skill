@@ -145,11 +145,81 @@ export function checkAdb() {
 
 export function cmdAndroidStatus() {
   const android = diagnoseAndroid();
+  const probe = android.state === "device_ready" ? diagnoseProbe() : {
+    state: "skipped",
+    message: "Android 真机或模拟器未就绪，未检查 Probe。",
+    requiredAction: android.requiredUserAction,
+  };
   return {
     ok: true,
     android,
+    probe,
     requiredUserAction: android.requiredUserAction,
   };
+}
+
+export function diagnoseProbe() {
+  if (process.env.BSG_TEST_PROBE_INFO != null) {
+    try {
+      const info = JSON.parse(process.env.BSG_TEST_PROBE_INFO);
+      return {
+        state: "ready",
+        ping: true,
+        info,
+        api: info.api || [],
+        message: "Android Probe 已响应。",
+        requiredAction: null,
+      };
+    } catch (e) {
+      return {
+        state: "invalid_response",
+        ping: false,
+        error: e.message,
+        message: "Android Probe 测试响应不是合法 JSON。",
+        requiredAction: "run_login",
+      };
+    }
+  }
+  if (process.env.BSG_TEST_PROBE_ERROR != null) {
+    return {
+      state: "not_ready",
+      ping: false,
+      error: process.env.BSG_TEST_PROBE_ERROR,
+      message: "Android Probe 未响应 localhost:18888。运行 node scripts/bsg.mjs login 作为单入口启动 Probe。",
+      requiredAction: "run_login",
+    };
+  }
+
+  try {
+    const ping = execSync("curl -s --max-time 3 http://127.0.0.1:18888/ping 2>&1", { encoding: "utf-8", timeout: 4000 }).trim();
+    if (ping !== "pong") {
+      return {
+        state: "not_ready",
+        ping: false,
+        error: ping || "empty ping response",
+        message: "Android Probe ping 未返回 pong。运行 node scripts/bsg.mjs login 作为单入口启动 Probe。",
+        requiredAction: "run_login",
+      };
+    }
+    const rawInfo = execSync("curl -s --max-time 3 http://127.0.0.1:18888/info 2>&1", { encoding: "utf-8", timeout: 4000 });
+    const info = JSON.parse(rawInfo);
+    return {
+      state: "ready",
+      ping: true,
+      info,
+      api: info.api || [],
+      message: "Android Probe 已响应。",
+      requiredAction: null,
+    };
+  } catch (e) {
+    return {
+      state: "not_ready",
+      ping: false,
+      error: String(e.message || e),
+      message: "Android Probe 未响应 localhost:18888。运行 node scripts/bsg.mjs login 作为单入口启动 Probe。",
+      requiredAction: "run_login",
+    };
+  }
 }
 
 // ── probe cookie check ─────────────────────────────────────────────────────

@@ -19,6 +19,7 @@ class ProbeHttpServer(
             uri == "/render" && session.method == Method.POST -> handleRender(session)
             uri == "/login" && session.method == Method.POST -> handleLogin(session)
             uri == "/cookie-check" -> handleCookieCheck(session)
+            uri == "/cookie-clear" && session.method == Method.POST -> handleCookieClear()
             uri == "/login-done" -> handleLoginDone()
             uri == "/ping" -> newFixedLengthResponse(Response.Status.OK, "text/plain", "pong")
             uri == "/info" -> handleInfo()
@@ -88,6 +89,25 @@ class ProbeHttpServer(
         )))
     }
 
+    private fun handleCookieClear(): Response {
+        return try {
+            val cm = android.webkit.CookieManager.getInstance()
+            val latch = java.util.concurrent.CountDownLatch(1)
+            cm.removeAllCookies {
+                latch.countDown()
+            }
+            latch.await(5, java.util.concurrent.TimeUnit.SECONDS)
+            cm.flush()
+            newFixedLengthResponse(Response.Status.OK, "application/json", gson.toJson(mapOf(
+                "ok" to true,
+                "message" to "All WebView cookies cleared"
+            )))
+        } catch (e: Exception) {
+            newFixedLengthResponse(Response.Status.INTERNAL_ERROR, "application/json",
+                """{"ok":false,"error":"${e.message?.replace("\"", "\\\"")}"}""")
+        }
+    }
+
     private fun handleRender(session: IHTTPSession): Response {
         return try {
             val bodyMap = HashMap<String, String>()
@@ -124,7 +144,7 @@ class ProbeHttpServer(
         val info = mapOf(
             "name" to "legado-android-probe",
             "version" to "0.2.0",
-            "api" to listOf("/render", "/login", "/cookie-check", "/ping", "/info"),
+            "api" to listOf("/render", "/login", "/cookie-check", "/cookie-clear", "/ping", "/info"),
             "androidSdk" to android.os.Build.VERSION.SDK_INT,
             "androidRelease" to android.os.Build.VERSION.RELEASE,
             "webViewPackage" to webViewPackage?.packageName,

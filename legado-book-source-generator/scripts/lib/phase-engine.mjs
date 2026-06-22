@@ -144,9 +144,9 @@ export function completePhase(phase, state, runDir) {
         "必须先确认是否用 Android 真机或模拟器复核入口链路，不能直接用排行榜/书库替代搜索并继续。",
         "",
         android.state === "device_ready"
-          ? "已检测到 Android 真机或模拟器：请优先用 Android Probe 复核入口链路。"
-          : "未检测到可用 Android 真机或模拟器：请确认是否有设备或模拟器可用。",
-        "如果用户明确接受入口不完整/跳过 Android 复核，运行 resolve-user-action --action continue_after_entry_risk。",
+          ? "已检测到 Android 真机或模拟器：运行 resolve-user-action --action android_device_ready，然后按后续提示用 Android Probe 复核入口链路。"
+          : "未检测到可用 Android 真机或模拟器：如果用户有设备/模拟器，请连接并完成 adb 授权后运行 resolve-user-action --action android_device_ready。",
+        "只有用户明确接受入口不完整并跳过 Android 复核时，才运行 resolve-user-action --action continue_after_entry_risk。",
       ].join("\n");
       const pending = setPendingUserAction(state, "android_entry_review_needed", "entry_antibot_requires_android_decision", message, {
         blockingPhase: "assess",

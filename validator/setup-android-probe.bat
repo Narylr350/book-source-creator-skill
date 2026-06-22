@@ -57,6 +57,19 @@ for /f "skip=1 tokens=1,2" %%a in ('"%ADB%" devices') do (
         "%ADB%" -s %%a shell am start -n io.legado.probe/.WebViewProbeActivity
         echo Setting up port forward...
         "%ADB%" -s %%a forward tcp:18888 tcp:18888
+        echo Waiting for Probe...
+        timeout /t 3 /nobreak >nul
+        curl -s --max-time 5 http://127.0.0.1:18888/ping >nul 2>nul
+        if errorlevel 1 (
+            echo ERROR: Probe did not respond on localhost:18888
+            exit /b 1
+        )
+        echo Clearing Probe WebView cookies...
+        curl -s --max-time 5 -X POST http://127.0.0.1:18888/cookie-clear >nul 2>nul
+        if errorlevel 1 (
+            echo ERROR: Failed to clear Probe WebView cookies
+            exit /b 1
+        )
         echo.
         echo Android Probe is running on device %%a
         echo Port forward: localhost:18888 ^> device:18888

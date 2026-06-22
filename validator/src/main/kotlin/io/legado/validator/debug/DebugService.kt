@@ -50,6 +50,8 @@ internal fun detectAndroidContentWebViewDeclarationError(source: BookSource, cha
         status = "error",
         mode = "android",
         request = DebugStep.RequestInfo(url = chapter.url, method = "GET", headers = source.getHeaderMap(), body = null),
+        androidBackend = "pc_rule_check",
+        androidProbeUsed = false,
         error = meta.messageTemplate,
         errorCode = meta.code.name,
         subphase = meta.subphase.name.lowercase(),
@@ -532,6 +534,8 @@ class DebugService {
                     phase = "detail", status = "success", mode = mode,
                     request = buildRequestInfo(),
                     response = buildResponseInfo(res),
+                    androidBackend = androidBackendFor(mode),
+                    androidProbeUsed = androidProbeUsedFor(mode),
                     ruleHits = toRuleHits(WebBook.lastRuleHits),
                     extracted = mapOf(
                         "name" to result.name,
@@ -546,6 +550,8 @@ class DebugService {
                     phase = "detail", status = "error", mode = mode,
                     request = buildRequestInfo(),
                     response = buildResponseInfo(WebBook.lastResponse),
+                    androidBackend = androidBackendFor(mode),
+                    androidProbeUsed = androidProbeUsedFor(mode),
                     error = e.message,
                     needsAppReview = true,
                     reviewReason = e.message
@@ -555,6 +561,8 @@ class DebugService {
                     phase = "detail", status = "error", mode = mode,
                     request = buildRequestInfo(),
                     response = buildResponseInfo(WebBook.lastResponse),
+                    androidBackend = androidBackendFor(mode),
+                    androidProbeUsed = androidProbeUsedFor(mode),
                     error = "${e::class.simpleName}: ${e.message}"
                 )
             }
@@ -571,6 +579,8 @@ class DebugService {
                     phase = "toc", status = "success", mode = mode,
                     request = buildRequestInfo(),
                     response = buildResponseInfo(res),
+                    androidBackend = androidBackendFor(mode),
+                    androidProbeUsed = androidProbeUsedFor(mode),
                     ruleHits = toRuleHits(BookChapterList.lastRuleHits),
                     extracted = mapOf(
                         "chapterCount" to chapters.size,
@@ -583,6 +593,8 @@ class DebugService {
                     phase = "toc", status = "error", mode = mode,
                     request = buildRequestInfo(),
                     response = buildResponseInfo(WebBook.lastResponse),
+                    androidBackend = androidBackendFor(mode),
+                    androidProbeUsed = androidProbeUsedFor(mode),
                     error = e.message,
                     needsAppReview = true,
                     reviewReason = e.message
@@ -592,6 +604,8 @@ class DebugService {
                     phase = "toc", status = "error", mode = mode,
                     request = buildRequestInfo(),
                     response = buildResponseInfo(WebBook.lastResponse),
+                    androidBackend = androidBackendFor(mode),
+                    androidProbeUsed = androidProbeUsedFor(mode),
                     error = "${e::class.simpleName}: ${e.message}"
                 )
             }
@@ -749,7 +763,9 @@ class DebugService {
                 return@withContext DebugStep(
                     phase = "search", status = "error", mode = "android",
                     error = "Android Probe 不可用: ${probeInfo.error}",
-                    probeAvailable = false
+                    probeAvailable = false,
+                    androidBackend = "probe_unavailable",
+                    androidProbeUsed = false
                 )
             }
             val searchUrl = source.searchUrl ?: ""
@@ -769,6 +785,8 @@ class DebugService {
                             error = "Probe 搜索渲染失败: ${probeRes.error}",
                             probeAvailable = true, probeDevice = probeInfo.device?.serial,
                             androidWebViewVersion = probeInfo.webViewVersion,
+                            androidBackend = "probe_webview",
+                            androidProbeUsed = true,
                             webViewHtmlPreview = probeRes.html?.take(2000),
                             webViewScreenshotBase64 = probeRes.screenshotBase64
                         )
@@ -795,6 +813,8 @@ class DebugService {
                         extracted = mapOf("resultCount" to books.size, "firstBook" to first, "books" to books.take(10)),
                         probeAvailable = true, probeDevice = probeInfo.device?.serial,
                         androidWebViewVersion = probeInfo.webViewVersion,
+                        androidBackend = "probe_webview",
+                        androidProbeUsed = true,
                         webViewHtmlPreview = probeRes.html?.take(2000),
                         webViewScreenshotBase64 = probeRes.screenshotBase64
                     ) else {
@@ -812,6 +832,8 @@ class DebugService {
                         forbiddenFixes = sMeta?.forbiddenFixes ?: emptyList(),
                         probeAvailable = true, probeDevice = probeInfo.device?.serial,
                         androidWebViewVersion = probeInfo.webViewVersion,
+                        androidBackend = "probe_webview",
+                        androidProbeUsed = true,
                         webViewHtmlPreview = probeRes.html?.take(2000),
                         webViewScreenshotBase64 = probeRes.screenshotBase64
                     )
@@ -828,7 +850,9 @@ class DebugService {
                         ruleHits = toRuleHits(WebBook.lastRuleHits),
                         extracted = mapOf("resultCount" to books.size, "firstBook" to first, "books" to books.take(10)),
                         probeAvailable = true, probeDevice = probeInfo.device?.serial,
-                        androidWebViewVersion = probeInfo.webViewVersion
+                        androidWebViewVersion = probeInfo.webViewVersion,
+                        androidBackend = "pc_http",
+                        androidProbeUsed = false
                     ) else {
                         val sErrorCode = selectSearchEmptyErrorCode(res)
                         val sMeta = ErrorCodeRegistry.get(sErrorCode)
@@ -841,7 +865,9 @@ class DebugService {
                         allowedFixes = sMeta?.allowedFixes ?: emptyList(),
                         forbiddenFixes = sMeta?.forbiddenFixes ?: emptyList(),
                         probeAvailable = true, probeDevice = probeInfo.device?.serial,
-                        androidWebViewVersion = probeInfo.webViewVersion
+                        androidWebViewVersion = probeInfo.webViewVersion,
+                        androidBackend = "pc_http",
+                        androidProbeUsed = false
                     )
                     }
                 }
@@ -850,7 +876,9 @@ class DebugService {
                     phase = "search", status = "error", mode = "android",
                     error = "${e::class.simpleName}: ${e.message}",
                     probeAvailable = true, probeDevice = probeInfo.device?.serial,
-                    androidWebViewVersion = probeInfo.webViewVersion
+                    androidWebViewVersion = probeInfo.webViewVersion,
+                    androidBackend = "pc_http",
+                    androidProbeUsed = false
                 )
             }
         }
@@ -865,7 +893,9 @@ class DebugService {
                     phase = "content", status = "error", mode = "android",
                     error = "Android Probe 不可用: ${probeInfo.error}",
                     errorCode = ErrorCode.ANDROID_PROBE_UNAVAILABLE.name,
-                    probeAvailable = false
+                    probeAvailable = false,
+                    androidBackend = "probe_unavailable",
+                    androidProbeUsed = false
                 )
             }
             try {
@@ -905,6 +935,8 @@ class DebugService {
                         probeAvailable = true,
                         probeDevice = probeInfo.device?.serial,
                         androidWebViewVersion = probeInfo.webViewVersion,
+                        androidBackend = "probe_webview",
+                        androidProbeUsed = true,
                         webViewHtmlPreview = probeRes.html?.take(2000),
                         webViewScreenshotBase64 = probeRes.screenshotBase64
                     )
@@ -1029,6 +1061,8 @@ class DebugService {
                     probeAvailable = true,
                     probeDevice = probeInfo.device?.serial,
                     androidWebViewVersion = probeInfo.webViewVersion,
+                    androidBackend = "probe_webview",
+                    androidProbeUsed = true,
                     webViewHtmlPreview = probeHtml.take(2000),
                     webViewScreenshotBase64 = probeRes.screenshotBase64
                 )
@@ -1037,7 +1071,9 @@ class DebugService {
                     phase = "content", status = "error", mode = "android",
                     error = "${e::class.simpleName}: ${e.message}",
                     errorCode = if (e is WebViewNotSupportedException) ErrorCode.ANDROID_PROBE_UNAVAILABLE.name else null,
-                    probeAvailable = true
+                    probeAvailable = true,
+                    androidBackend = "probe_webview",
+                    androidProbeUsed = true
                 )
             }
         }
@@ -1117,6 +1153,12 @@ private fun isAnonymousLoginCandidate(step: DebugStep): Boolean {
         else -> false
     }
 }
+
+private fun androidBackendFor(mode: String): String? =
+    if (mode == "android") "pc_http" else null
+
+private fun androidProbeUsedFor(mode: String): Boolean? =
+    if (mode == "android") false else null
 
 fun determineFinalStatus(steps: List<DebugStep>, source: BookSource? = null): String {
     val hasNeedsAppReview = steps.any { it.needsAppReview }

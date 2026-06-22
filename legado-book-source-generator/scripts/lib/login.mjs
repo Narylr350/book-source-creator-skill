@@ -92,6 +92,7 @@ function waitForPing(_adb, _serial, retries = 20) {
 export function cmdLogin(args) {
   const runDir = parseArg(args, "--run");
   let targetUrl = parseArg(args, "--url");
+  const clearCookies = !args.includes("--keep-cookies");
   if (!targetUrl && runDir) {
     try {
       const statePath = path.join(runDir, "run-state.json");
@@ -136,7 +137,7 @@ export function cmdLogin(args) {
   }
 
   try {
-    execSync(`"${adb}" -s ${serial} forward --remove tcp:18888`, { encoding: "utf-8", timeout: 3000 });
+    execSync(`"${adb}" -s ${serial} forward --remove tcp:18888`, { stdio: "ignore", timeout: 3000 });
   } catch {}
 
   execSync(`"${adb}" -s ${serial} shell am start -n io.legado.probe/.WebViewProbeActivity`, {
@@ -149,6 +150,23 @@ export function cmdLogin(args) {
 
   if (!waitForPing(adb, serial)) {
     return fail("Probe 未响应 http://127.0.0.1:18888/ping。请解锁手机、确认已连接，或重试。");
+  }
+
+  let cookieClearMessage = "保留现有 Probe WebView Cookie（--keep-cookies）。";
+  if (clearCookies) {
+    try {
+      const out = execSync("curl -s -X POST http://127.0.0.1:18888/cookie-clear", {
+        encoding: "utf-8",
+        timeout: 5000,
+      });
+      const parsed = JSON.parse(out);
+      if (parsed.ok !== true) {
+        return fail(`Probe Cookie 清理失败: ${parsed.error || parsed.message || "未知错误"}`);
+      }
+      cookieClearMessage = "已清理 Probe WebView Cookie，登录从干净会话开始。";
+    } catch (e) {
+      return fail(`Probe Cookie 清理失败: ${e.message || e}`);
+    }
   }
 
   if (targetUrl) {
@@ -170,6 +188,7 @@ export function cmdLogin(args) {
 
   const lines = [
     `Android Probe 已就绪 (设备: ${serial}, 端口 18888)`,
+    cookieClearMessage,
   ];
   if (targetUrl) {
     lines.push(`登录页面已推送至手机: ${targetUrl}`);

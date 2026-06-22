@@ -61,6 +61,25 @@ export function reportUsedAndroidMode(reportPath) {
   }
 }
 
+function stepUsedAndroidProbe(step) {
+  if (!step || step.mode !== "android") return false;
+  if (step.androidProbeUsed === true) return true;
+  if (/^probe/i.test(String(step.androidBackend || ""))) return true;
+  if (step.phase === "content" && (step.webViewHtmlPreview || step.webViewScreenshotBase64)) return true;
+  const artifacts = step.debugArtifacts || {};
+  return step.phase === "content" && Boolean(artifacts["response.rendered.html"] || artifacts["screenshot.png"]);
+}
+
+export function reportUsedAndroidProbe(reportPath) {
+  if (!fileExists(reportPath)) return false;
+  try {
+    const report = JSON.parse(fs.readFileSync(reportPath, "utf-8"));
+    return (report.steps || []).some((step) => stepUsedAndroidProbe(step));
+  } catch {
+    return false;
+  }
+}
+
 export function reportUsedAndroidWebView(reportPath) {
   if (!fileExists(reportPath)) return false;
   try {
@@ -68,6 +87,7 @@ export function reportUsedAndroidWebView(reportPath) {
     return (report.steps || []).some((step) => {
       if (step?.mode !== "android") return false;
       if (step.phase !== "content") return false;
+      if (!stepUsedAndroidProbe(step)) return false;
       if (step.webViewHtmlPreview || step.webViewScreenshotBase64) return true;
       const artifacts = step.debugArtifacts || {};
       return Boolean(artifacts["response.rendered.html"] || artifacts["screenshot.png"]);
@@ -81,8 +101,9 @@ export function reportHasAndroidWebViewContentEvidence(reportPath) {
   if (!fileExists(reportPath)) return false;
   try {
     const report = JSON.parse(fs.readFileSync(reportPath, "utf-8"));
-    const contentSteps = (report.steps || []).filter((step) => step?.mode === "android" && step.phase === "content");
-    if (contentSteps.some((step) => step.status === "error")) return false;
+    const androidContentSteps = (report.steps || []).filter((step) => step?.mode === "android" && step.phase === "content");
+    if (androidContentSteps.some((step) => step.status === "error")) return false;
+    const contentSteps = androidContentSteps.filter((step) => stepUsedAndroidProbe(step));
     return contentSteps.some((step) => {
       if (step.status !== "success") return false;
       if (step.preview && String(step.preview).trim().length > 0) return true;
@@ -284,6 +305,7 @@ export function writeValidatorSummary(runDir, status, finalStatus, reportPath) {
       if (report.phases) lines.push(`- 阶段状态: ${JSON.stringify(report.phases)}`);
       if (report.summary?.error) lines.push(`- 主要错误: ${report.summary.error}`);
       lines.push(`- Android mode: ${reportUsedAndroidMode(reportPath) ? "有" : "无"}`);
+      lines.push(`- Android Probe 证据: ${reportUsedAndroidProbe(reportPath) ? "有" : "无"}`);
       lines.push(`- Android WebView 渲染证据: ${reportUsedAndroidWebView(reportPath) ? "有" : "无"}`);
     } catch (e) {
       lines.push(`- 报告读取失败: ${e.message}`);
@@ -720,9 +742,9 @@ export function detectStepBlocker(step) {
 
 export function stepRenderKind(step) {
   if (!step) return null;
-  if (step.webViewHtmlPreview || step.webViewScreenshotBase64) return "webview";
+  if (stepUsedAndroidProbe(step) && (step.webViewHtmlPreview || step.webViewScreenshotBase64)) return "webview";
   const artifacts = step.debugArtifacts || {};
-  if (artifacts["response.rendered.html"] || artifacts["screenshot.png"]) return "webview";
+  if (stepUsedAndroidProbe(step) && (artifacts["response.rendered.html"] || artifacts["screenshot.png"])) return "webview";
   if (step.response?.bodyPreview) return "ssr_or_http";
   return null;
 }
@@ -747,6 +769,9 @@ export function buildCapabilityMatrix(report, finalStatus) {
       status: forcedBlocked || forcedByQualityGate ? "blocked" : success && !failed ? "success" : failed ? "blocked" : "unknown",
       blocker,
       render: phase === "content" ? stepRenderKind(step) : null,
+      mode: step?.mode || null,
+      androidBackend: step?.androidBackend || null,
+      androidProbeUsed: stepUsedAndroidProbe(step),
       evidenceIds: step ? [`validator:${phase}`] : [],
     };
   }

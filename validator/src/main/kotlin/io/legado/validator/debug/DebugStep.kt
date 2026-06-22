@@ -23,6 +23,8 @@ data class DebugStep(
     val probeAvailable: Boolean? = null,
     val probeDevice: String? = null,
     val androidWebViewVersion: String? = null,
+    val androidBackend: String? = null,      // "probe_webview" | "pc_http" | "probe_unavailable"
+    val androidProbeUsed: Boolean? = null,
     val webViewHtmlPreview: String? = null,
     val webViewScreenshotBase64: String? = null,
     // P10 会话模式

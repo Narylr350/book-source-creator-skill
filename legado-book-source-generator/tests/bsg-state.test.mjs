@@ -11,6 +11,10 @@ const execFileAsync = promisify(execFile);
 
 const ROOT = path.resolve(import.meta.dirname, "..");
 const BSG = path.join(ROOT, "scripts", "bsg.mjs");
+const noDeviceEnv = {
+  ...process.env,
+  BSG_TEST_ADB_DEVICES_OUTPUT: "List of devices attached\n",
+};
 
 async function makeTmpDir() {
   return fs.mkdtemp(path.join(os.tmpdir(), "bsg-state-"));
@@ -354,6 +358,41 @@ describe("bsg workflow user-action gates", () => {
     assert.match(result.message, /Android Probe|入口|搜索/);
   });
 
+  it("does not allow skipping entry Android review after a device becomes available", async () => {
+    const runDir = await initRun(tmpDir);
+    await writeAssessmentAndRecord(runDir, [], searchCaptchaFacts());
+
+    await runBsg(["advance", "--run", runDir], {
+      env: {
+        ...process.env,
+        BSG_TEST_ADB_DEVICES_OUTPUT: "List of devices attached\n",
+      },
+    });
+
+    await assert.rejects(
+      () => execFileAsync("node", [BSG, "resolve-user-action", "--run", runDir, "--action", "continue_after_entry_risk"], {
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          BSG_TEST_ADB_DEVICES_OUTPUT: "List of devices attached\nABC123\tdevice\n",
+        },
+      }),
+      (err) => {
+        const result = JSON.parse(err.stdout);
+        assert.match(result.error, /Android 真机或模拟器在线|android_device_ready/);
+        return true;
+      },
+    );
+
+    const resolved = await runBsg(["resolve-user-action", "--run", runDir, "--action", "android_device_ready"], {
+      env: {
+        ...process.env,
+        BSG_TEST_ADB_DEVICES_OUTPUT: "List of devices attached\nABC123\tdevice\n",
+      },
+    });
+    assert.equal(resolved.action, "android_device_ready");
+  });
+
   it("blocks record-validation while android user action is pending", async () => {
     const runDir = await initRun(tmpDir);
     await writeAssessmentAndRecord(runDir, ["- 评级: 可生成", "- 风险标签: WebView 依赖"]);
@@ -384,7 +423,7 @@ describe("bsg workflow user-action gates", () => {
       },
     });
 
-    const resolved = await runBsg(["resolve-user-action", "--run", runDir, "--action", "android_device_unavailable"]);
+    const resolved = await runBsg(["resolve-user-action", "--run", runDir, "--action", "android_device_unavailable"], { env: noDeviceEnv });
     const advanced = await runBsg(["advance", "--run", runDir], {
       env: {
         ...process.env,
@@ -502,7 +541,7 @@ describe("bsg workflow user-action gates", () => {
         BSG_TEST_ADB_DEVICES_OUTPUT: "List of devices attached\n",
       },
     });
-    await runBsg(["resolve-user-action", "--run", runDir, "--action", "android_device_unavailable"]);
+    await runBsg(["resolve-user-action", "--run", runDir, "--action", "android_device_unavailable"], { env: noDeviceEnv });
 
     const result = await runBsg(["advance", "--run", runDir], {
       env: {
@@ -579,7 +618,7 @@ describe("bsg workflow user-action gates", () => {
         BSG_TEST_ADB_DEVICES_OUTPUT: "List of devices attached\n",
       },
     });
-    await runBsg(["resolve-user-action", "--run", runDir, "--action", "android_device_unavailable"]);
+    await runBsg(["resolve-user-action", "--run", runDir, "--action", "android_device_unavailable"], { env: noDeviceEnv });
     await runBsg(["advance", "--run", runDir], {
       env: {
         ...process.env,
@@ -685,6 +724,35 @@ describe("bsg workflow user-action gates", () => {
 
     const delivered = await runBsg(["deliver", "--run", runDir]);
     assert.equal(delivered.finalStatus, "passed");
+  });
+
+  it("rejects record-validation status that rewrites the validator report status", async () => {
+    const runDir = await initRun(tmpDir);
+    await advanceToGenerate(tmpDir, runDir);
+    await writeValidSource(tmpDir);
+    await runBsg(["advance", "--run", runDir]);
+    await writeGeneratedValidatorReport(runDir, {
+      status: "failed",
+      mode: "android",
+      phases: { search: "error", detail: "unknown", toc: "unknown", content: "unknown" },
+      steps: [{
+        phase: "search",
+        status: "error",
+        mode: "android",
+        errorCode: "APP_REVIEW_REQUIRED",
+        error: "搜索结果为空",
+        request: { url: "https://example.com/search?q=abc" },
+      }],
+    });
+
+    await assert.rejects(
+      () => execFileAsync("node", [BSG, "record-validation", "--run", runDir, "--status", "degraded"], { encoding: "utf8" }),
+      (err) => {
+        const result = JSON.parse(err.stdout);
+        assert.match(result.error, /status failed 不一致|不能把 failed 改写成 degraded/);
+        return true;
+      },
+    );
   });
 
   it("moves back to generate after validator failed so the source can be repaired", async () => {
@@ -999,6 +1067,26 @@ describe("bsg workflow user-action gates", () => {
     assert.equal(result.requiredUserAction, "authorize_usb_debugging");
   });
 
+  it("reports Probe diagnostics when Android device is ready", async () => {
+    const result = await runBsg(["android-status"], {
+      env: {
+        ...process.env,
+        BSG_TEST_ADB_DEVICES_OUTPUT: "List of devices attached\nABC123\tdevice\n",
+        BSG_TEST_PROBE_INFO: JSON.stringify({
+          name: "legado-android-probe",
+          version: "0.2.0",
+          api: ["/render", "/login", "/cookie-check", "/cookie-clear", "/ping", "/info"],
+          webViewVersion: "118.0.5993.80",
+        }),
+      },
+    });
+
+    assert.equal(result.android.state, "device_ready");
+    assert.equal(result.probe.state, "ready");
+    assert.equal(result.probe.info.version, "0.2.0");
+    assert.deepEqual(result.probe.api, ["/render", "/login", "/cookie-check", "/cookie-clear", "/ping", "/info"]);
+  });
+
   it("blocks passed HTTP validation when generated source contains WebView and Android is available", async () => {
     const runDir = await initRun(tmpDir);
     await advanceToValidateWithWebViewSource(tmpDir, runDir);
@@ -1122,6 +1210,83 @@ describe("bsg workflow user-action gates", () => {
     assert.match(result.message, /缺少真实域名键/);
   });
 
+  it("accepts Probe-injected cookies in android reports without requiring cookies.json", async () => {
+    const runDir = await initRun(tmpDir);
+    await advanceToGenerate(tmpDir, runDir);
+    await writeValidSource(tmpDir, {
+      enabledCookieJar: true,
+      loginUrl: "https://example.com/login",
+      header: "<js>JSON.stringify({'Cookie': java.getCookie('https://example.com') || ''})</js>",
+    });
+    await runBsg(["advance", "--run", runDir]);
+    await runBsg(["set-login-features", "--run", runDir, "--flags", JSON.stringify({
+      hasEnabledCookieJar: true,
+      _loginMethod: "probe",
+      _loginVerified: true,
+    })]);
+    await writeGeneratedValidatorReport(runDir, {
+      status: "failed",
+      mode: "android",
+      phases: { search: "error", detail: "unknown", toc: "unknown", content: "unknown" },
+      steps: [{
+        phase: "search",
+        status: "error",
+        mode: "android",
+        androidProbeUsed: true,
+        androidBackend: "probe_webview",
+        errorCode: "APP_REVIEW_REQUIRED",
+        error: "搜索结果为空",
+        request: { url: "https://example.com/search?q=abc", headers: { Cookie: "session=probe" } },
+      }],
+    });
+
+    const result = await runBsg(["record-validation", "--run", runDir, "--status", "failed"]);
+
+    assert.equal(result.status, "failed");
+    assert.equal(result.nextAction, "repair_in_generate");
+    assert.notEqual(result.blockedBy, "cookie_not_injected");
+  });
+
+  it("blocks Probe login when android report only used PC HTTP transport", async () => {
+    const runDir = await initRun(tmpDir);
+    await advanceToGenerate(tmpDir, runDir);
+    await writeValidSource(tmpDir, {
+      enabledCookieJar: true,
+      loginUrl: "https://example.com/login",
+      header: "<js>JSON.stringify({'Cookie': java.getCookie('https://example.com') || ''})</js>",
+    });
+    await runBsg(["advance", "--run", runDir]);
+    await runBsg(["set-login-features", "--run", runDir, "--flags", JSON.stringify({
+      hasEnabledCookieJar: true,
+      _loginMethod: "probe",
+      _loginVerified: true,
+    })]);
+    await writeGeneratedValidatorReport(runDir, {
+      status: "failed",
+      mode: "android",
+      phases: { search: "error", detail: "unknown", toc: "unknown", content: "unknown" },
+      steps: [{
+        phase: "search",
+        status: "error",
+        mode: "android",
+        androidProbeUsed: false,
+        androidBackend: "pc_http",
+        errorCode: "APP_REVIEW_REQUIRED",
+        error: "搜索结果为空",
+        request: { url: "https://example.com/search?q=abc", headers: { Cookie: "session=probe" } },
+      }],
+    });
+
+    const result = await runBsgBlocked(["record-validation", "--run", runDir, "--status", "failed"], {
+      env: {
+        ...process.env,
+        BSG_TEST_ADB_DEVICES_OUTPUT: "List of devices attached\nABC123\tdevice\n",
+      },
+    });
+
+    assert.equal(result.blockedBy, "android_probe_not_used");
+  });
+
   it("requires explicit Android availability decision before accepting needs_app_review", async () => {
     const runDir = await initRun(tmpDir);
     await writeRequiredDeliverFiles(tmpDir, runDir);
@@ -1147,7 +1312,7 @@ describe("bsg workflow user-action gates", () => {
     assert.equal(blocked.blockedBy, "android_device_needed");
     assert.equal(blocked.requiredUserAction, "android_device_needed");
 
-    await runBsg(["resolve-user-action", "--run", runDir, "--action", "android_device_unavailable"]);
+    await runBsg(["resolve-user-action", "--run", runDir, "--action", "android_device_unavailable"], { env: noDeviceEnv });
     const accepted = await runBsg(["record-validation", "--run", runDir, "--status", "needs_app_review"], {
       env: {
         ...process.env,
@@ -1249,7 +1414,7 @@ describe("bsg workflow user-action gates", () => {
     const result = await runBsgBlocked(["record-validation", "--run", runDir, "--status", "passed"]);
 
     assert.equal(result.status, "blocked");
-    assert.equal(result.blockedBy, "android_webview_not_used");
+    assert.equal(result.blockedBy, "android_probe_not_used");
   });
 
   it("refuses deliver after blocked validation matrix", async () => {
@@ -1266,13 +1431,13 @@ describe("bsg workflow user-action gates", () => {
 
     const blocked = await runBsgBlocked(["record-validation", "--run", runDir, "--status", "validator_limitation"]);
     assert.equal(blocked.status, "blocked");
-    assert.equal(blocked.blockedBy, "android_webview_not_used");
+    assert.equal(blocked.blockedBy, "android_probe_not_used");
 
     await assert.rejects(
       () => execFileAsync("node", [BSG, "deliver", "--run", runDir], { encoding: "utf8" }),
       (err) => {
         const result = JSON.parse(err.stdout);
-        assert.match(result.error, /blocked:android_webview_not_used|验证未完成|record-validation/);
+        assert.match(result.error, /blocked:android_probe_not_used|验证未完成|record-validation/);
         return true;
       },
     );
@@ -1350,6 +1515,8 @@ describe("bsg workflow user-action gates", () => {
         phase: "content",
         status: "success",
         mode: "android",
+        androidProbeUsed: true,
+        androidBackend: "probe_webview",
         sessionMode: "anonymous",
         request: { headers: { Cookie: "" } },
       }],
@@ -1570,7 +1737,7 @@ describe("bsg workflow user-action gates", () => {
     });
 
     await runBsgBlocked(["record-validation", "--run", runDir, "--status", "needs_app_review"]);
-    await runBsg(["resolve-user-action", "--run", runDir, "--action", "android_device_unavailable"]);
+    await runBsg(["resolve-user-action", "--run", runDir, "--action", "android_device_unavailable"], { env: noDeviceEnv });
     await runBsg(["record-validation", "--run", runDir, "--status", "needs_app_review"]);
     const matrix = JSON.parse(await fs.readFile(path.join(runDir, "capability-matrix.json"), "utf8"));
 

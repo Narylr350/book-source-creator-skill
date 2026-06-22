@@ -194,6 +194,10 @@ export function mapReportStep(s) {
     ruleHits: s.ruleHits || [],
     extracted: s.extracted || {},
     probeAvailable: s.probeAvailable,
+    probeDevice: s.probeDevice,
+    androidWebViewVersion: s.androidWebViewVersion,
+    androidBackend: s.androidBackend,
+    androidProbeUsed: s.androidProbeUsed,
     compatibilityWarnings: s.compatibilityWarnings,
     reviewReason: s.reviewReason,
     request: s.request ? {

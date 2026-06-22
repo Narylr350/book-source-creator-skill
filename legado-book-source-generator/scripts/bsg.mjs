@@ -15,7 +15,7 @@
  *   node scripts/bsg.mjs deliver --run <dir>
  *   node scripts/bsg.mjs debug-bundle [--run <dir>] [--cwd <work-dir>] [--transcript <file>] [--claude-session <id>]
  *   node scripts/bsg.mjs source inspect|set --run <dir>
- *   node scripts/bsg.mjs login [--run <dir> | --url <login-url>]
+ *   node scripts/bsg.mjs login [--run <dir> | --url <login-url>] [--keep-cookies]
  *   node scripts/bsg.mjs validator-start [--background]
  *   node scripts/bsg.mjs validator-stop
  */
@@ -56,7 +56,7 @@ function printUsage() {
       "  node scripts/bsg.mjs debug-bundle [--run {dir}] [--cwd {work-dir}] [--transcript {file}] [--claude-session {id}]",
       "  node scripts/bsg.mjs source inspect|set --run {dir}",
       "  node scripts/bsg.mjs android-status",
-      "  node scripts/bsg.mjs login [--run <dir> | --url <login-url>]",
+      "  node scripts/bsg.mjs login [--run <dir> | --url <login-url>] [--keep-cookies]",
       "  node scripts/bsg.mjs validate --run {dir} [--keyword <kw>] [--mode http|browser|android]",
       "  node scripts/bsg.mjs validator-start [--background]",
       "  node scripts/bsg.mjs validator-stop",
