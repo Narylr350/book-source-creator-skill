@@ -1,10 +1,10 @@
 # Probe 阶段指南
 
-本文件在 `nextAction: probe_site` 时由 `readNext` 加载。
+工具箱模式下，匿名初探、填写 `site-facts.json` 或评估入口链路时先读本文件。
 
-## Browser MCP 探测规范
+## 初探证据规范
 
-必须用 Browser MCP。HTTP fetch 只作辅助。
+优先用 HTTP 原始响应、validator 报告或保存的响应体做事实基线。Browser MCP 只负责可视行为和渲染结果 snapshot；不要默认用浏览器 evaluate、页面内 fetch 或自动 DOM 扫描探测入口页。
 
 四条链路每条至少 snapshot 一次：
 

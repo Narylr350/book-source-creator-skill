@@ -11,6 +11,7 @@ import {
   PHASE_ORDER, currentPhaseIndex, startPhase, completePhase,
   checkEnvironment, checkAdb, PHASE_READ_NEXT, phaseNextCommand,
 } from "./phase-engine.mjs";
+import { cmdRecordValidation } from "./validation-commands.mjs";
 
 export function cmdInit(args) {
   if (args.length < 1) {
@@ -124,17 +125,66 @@ export function cmdStatus(args) {
   };
 }
 
+export function cmdToolbox() {
+  return {
+    ok: true,
+    mode: "toolbox",
+    message: "按当前问题选择工具；中间阶段以诊断和修复为主，deliver 只做最终审计。",
+    tools: [
+      { command: "node \"<skill-dir>/scripts/bsg.mjs\" init <url> [--cwd <dir>]", use: "创建 run 目录和初始过程文件。" },
+      { command: "node \"<skill-dir>/scripts/bsg.mjs\" status --run <run-dir>", use: "查看当前阶段、pendingUserAction、repairContext 和下一步建议。" },
+      { command: "node \"<skill-dir>/scripts/bsg.mjs\" check --run <run-dir>", use: "检查评估/登录/Android 决策是否缺证据。" },
+      { command: "node \"<skill-dir>/scripts/bsg.mjs\" source inspect --run <run-dir>", use: "审计当前 book-source.json 的风险字段。" },
+      { command: "node \"<skill-dir>/scripts/bsg.mjs\" android --run <run-dir>", use: "Android 单入口：检查设备/Probe，必要时启动 Probe，运行 android 验证并收敛报告。" },
+      { command: "node \"<skill-dir>/scripts/bsg.mjs\" android-status", use: "只读诊断：检查 adb、设备/模拟器和 Android Probe 状态。" },
+      { command: "node \"<skill-dir>/scripts/bsg.mjs\" validate --run <run-dir> [--mode http|browser|android]", use: "运行 validator 并写 validator-report.json。" },
+      { command: "node \"<skill-dir>/scripts/bsg.mjs\" record-validation --run <run-dir> --status <status>", use: "把真实 validator-report.json 收敛成状态、能力矩阵和修复上下文。" },
+      { command: "node \"<skill-dir>/scripts/bsg.mjs\" debug-bundle [--run <run-dir>]", use: "打包状态、报告、书源和会话导出，方便复盘。" },
+      { command: "node \"<skill-dir>/scripts/bsg.mjs\" run --run <run-dir>", use: "可选状态助手：启动下一阶段，或把已有 validator-report.json 自动收敛。" },
+    ],
+    scenarios: [
+      {
+        name: "android_webview_or_login",
+        when: "需要登录态、WebView/WebJs、入口反爬复核，或桌面 HTTP/Browser 不能代表阅读 App 行为。",
+        readFirst: [
+          "references/android-probe-guide.md",
+          "references/policies.md",
+          "references/validator-integration.md",
+          "references/webview-behavior-matrix.md",
+        ],
+        commands: [
+          "node \"<skill-dir>/scripts/bsg.mjs\" android --run <run-dir>",
+        ],
+      },
+      {
+        name: "validation_failure_repair",
+        when: "validator-report.json 已生成但验证失败、blocked 或需要回修。",
+        readFirst: [
+          "references/failure-diagnosis.md",
+          "references/validation-policy.md",
+          "references/validator-integration.md",
+        ],
+        commands: [
+          "node \"<skill-dir>/scripts/bsg.mjs\" record-validation --run <run-dir> --status <validator-report.status>",
+          "node \"<skill-dir>/scripts/bsg.mjs\" status --run <run-dir>",
+          "node \"<skill-dir>/scripts/bsg.mjs\" source inspect --run <run-dir>",
+        ],
+      },
+    ],
+    finalAudit: {
+      command: "node \"<skill-dir>/scripts/bsg.mjs\" deliver --run <run-dir>",
+      prerequisite: "先用 run --run <run-dir> 或 advance --run <run-dir> 进入 deliver 阶段；validator-report.json 必须已通过 record-validation 收敛。",
+      use: "唯一最终交付审计；通过它之前不要宣称书源可用或 full pass。",
+    },
+  };
+}
+
 function runAgainCommand(runDir) {
   return `node "<skill-dir>/scripts/bsg.mjs" run --run ${runDir}`;
 }
 
 function recordAssessmentCommand(runDir) {
   return `node "<skill-dir>/scripts/bsg.mjs" record-assessment --run ${runDir}`;
-}
-
-function recordValidationCommand(runDir, status) {
-  const value = status && status !== "skipped" ? status : "<passed|failed|needs_app_review|validator_limitation|degraded>";
-  return `node "<skill-dir>/scripts/bsg.mjs" record-validation --run ${runDir} --status ${value}`;
 }
 
 function assessmentFactsReady(runDir) {
@@ -225,13 +275,15 @@ function instructionForPhase(current, state, runDir) {
   if (current === "validate") {
     const report = readJsonFile(path.join(runDir, "validator-report.json"), null);
     if (report?._generatedBy === "validate-with-validator.mjs" && report.status !== "skipped") {
+      const recorded = cmdRecordValidation(["--run", runDir, "--status", report.status]);
+      if (!recorded.ok) return recorded;
       return {
-        ok: true,
+        ...recorded,
         currentPhase: "validate",
-        nextAction: "run_command",
+        nextAction: recorded.shouldRetry ? recorded.nextAction : "run_command",
         readNext: PHASE_READ_NEXT.validate,
-        message: "validator-report.json 已生成。执行 record-validation，完成后继续运行 bsg run。",
-        nextCommand: recordValidationCommand(runDir, report.status),
+        message: `${recorded.message}\nrun 已自动记录 validator-report.json。继续运行 bsg run。`,
+        nextCommand: recorded.nextCommand || runAgainCommand(runDir),
       };
     }
     return {
@@ -267,10 +319,14 @@ export function cmdRun(args) {
 
   const pendingBlock = blockForPendingUserAction(state);
   if (pendingBlock) {
+    const pendingType = pendingBlock.requiredUserAction;
+    const nextCommand = ["android_device_needed", "android_entry_review_needed", "login_required"].includes(pendingType)
+      ? `node "<skill-dir>/scripts/bsg.mjs" android --run "${runDir}"`
+      : `node "<skill-dir>/scripts/bsg.mjs" resolve-user-action --run ${runDir} --action <action>`;
     return {
       ...pendingBlock,
       nextAction: "stop",
-      nextCommand: `node "<skill-dir>/scripts/bsg.mjs" resolve-user-action --run ${runDir} --action <action>`,
+      nextCommand,
     };
   }
 

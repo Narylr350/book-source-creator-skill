@@ -100,7 +100,7 @@ export function cmdSource(args) {
 
   if (subcommand === "set") {
     if (phase !== "generate") {
-      return fail("source set 只能在 generate 阶段使用。validate 阶段不能修改 book-source.json。");
+      return fail("source set 只能在 generate 阶段使用。validate 阶段不能直接修改 book-source.json 并复用旧验证结果；请先按 record-validation/status 的 correctiveAction 回到 generate / 规则审计语义。");
     }
     const fieldPath = parseArg(args, "--path");
     const rawValue = parseArg(args, "--value");

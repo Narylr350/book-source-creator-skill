@@ -44,7 +44,7 @@ export function checkEnvironment() {
       tool: "adb",
       ok: false,
       version: null,
-      message: "⚠️ 未找到 adb。Android Probe 不可用。运行 node scripts/bsg.mjs login，由脚本检测并安装 adb。",
+      message: "⚠️ 未找到 adb。Android Probe 不可用。运行 node scripts/bsg.mjs android --run <run-dir> 走 Android 单入口。",
     });
   }
 
@@ -124,7 +124,7 @@ export function diagnoseAndroid() {
         adbPath: null,
         state: "adb_missing",
         devices: [],
-        message: "未找到 adb。请确认是否要运行 node scripts/bsg.mjs login，由脚本检测并安装 adb。",
+        message: "未找到 adb。请使用 node scripts/bsg.mjs android --run <run-dir> 走 Android 单入口。",
         requiredUserAction: "install_adb",
       };
     }
@@ -185,7 +185,7 @@ export function diagnoseProbe() {
       state: "not_ready",
       ping: false,
       error: process.env.BSG_TEST_PROBE_ERROR,
-      message: "Android Probe 未响应 localhost:18888。运行 node scripts/bsg.mjs login 作为单入口启动 Probe。",
+        message: "Android Probe 未响应 localhost:18888。运行 node scripts/bsg.mjs android --run <run-dir> 作为单入口启动 Probe。",
       requiredAction: "run_login",
     };
   }
@@ -197,7 +197,7 @@ export function diagnoseProbe() {
         state: "not_ready",
         ping: false,
         error: ping || "empty ping response",
-        message: "Android Probe ping 未返回 pong。运行 node scripts/bsg.mjs login 作为单入口启动 Probe。",
+        message: "Android Probe ping 未返回 pong。运行 node scripts/bsg.mjs android --run <run-dir> 作为单入口启动 Probe。",
         requiredAction: "run_login",
       };
     }
@@ -216,7 +216,7 @@ export function diagnoseProbe() {
       state: "not_ready",
       ping: false,
       error: String(e.message || e),
-      message: "Android Probe 未响应 localhost:18888。运行 node scripts/bsg.mjs login 作为单入口启动 Probe。",
+      message: "Android Probe 未响应 localhost:18888。运行 node scripts/bsg.mjs android --run <run-dir> 作为单入口启动 Probe。",
       requiredAction: "run_login",
     };
   }

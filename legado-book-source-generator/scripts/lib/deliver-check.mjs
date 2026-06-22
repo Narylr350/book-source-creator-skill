@@ -20,7 +20,7 @@ export function cmdDeliverCheck(state, runDir) {
 
   const current = PHASE_ORDER[currentPhaseIndex(state)] || "all_completed";
   if (current !== "deliver" || state.phases.deliver.status !== "in_progress") {
-    return fail("尚未进入 deliver 阶段。record-validation 完成后必须先运行 advance，再运行 deliver；不能跳过 advance 直接交付。");
+    return fail("尚未进入 deliver 阶段。record-validation 完成后先运行 run 或 advance 进入 deliver，再运行 deliver；不能跳过最终审计直接交付。");
   }
 
   const requiredFiles = [
@@ -69,11 +69,11 @@ export function cmdDeliverCheck(state, runDir) {
   if (sourceFreshError) {
     resetPhasesFrom(state, "generate");
     saveRunState(runDir, state);
-    const correctiveAction = "validate 阶段不能修改 book-source.json。状态机已回退到 generate。在 generate 阶段改好所有规则并通过 rule-check，再重新进入 validate。";
+    const correctiveAction = "当前 validator-report.json 已不对应最新 book-source.json，不能复用旧报告交付。已回到 generate / 规则审计语义；修正书源后重新通过 rule-check，再重跑 validator。";
     const nextCommand = `node "<skill-dir>/scripts/bsg.mjs" advance --run ${runDir}`;
     printHint(correctiveAction, nextCommand);
     return {
-      ...fail(`${sourceFreshError} 已将状态机回退到 generate，请重新运行 advance 完成规则校验。`),
+      ...fail(`${sourceFreshError} 已回到 generate / 规则审计语义，请重新运行 advance 完成规则校验。`),
       correctiveAction,
       nextCommand,
     };

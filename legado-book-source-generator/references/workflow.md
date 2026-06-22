@@ -1,21 +1,31 @@
 # 完整工作流
 
-`outputs/<site-slug>/book-source.json` 是唯一默认用户交付物。过程文档写入 `runs/<site-slug>/`。阶段顺序和关隘条件由 `bsg.mjs` 强制执行。
+`outputs/<site-slug>/book-source.json` 是唯一默认用户交付物。过程文档写入 `runs/<site-slug>/`。最终交付由 `bsg.mjs deliver` 审计。
 
-默认执行循环：
+## 工具箱模式
 
-1. `init`
-2. `run`
-3. 按 `run` 返回的 `readNext` / `writeTarget` / `nextCommand` / `requiredUserAction` 执行
-4. 再 `run`
+1. 先运行 `init` 创建 run 目录。
+2. 运行 `toolbox` 查看场景路由和可用工具。
+3. 运行 `status --run <run-dir>` 查看当前状态、`pendingUserAction`、`repairContext`。
+4. 按当前问题选择工具；`run --run <run-dir>` 只是可选助手，不是唯一主流程。
+5. 交付前必须运行 `deliver --run <run-dir>`。
 
-`advance`、`record-assessment`、`validate`、`record-validation`、`deliver`、`login` 等旧命令仍保留为专家调试入口，不作为默认 agent 流程。除非 `run.nextCommand` 明确要求，不要自行组合这些命令。
+常见场景路由：
+
+| 场景 | 先读 | 工具 |
+|------|------|------|
+| 匿名初探 / site-facts | `references/probe-guide.md`, `references/assessment-template.md` | `status`, `check`, `record-assessment` |
+| 生成规则 | `references/legado-json-structure.md`, `references/official-rule-pack.json`, `references/legado-source-behavior.md` | `source inspect`, `advance` |
+| 验证失败回修 | `references/failure-diagnosis.md`, `references/validation-policy.md`, `references/validator-integration.md` | `record-validation`, `status`, `source inspect` |
+| Android / WebView / 登录态 | `references/android-probe-guide.md`, `references/policies.md`, `references/validator-integration.md`, `references/webview-behavior-matrix.md` | `android --run <run-dir>` |
+
+Android、模拟器、登录态、WebView/WebJs、入口反爬复核不要靠命令名自己拼；先读 `references/android-probe-guide.md` 和 `references/policies.md`，再运行 `android --run <run-dir>`。
 
 ## 1. 匿名初探 / 登录判定
 
 - 先匿名访问 search/detail/toc/content 四条链路，只判断站点结构、接口路径、是否有反爬、是否需要 WebView。
 - 检查登录入口、会员限制、匿名降级、登录后能力变化。
-- 如果站点需要登录态且 Android 真机或模拟器在线，必须使用 Probe 原生登录；Android 不可用时才使用 Browser MCP Cookie 路径。
+- 如果站点需要登录态且 Android 真机或模拟器在线，先读 `references/android-probe-guide.md`，再使用 Probe 原生登录；Android 不可用时才使用 Browser MCP Cookie 路径。
 - 如果搜索/详情/目录入口链路出现验证码、Cloudflare、极验或人机验证，必须写入 `site-facts.json` blocker。脚本会要求用户确认 Android/App 复核或接受入口不完整；不要自行用排行榜/书库替代搜索继续。
 
 ## 2. 可生成性评估
@@ -75,9 +85,11 @@
 
 生成 `book-source.json` 后，必须用 `bsg.mjs validate --run runs/<slug>` 跑真实链路验证，自动写入 `validator-report.json`。重试次数和状态判定由 `bsg.mjs record-validation` 强制管理；`record-validation` 不接受手写 report 或外部 report 路径。
 
+PC HTTP / Browser 验证是开发辅助，不是最终交付事实。`record-validation` 看到非 Android `passed` 时，会先要求确认 Android 真机或模拟器：有设备就运行 `android --run <run-dir>`，没有设备必须让用户明确确认后才降级记录，不能宣称 full pass。
+
 `record-validation` 会生成 `capability-matrix.json`。最终交付状态只从 matrix、`rule-check.json` 和 run-state 推导；不要把局部链路成功写成 full pass。
 
-**CSR/WebView 边界**：遇到正文可能是 CSR/WebView 时，优先用 `mode=android` 跑 Probe 验证。没有 Android 真机或模拟器时不强制阻塞，但 HTTP/browser 通过只能由 `record-validation` 降级为 `validator_limitation`，交付说明必须标明正文 App/WebView 可靠性未知。
+**CSR/WebView 边界**：遇到正文可能是 CSR/WebView 时，先读 `references/android-probe-guide.md`，再运行 `android --run <run-dir>`。没有 Android 真机或模拟器时不强制阻塞，但 HTTP/browser 通过只能由 `record-validation` 降级为 `validator_limitation`，交付说明必须标明正文 App/WebView 可靠性未知。
 
 回修依据：
 - URL 没拼对 → 修 searchUrl/bookUrl/chapterUrl

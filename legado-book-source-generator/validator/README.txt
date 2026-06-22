@@ -7,12 +7,13 @@ Legado 书源验证器 v1.0
 
 需要：
   - Java 17 或更高版本
-  - Android WebView Probe 可选需要 adb；运行 node scripts/bsg.mjs login 自动下载到 tools\platform-tools
+  - Android WebView Probe 可选需要 adb；运行 node scripts/bsg.mjs android --run <run-dir> 走单入口
 
 用途：
   - 导入 book-source.json
   - 验证搜索、详情、目录、正文链路
   - 查看每步的请求、响应、抽取结果、正文预览
+  - 输出 validator-report.json，供 bsg.mjs record-validation 收敛最终状态
 
 限制：
   - Android WebView / webJs 需 Android Probe 和已连接设备或模拟器
@@ -21,11 +22,23 @@ Legado 书源验证器 v1.0
 
 Android Probe：
   1. 连接 Android 真机并打开 USB 调试，或启动 Android 模拟器
-  2. 运行 node scripts/bsg.mjs login（自动下载 adb、安装 Probe APK、建立端口转发）
-  3. 在手机上完成登录后，运行 node scripts/bsg.mjs resolve-user-action --action login_completed
+  2. 运行 node scripts/bsg.mjs android --run <run-dir>（检查设备、启动 Probe、打开登录页）
+  3. 在手机上完成登录后，运行 node scripts/bsg.mjs android --run <run-dir> --login-completed
 
-bsg.mjs login 会从 Google 官方地址下载 Windows Platform-Tools（如本机无 adb），
-解压到 validator\tools\platform-tools，不写入系统目录。
+诊断入口：
+  - Android/Probe 状态：node scripts/bsg.mjs android-status
+  - Probe ping：http://127.0.0.1:18888/ping，应返回 pong
+  - Probe info：http://127.0.0.1:18888/info
+  - Probe Cookie：http://127.0.0.1:18888/cookie-check?domain=<目标域名>
+  - Validator API：http://localhost:1111/api/debug/run
+
+调试原则：
+  - adb、Probe API、curl 可以用于定位问题，但不能替代 bsg.mjs android / record-validation 的最终收敛
+  - PC HTTP / Browser passed 只算开发辅助；Android 可用时最终 passed 必须来自 Android mode
+  - screenshot 或 rendered HTML 只能证明页面渲染过，正文可用还要看 extracted/contentPreview/contentLength
+
+如本机无 adb，Android 入口会提示安装/配置 Platform-Tools；工具解压到
+validator\tools\platform-tools，不写入系统目录。
 
 停止 Probe：
   node scripts/bsg.mjs validator-stop

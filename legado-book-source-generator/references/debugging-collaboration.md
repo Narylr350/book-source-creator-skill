@@ -25,7 +25,7 @@
 - 禁止在未索取最小证据包前直接改规则。
 - 禁止把本地文件推断优先于用户当前 App 内实际规则、调试输出和源码。
 - 禁止把阅读 App Debug 失败当成交付后的普通备注。搜索、详情、目录、正文任一日志失败，都必须回到对应 validator 阶段或 generate 阶段重新验证。
-- 禁止靠经验试修后直接交付。修完必须启动 validator，并通过 `record-validation -> advance -> deliver` 顺序重新记录结果。
+- 禁止靠经验试修后直接交付。修完必须启动 validator，通过 `record-validation` 或 `run` 收敛报告，再进入 `deliver` 做最终审计。
 
 ## 官方入口依据
 

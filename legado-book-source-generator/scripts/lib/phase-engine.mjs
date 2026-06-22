@@ -144,9 +144,9 @@ export function completePhase(phase, state, runDir) {
         "必须先确认是否用 Android 真机或模拟器复核入口链路，不能直接用排行榜/书库替代搜索并继续。",
         "",
         android.state === "device_ready"
-          ? "已检测到 Android 真机或模拟器：运行 resolve-user-action --action android_device_ready，然后按后续提示用 Android Probe 复核入口链路。"
-          : "未检测到可用 Android 真机或模拟器：如果用户有设备/模拟器，请连接并完成 adb 授权后运行 resolve-user-action --action android_device_ready。",
-        "只有用户明确接受入口不完整并跳过 Android 复核时，才运行 resolve-user-action --action continue_after_entry_risk。",
+          ? "已检测到 Android 真机或模拟器：运行 node scripts/bsg.mjs android --run <dir>，让 Android 单入口复核入口链路。"
+          : "未检测到可用 Android 真机或模拟器：先问用户是否有真机或模拟器；有则连接/启动后运行 node scripts/bsg.mjs android --run <dir>。",
+        "只有用户明确接受入口不完整并跳过 Android 复核时，才记录 continue_after_entry_risk。",
       ].join("\n");
       const pending = setPendingUserAction(state, "android_entry_review_needed", "entry_antibot_requires_android_decision", message, {
         blockingPhase: "assess",
@@ -176,8 +176,8 @@ export function completePhase(phase, state, runDir) {
           `当前 Android/adb 状态: ${android.state}。${android.message}`,
           "",
           "为尽量还原阅读 App 行为，必须先确认是否有 Android 真机或模拟器可用于 Probe 登录和 App/WebView 验证。",
-          "  • 如果有，请连接真机或启动模拟器并完成 adb 授权后，再运行 resolve-user-action --action android_device_ready。",
-          "  • 如果没有可用 Android 真机或模拟器，运行 resolve-user-action --action android_device_unavailable；之后才允许降级为 Browser Cookie 登录路径。",
+          "  • 如果有，请连接真机或启动模拟器并完成 adb 授权后，再运行 node scripts/bsg.mjs android --run <dir>。",
+          "  • 如果没有可用 Android 真机或模拟器，让用户明确确认后运行 node scripts/bsg.mjs android --run <dir> --no-device；之后才允许降级为 Browser Cookie 登录路径。",
         ].join("\n");
         const pending = setPendingUserAction(state, "android_device_needed", "login_requires_android_decision", message, {
           blockingPhase: "assess",
@@ -229,16 +229,16 @@ export function completePhase(phase, state, runDir) {
             ? "步骤："
             : "",
           adbOk
-            ? "1. 运行 node scripts/bsg.mjs login --run <dir>——安装 Probe APK、设置 adb 端口转发 (localhost:18888→device:18888)、确认 /ping 正常"
+            ? "1. 运行 node scripts/bsg.mjs android --run <dir>——由 Android 单入口启动 Probe 并打开登录页"
             : "",
           adbOk
-            ? "2. 自动推送登录页到手机（或手动 adb shell am start）"
+            ? "2. 用户在手机/模拟器里输入账号密码并完成验证码/短信/扫码"
             : "",
           adbOk
-            ? "3. 用户在手机/模拟器里输入账号密码并完成验证码/短信/扫码"
+            ? "3. 看到已登录状态后运行 node scripts/bsg.mjs android --run <dir> --login-completed"
             : "",
           adbOk
-            ? "4. 看到已登录状态后运行 resolve-user-action --action login_completed（内部检查 /cookie-check 确认 Cookie）"
+            ? "不要手工拼 adb、curl、login、validate 或 record-validation。"
             : "",
           adbOk
             ? "Browser MCP 登录不是当前默认路径；如需改用浏览器，必须先断开/声明 Android 真机或模拟器不可用，再按 Browser Cookie 路径继续。"
@@ -276,10 +276,10 @@ export function completePhase(phase, state, runDir) {
         "请确认：你是否有满足以下条件的 Android 真机或模拟器？",
         "  • Android 真机（已开启 USB 调试）或 Android 模拟器",
         "  • 真机通过 USB 数据线连接电脑；模拟器已启动并能被 adb 看到",
-        "  • 电脑可运行 node scripts/bsg.mjs login（脚本会检测并安装 adb，并通过 adb 连接真机/模拟器）",
+        "  • 电脑可运行 node scripts/bsg.mjs android --run <dir>（脚本会通过单入口处理 adb、Probe 和验证）",
         "",
-        "如果有，请连接真机或启动模拟器并完成授权后，再运行 resolve-user-action --action android_device_ready。",
-        "如果没有可用 Android 真机或模拟器，运行 resolve-user-action --action android_device_unavailable；后续正文验证只能标 needs_app_review / validator_limitation，不能标 passed。",
+        "如果有，请连接真机或启动模拟器并完成授权后，再运行 node scripts/bsg.mjs android --run <dir>。",
+        "如果没有可用 Android 真机或模拟器，让用户明确确认后运行 node scripts/bsg.mjs android --run <dir> --no-device；后续正文验证只能标 needs_app_review / validator_limitation，不能标 passed。",
       ].join("\n");
       const pending = setPendingUserAction(state, "android_device_needed", "webview_requires_android", message, {
         blockingPhase: "assess",
@@ -483,10 +483,9 @@ export function moveToNext(fromPhase, state, runDir) {
       "⚠️  WebView/CSR 正文 — 必须用 Android Probe",
       "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
       "1. validator-start（窗口必须可见）",
-      "2. node scripts/bsg.mjs login（单入口：检测 adb、安装 APK、启动 Probe、检查 /ping）",
-      "3. node scripts/bsg.mjs validate --run dir --mode android（自动读取书源和关键词，auto android）",
-      "4. record-validation",
-      "5. Android 不可用时: --mode http + 正文失败标 validator_limitation",
+      "2. node scripts/bsg.mjs android --run <dir>",
+      "3. 按 android 命令返回的 requiredUserAction 或 nextCommand 继续",
+      "4. Android 不可用时: --mode http + 正文失败标 validator_limitation",
       "",
       "禁止跳过 Android Probe 直接用 mode=http 标 passed！",
       "",
@@ -515,13 +514,13 @@ export function moveToNext(fromPhase, state, runDir) {
         : "Android/Probe 不可用时，必须先让用户完成 Browser 登录并提取 Cookie 注入 validator，否则正文鉴权失败。",
       "",
       loggedInViaProbe
-        ? "1. 确认 node scripts/bsg.mjs login 已启动并通过 /ping"
+        ? "1. 运行 node scripts/bsg.mjs android --run <dir>"
         : "1. browser_network_requests 找到 API 请求头的 Cookie 或 Authorization",
       loggedInViaProbe
-        ? "2. node scripts/bsg.mjs validate --run dir（自动 mode=android）"
+        ? "2. 按 android 命令返回的 requiredUserAction 或 nextCommand 继续"
         : "2. 保存为 runs/<slug>/cookies.json: {\"www.example.com\": \"full_cookie_string\"}",
       loggedInViaProbe
-        ? "3. validator-report.json 写入后运行 record-validation"
+        ? "3. 不要退回 HTTP+Cookie 或手工拼 validate/record-validation"
         : "3. bsg.mjs validate 自动检测 cookies.json 并注入",
       "",
       "未注入 Cookie 的验证结果不能标 passed，只能标 anonymous_candidate。",

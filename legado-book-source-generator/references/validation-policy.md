@@ -1,8 +1,8 @@
 # 验证策略
 
-> **validate 阶段核心约束**：进入 validate 阶段后，禁止修改 `book-source.json`。
-> 如果 validator 暴露规则错误，必须先通过状态机回到 generate 阶段修好规则，
-> 再重新进入 validate。直接改文件会触发 hash 检测并自动回退到 generate。
+> **validate 阶段核心约束**：`validator-report.json` 只对应生成它时的 `book-source.json`。
+> 如果需要修改 `book-source.json`，必须按工具返回的 `correctiveAction` 回到 generate / 规则审计语义，
+> 修改后重新通过 rule-check 并重跑 validator。不能修改书源后继续复用旧 report、matrix 或 deliver 结论。
 
 ## 回修动作参考
 
@@ -30,15 +30,16 @@
 8. **只有 WebView 渲染证据但没有整条正文提取证据** — content 阶段必须没有失败 step，并且有 `preview`、`evidence.contentPreview`、`evidence.contentLength` 或 `extracted.contentLength`；否则按正文未验证处理
 9. **报告已证明是规则错误** — 例如 toc 请求缺 book id、详情字段为空，必须回修规则，不能标 `needs_app_review` / `validator_limitation`
 10. **正文提取污染** — content success 但 preview 混入重复异常 token、脚本片段、导航/弹窗 chrome 时，必须回修正文规则或 WebView 提取，不能按 passed 交付
+11. **最终 passed 不是 Android mode** — PC HTTP/Browser 只辅助写规则；先确认 Android 真机或模拟器，有则运行 `android --run <run-dir>`，没有则由用户明确确认后降级，不能标 full pass
 
 以下情况标记 `validator_limitation`（不是 `needs_app_review`）：
 
-11. **validator 工具限制** — @js 动态 URL、相对路径未拼接、validator 不支持的规则能力
-12. **Android 不可用导致 WebView 正文无法验证** — 没有 Android 真机或模拟器时不强制阻塞，但 HTTP/browser 通过只能记为 `validator_limitation`，正文可靠性未知，不能标 full pass 或可用
+12. **validator 工具限制** — @js 动态 URL、相对路径未拼接、validator 不支持的规则能力
+13. **Android 不可用导致 WebView 正文无法验证** — 没有 Android 真机或模拟器时不强制阻塞，但 HTTP/browser 通过只能记为 `validator_limitation`，正文可靠性未知，不能标 full pass 或可用
 
 以下情况标记 `failed_unresolved`：
 
-13. **收敛失败** — 同一错误连续 5 次未修复（相同 error + 相同失败字段），判定为死循环，停止自动回修
+14. **收敛失败** — 同一错误连续 5 次未修复（相同 error + 相同失败字段），判定为死循环，停止自动回修
 
 ## 验收标准
 
@@ -50,7 +51,7 @@
 
 不满足则不能标"可用"。
 
-验证结果必须通过 `bsg.mjs record-validation` 记录。不能用手工创建的 report/summary 代替。`record-validation` 会生成 `capability-matrix.json`，后续只能从 matrix 判断 search/detail/toc/content 的状态、blocker、render 和 full pass。返回 `blockedBy=android_probe_not_used`、`android_probe_cookie_not_used`、`android_webview_not_used`、`android_webview_content_not_verified`、`android_device_disconnected`、`hard_rule_error`、`cookie_not_injected`、`content_repeated_noise`、`content_page_chrome` 时按提示补用户动作、凭据或规则后重跑 validator。返回 `requiredUserAction=toc_sample_review` 时，只能在确认短目录是目标书真实状态后运行 `resolve-user-action --action toc_chapter_count_confirmed`。
+验证结果必须通过 `bsg.mjs record-validation` 记录。不能用手工创建的 report/summary 代替。`record-validation` 会生成 `capability-matrix.json`，后续只能从 matrix 判断 search/detail/toc/content 的状态、blocker、render 和 full pass。返回 `blockedBy=android_final_authority_not_used`、`android_probe_not_used`、`android_probe_cookie_not_used`、`android_webview_not_used`、`android_webview_content_not_verified`、`android_device_disconnected`、`hard_rule_error`、`cookie_not_injected`、`content_repeated_noise`、`content_page_chrome` 时按提示补用户动作、凭据或规则后重跑 validator。返回 `requiredUserAction=toc_sample_review` 时，只能在确认短目录是目标书真实状态后运行 `resolve-user-action --action toc_chapter_count_confirmed`。
 
 ## 质量门槛
 

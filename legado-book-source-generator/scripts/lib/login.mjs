@@ -194,14 +194,14 @@ export function cmdLogin(args) {
     lines.push(`登录页面已推送至手机: ${targetUrl}`);
   } else {
     lines.push("用法: 重新运行并指定登录 URL:");
-    lines.push("  node scripts/bsg.mjs login --url <login-url>");
+    lines.push("  node scripts/bsg.mjs android --run <dir> --setup");
     lines.push("或通过 run 目录自动获取:");
-    lines.push("  node scripts/bsg.mjs login --run <dir>");
+    lines.push("  node scripts/bsg.mjs android --run <dir>");
   }
   lines.push("请在手机上完成登录（输入账号密码 + 验证码）。");
   if (runDir) {
     lines.push("登录完成后运行:");
-    lines.push(`  node scripts/bsg.mjs resolve-user-action --run "${runDir}" --action login_completed`);
+    lines.push(`  node scripts/bsg.mjs android --run "${runDir}" --login-completed`);
   }
 
   return {

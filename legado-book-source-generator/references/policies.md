@@ -10,7 +10,7 @@
 
 | 方式 | 适用场景 | 操作 |
 |------|---------|------|
-| Probe Android WebView 登录 | 有 Android 真机或模拟器，需站点 Cookie/Token | AI 打开 Probe `/login`，用户在手机/模拟器网页里手动登录 |
+| Probe Android WebView 登录 | 有 Android 真机或模拟器，需站点 Cookie/Token | AI 运行 `android --run <run-dir>` 打开登录页，用户在手机/模拟器网页里手动登录 |
 | 手机扫码登录 | App loginUi 配置了账号密码/扫码 | 用户在 Legado App 内操作 |
 | Token 手动输入 | 用户已知 Cookie/Token 字符串 | 用户粘贴，AI 写入 `--cookie=<file>` 参数 |
 | Browser MCP 提取 Cookie | Android/Probe 不可用时的备选 | 用户通过 Browser MCP 登录 → AI 调用 `browser_network_requests` 提取 → 保存为 JSON 文件 → `--cookie=<file>` 喂给 validator |
@@ -29,7 +29,7 @@
 如果手机/模拟器没有弹出页面、页面打不开、验证码过不去、没有账号，直接告诉我具体情况。
 ```
 
-用户回复完成后，再检查 `http://127.0.0.1:18888/cookie-check`；确认有目标域 Cookie 后再记录 `resolve-user-action --action login_completed`。adb 在线时脚本会强制校验 Probe Cookie，Browser Cookie 不能替代。
+用户回复完成后，运行 `node "<skill-dir>/scripts/bsg.mjs" android --run <run-dir> --login-completed`。脚本会检查 Probe Cookie 和登录证据；adb 在线时 Browser Cookie 不能替代。
 
 **Browser MCP 提取流程:**
 1. 仅在 Android/Probe 不可用时使用。用户打开目标站点登录页，在 Browser MCP 中完成登录（账号密码/扫码）

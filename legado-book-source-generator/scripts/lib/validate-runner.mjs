@@ -26,7 +26,7 @@ export function resolveValidateCookieFile(runDir, state, mode) {
   if (!probeCookies.ok || !cookie) {
     return {
       ok: false,
-      error: `Probe 登录已记录，但 /cookie-check 没有返回 ${domain || "目标站"} Cookie。请先运行 login 并确认手机/模拟器内已登录目标域。`,
+      error: `Probe 登录已记录，但没有返回 ${domain || "目标站"} Cookie。请先运行 android --run <dir> 打开手机/模拟器登录页，确认登录后再运行 android --run <dir> --login-completed。`,
     };
   }
 

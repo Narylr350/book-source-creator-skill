@@ -50,6 +50,23 @@ function firstFailedStep(report) {
   return (report?.steps || []).find((step) => ["error", "failed", "blocked"].includes(step?.status)) || null;
 }
 
+function reportUsedAndroidMode(report) {
+  if (report?.mode === "android") return true;
+  return (report?.steps || []).some((step) => step?.mode === "android");
+}
+
+function isVipLockFailure(report) {
+  const failedStep = firstFailedStep(report);
+  if (!failedStep) return false;
+  const text = [
+    failedStep.errorCode,
+    failedStep.error,
+    failedStep.message,
+    report?.reason,
+  ].filter(Boolean).join(" ");
+  return /CONTENT_IS_VIP_LOCK_PAGE|VIP|付费|订阅|会员|需要登录|需登录|paid|subscribe/i.test(text);
+}
+
 function validationErrorSignature(report, status) {
   const failedStep = firstFailedStep(report);
   if (!failedStep) return status;
@@ -105,13 +122,8 @@ function enterGenerateRepair(state, repairContext) {
 }
 
 function androidProbeNotUsedBlock(runDir, state, message) {
-  const probeLoggedIn = state.loginFeatures?._loginMethod === "probe";
-  const nextCommand = probeLoggedIn
-    ? `node "<skill-dir>/scripts/bsg.mjs" validate --run ${runDir} --mode android`
-    : `node "<skill-dir>/scripts/bsg.mjs" login`;
-  const nextStep = probeLoggedIn
-    ? `下一步只能执行: ${nextCommand} → record-validation。`
-    : `下一步只能执行: ${nextCommand} → node "<skill-dir>/scripts/bsg.mjs" validate --run ${runDir} --mode android → record-validation。`;
+  const nextCommand = `node "<skill-dir>/scripts/bsg.mjs" android --run "${runDir}"`;
+  const nextStep = `下一步只能执行: ${nextCommand}，按它返回的 requiredUserAction 或 nextCommand 继续。`;
   const correctiveAction = [
     "禁止 deliver，禁止改记 needs_app_review，禁止退回 HTTP 验证。",
     "当前书源含 webView:true 或 webJs，且检测到 Android 真机或模拟器；必须使用 Android Probe 产生验证证据。",
@@ -198,11 +210,11 @@ export function cmdRecordValidation(args) {
       recordedAt: new Date().toISOString(),
     });
     saveRunState(runDir, state);
-    const correctiveAction = "validate 阶段不能修改 book-source.json。状态机已回退到 generate。在 generate 阶段改好所有规则并通过 rule-check，再重新进入 validate。";
+    const correctiveAction = "当前 validator-report.json 已不对应最新 book-source.json，不能复用旧报告继续记录或交付。已回到 generate / 规则审计语义；修正书源后重新通过 rule-check，再重跑 validator。";
     const nextCommand = `node "<skill-dir>/scripts/bsg.mjs" advance --run ${runDir}`;
     printHint(correctiveAction, nextCommand);
     return {
-      ...fail(`${sourceFreshError} 已将状态机回退到 generate，请重新运行 advance 完成规则校验。`),
+      ...fail(`${sourceFreshError} 已回到 generate / 规则审计语义，请重新运行 advance 完成规则校验。`),
       correctiveAction,
       nextCommand,
     };
@@ -249,7 +261,7 @@ export function cmdRecordValidation(args) {
     saveRunState(runDir, state);
     writeCapabilityMatrix(runDir, reportPathForMode, "blocked:hard_rule_error");
     writeValidatorSummary(runDir, status, "blocked:hard_rule_error", reportPathForMode);
-    const correctiveAction = "validator 报告包含明确规则错误。状态机已回退到 generate；修正书源规则后运行 advance 重新做 rule-check，再进入 validate 重跑验证。不要把规则错误标成 needs_app_review 或 validator_limitation。";
+    const correctiveAction = "validator 报告包含明确规则错误。已回到 generate / 规则审计语义；修正书源规则后运行 advance 重新做 rule-check，再重跑 validator。不要把规则错误标成 needs_app_review 或 validator_limitation。";
     const nextCommand = `node "<skill-dir>/scripts/bsg.mjs" advance --run ${runDir}`;
     printHint(correctiveAction, nextCommand);
     return {
@@ -308,7 +320,7 @@ export function cmdRecordValidation(args) {
       writeValidatorSummary(runDir, status, finalBlocked, reportPathForMode);
       const correctiveAction = acceptanceError.blockedBy === "toc_chapter_count_too_low"
         ? "validator 报告的目录样本过短。先确认这是目标书本身章节少，还是 ruleToc 只提取到部分章节；确认短目录合理后用 resolve-user-action 记录，否则修 ruleToc 并重跑。"
-        : "validator 报告包含成功状态但缺少阅读语义证据。状态机已回退到 generate；修正对应规则后运行 advance 重新做 rule-check，再进入 validate 重跑验证。不要标成后端限制。";
+        : "validator 报告包含成功状态但缺少阅读语义证据。已回到 generate / 规则审计语义；修正对应规则后运行 advance 重新做 rule-check，再重跑 validator。不要标成后端限制。";
       const nextCommand = acceptanceError.blockedBy === "toc_chapter_count_too_low"
         ? `node "<skill-dir>/scripts/bsg.mjs" resolve-user-action --run ${runDir} --action toc_chapter_count_confirmed`
         : `node "<skill-dir>/scripts/bsg.mjs" advance --run ${runDir}`;
@@ -396,8 +408,8 @@ export function cmdRecordValidation(args) {
         "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
         "本轮登录态来自 Android Probe，但 validator-report.json 没有 androidProbeUsed=true 或 androidBackend=probe_webview 证据。",
         "仅有 mode=android 或 PC HTTP Cookie 请求不能代表阅读 App/WebView 行为。",
-        "不要重新登录。立即执行: node scripts/bsg.mjs validate --run dir --mode android → record-validation。",
-        "validate 会从 Android Probe /cookie-check 读取目标域 Cookie 并注入 validator。",
+        "不要重新登录。立即执行: node scripts/bsg.mjs android --run <dir>。",
+        "android 单入口会从 Android Probe Cookie 检查读取目标域 Cookie 并注入 validator。",
         "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
       ].join("\n");
     } else if (state.adbDetected) {
@@ -407,7 +419,7 @@ export function cmdRecordValidation(args) {
         "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
         "本轮登录态来自 Android Probe，但现在 adb 找不到真机或模拟器，不能退回 HTTP+Cookie 验证。",
         "请重新连接真机并确认 USB 调试授权，或启动模拟器并确认 adb devices 可见。",
-        "然后运行: node scripts/bsg.mjs login → bsg.mjs validate --run dir --mode android → record-validation。",
+        "然后运行: node scripts/bsg.mjs android --run <dir>。",
         "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
       ].join("\n");
     } else {
@@ -439,7 +451,7 @@ export function cmdRecordValidation(args) {
         "⛔ Probe 登录态没有进入 validator 报告",
         "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
         "本轮登录已记录为 Android Probe，但 validator-report.json 仍是匿名会话：未看到非 anonymous sessionMode，也未看到 Cookie/Authorization 请求头。",
-        "这说明只是完成了手机/模拟器登录动作，验证请求没有使用该登录态。请确认 /cookie-check 有 Cookie 后，重新用 Android mode 验证。",
+        "这说明只是完成了手机/模拟器登录动作，验证请求没有使用该登录态。请运行 node scripts/bsg.mjs android --run <dir> 重新走 Android 验证。",
         "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
       ].join("\n"),
     };
@@ -468,7 +480,7 @@ export function cmdRecordValidation(args) {
             "⛔ WebView 未验证 — Android 真机或模拟器已连接但未使用",
             "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
             "adb 检测到真机或模拟器，但 validator-report.json 没有 Android Probe 证据。",
-            "立即执行: node scripts/bsg.mjs login → 重新验证 → record-validation。",
+            "立即执行: node scripts/bsg.mjs android --run <dir>。",
             "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
           ].join("\n");
         } else if (androidWasUsed && !androidWebViewWasUsed) {
@@ -499,7 +511,7 @@ export function cmdRecordValidation(args) {
             "init 时检测到 Android 真机或模拟器，但现在 adb 找不到。",
             "可能原因：手机息屏后 USB 断开、adb 授权过期、数据线松动，或模拟器已关闭。",
             "请重新连接真机并确认 USB 调试授权，或启动模拟器并确认 adb devices 可见。",
-            "然后运行: node scripts/bsg.mjs login → 重新用 mode=android 验证。",
+            "然后运行: node scripts/bsg.mjs android --run <dir>。",
             "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
           ].join("\n");
         } else {
@@ -510,7 +522,7 @@ export function cmdRecordValidation(args) {
             "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
             "无可用 Android 真机或模拟器，WebView 正文无法在本机验证。",
             "书源状态将标为 needs_app_review——需在 Legado App 内实测正文。",
-            "如果用户后续连接真机或启动模拟器，可用 node scripts/bsg.mjs login 重新验证。",
+            "如果用户后续连接真机或启动模拟器，可用 node scripts/bsg.mjs android --run <dir> 重新验证。",
             "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
           ].join("\n");
         }
@@ -540,7 +552,7 @@ export function cmdRecordValidation(args) {
         writeCapabilityMatrix(runDir, reportPathForMode, "blocked:android_probe_not_used");
         writeValidatorSummary(runDir, status, "blocked:android_probe_not_used", reportPathForMode);
         const correctiveAction = "run-state 记录登录来自 Android Probe，但 validator-report.json 没有 Android Probe 证据。必须重新运行 Android Probe 验证，不能退回 HTTP 或直接交付。";
-        const nextCommand = `node "<skill-dir>/scripts/bsg.mjs" validate --run ${runDir} --mode android`;
+        const nextCommand = `node "<skill-dir>/scripts/bsg.mjs" android --run "${runDir}"`;
         printHint(correctiveAction, nextCommand);
         return {
           ok: true,
@@ -558,8 +570,8 @@ export function cmdRecordValidation(args) {
       saveRunState(runDir, state);
       writeCapabilityMatrix(runDir, reportPathForMode, "blocked:android_webview_not_used");
       writeValidatorSummary(runDir, status, "blocked:android_webview_not_used", reportPathForMode);
-      const correctiveAction = "生成源含 webView:true 但无 Android WebView 渲染证据。必须用 mode=android 重新验证，并确认报告中有 rendered.html、screenshot 或 webViewHtmlPreview。不能标 passed。";
-      const nextCommand = `node "<skill-dir>/scripts/bsg.mjs" validate --run ${runDir} --mode android`;
+      const correctiveAction = "生成源含 webView:true 但无 Android WebView 渲染证据。必须通过 android 单入口重新验证，并确认报告中有 rendered.html、screenshot 或 webViewHtmlPreview。不能标 passed。";
+      const nextCommand = `node "<skill-dir>/scripts/bsg.mjs" android --run "${runDir}"`;
       printHint(correctiveAction, nextCommand);
       return {
         ok: true,
@@ -577,7 +589,7 @@ export function cmdRecordValidation(args) {
       writeCapabilityMatrix(runDir, reportPathForMode, "blocked:android_webview_content_not_verified");
       writeValidatorSummary(runDir, status, "blocked:android_webview_content_not_verified", reportPathForMode);
       const correctiveAction = "Android WebView 已渲染但没有正文提取证据。必须修正 ruleContent.content / webJs 并重新用 Android Probe 验证，直到 content preview 或 contentLength 证明正文被提取。不能标 passed。";
-      const nextCommand = `node "<skill-dir>/scripts/bsg.mjs" validate --run ${runDir} --mode android`;
+      const nextCommand = `node "<skill-dir>/scripts/bsg.mjs" android --run "${runDir}"`;
       printHint(correctiveAction, nextCommand);
       return {
         ok: true,
@@ -643,10 +655,10 @@ export function cmdRecordValidation(args) {
       `当前 Android/adb 状态: ${android.state}。${android.message}`,
       "",
       android.state === "device_ready"
-        ? "已检测到 Android 真机或模拟器：请优先用 node scripts/bsg.mjs login 后重新进行 Android 验证，不要直接交付 needs_app_review。"
+        ? "已检测到 Android 真机或模拟器：请优先用 node scripts/bsg.mjs android --run <dir> 重新进行 Android 验证，不要直接交付 needs_app_review。"
         : "未检测到可用 Android 真机或模拟器：必须先问用户是否有 Android 真机/模拟器可用于 App 复核。",
       "",
-      "如果用户确认没有可用 Android 真机或模拟器，运行 resolve-user-action --action android_device_unavailable 后再记录 needs_app_review。",
+      "如果用户确认没有可用 Android 真机或模拟器，运行 node scripts/bsg.mjs android --run <dir> --no-device 后再记录 needs_app_review。",
       "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
     ].join("\n");
     const pending = setPendingUserAction(state, "android_device_needed", "needs_app_review_requires_android_decision", message, {
@@ -669,6 +681,45 @@ export function cmdRecordValidation(args) {
     };
   }
 
+  if (status === "passed" && state.userDecisions?.androidDevice !== "unavailable" && !reportUsedAndroidMode(report)) {
+    const android = diagnoseAndroid();
+    const message = [
+      "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+      "⛔ Android 交付事实未确认",
+      "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+      "validator-report.json 不是 Android mode 结果。PC HTTP/Browser 只能辅助写规则，不能作为最终可用结论。",
+      `当前 Android/adb 状态: ${android.state}。${android.message}`,
+      "",
+      android.state === "device_ready"
+        ? "已检测到 Android 真机或模拟器：运行 node scripts/bsg.mjs android --run <dir>，以 Android 结果作为最终裁判。"
+        : "未检测到可用 Android 真机或模拟器：请先询问用户是否有真机或模拟器；有则连接/启动后运行 node scripts/bsg.mjs android --run <dir>。",
+      "如果用户明确没有可用 Android 真机或模拟器，运行 node scripts/bsg.mjs android --run <dir> --no-device 后再降级记录；不要宣称 full pass。",
+      "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+    ].join("\n");
+    const pending = setPendingUserAction(state, "android_device_needed", "android_final_authority_required", message, {
+      blockingPhase: "validate",
+      android,
+      validatorStatus: status,
+      reportMode: report?.mode || null,
+    });
+    v.attempts -= 1;
+    saveRunState(runDir, state);
+    writeCapabilityMatrix(runDir, reportPathForMode, "blocked:android_final_authority_not_used");
+    writeValidatorSummary(runDir, status, "blocked:android_final_authority_not_used", reportPathForMode);
+    return {
+      ok: true,
+      status: "blocked",
+      blockedBy: "android_final_authority_not_used",
+      shouldRetry: true,
+      nextAction: "confirm_android_device_availability",
+      requiredUserAction: "android_device_needed",
+      message,
+      pendingUserAction: pending,
+      correctiveAction: "最终交付结论必须优先来自 Android。先运行 Android 单入口；没有设备时必须由用户明确确认后降级。",
+      nextCommand: `node "<skill-dir>/scripts/bsg.mjs" android --run "${runDir}"`,
+    };
+  }
+
   if (status === "passed" && webViewAndroidUnavailable && (state.loginFeatures.hasWebView || state.loginFeatures.hasWebJs)) {
     finalStatus = "validator_limitation";
     v.lastStatus = finalStatus;
@@ -686,6 +737,39 @@ export function cmdRecordValidation(args) {
     finalStatus = "degraded";
     v.status = "completed";
   } else if (status === "failed") {
+    if (isVipLockFailure(report) && state.userDecisions?.login !== "no_account") {
+      const message = [
+        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+        "⛔ 正文命中登录/付费边界",
+        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+        "validator-report.json 显示正文页是 VIP/付费/需登录页面。这不是 selector 或书源规则错误，不能回到 generate 碰运气修。",
+        "请让用户确认是否有可登录且具备订阅/付费权限的账号，并通过 Android 单入口完成登录后重新验证。",
+        "如果用户没有账号或没有付费权限，只能降级/放弃，不要宣称免费书源 full pass。",
+        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+      ].join("\n");
+      const pending = setPendingUserAction(state, "login_required", "content_vip_lock", message, {
+        blockingPhase: "validate",
+        validatorStatus: status,
+        requestUrl: firstFailedStep(report)?.request?.url || null,
+      });
+      v.attempts -= 1;
+      saveRunState(runDir, state);
+      writeCapabilityMatrix(runDir, reportPathForMode, "blocked:content:vip");
+      writeValidatorSummary(runDir, status, "blocked:content:vip", reportPathForMode);
+      return {
+        ok: true,
+        status: "blocked",
+        blockedBy: "content_vip_lock",
+        shouldRetry: true,
+        nextAction: "resolve_user_action",
+        requiredUserAction: "login_required",
+        pendingUserAction: pending,
+        message,
+        correctiveAction: "正文是登录/付费边界。不要修改 book-source.json；先通过 Android 单入口登录并重跑验证，或由用户确认没有可用账号后降级。",
+        nextCommand: `node "<skill-dir>/scripts/bsg.mjs" android --run "${runDir}"`,
+      };
+    }
+
     const errorSig = validationErrorSignature(report, status);
 
     if (errorSig === v.lastError) {
@@ -720,7 +804,7 @@ export function cmdRecordValidation(args) {
 
   let baseMessage;
   if (shouldRetry) {
-    baseMessage = `验证失败 (第 ${v.attempts} 次${v.consecutiveSame > 1 ? `，同一错误第 ${v.consecutiveSame} 次` : ""})。状态机已回退到 generate；请根据 validator-report.json / repairContext 回修 book-source.json，修完运行 advance 重新做 rule-check，再进入 validate 重跑。${v.consecutiveSame >= 2 ? "⚠️ 已连续 " + v.consecutiveSame + " 次相同错误，再失败将停止自动修。" : ""}`;
+    baseMessage = `验证失败 (第 ${v.attempts} 次${v.consecutiveSame > 1 ? `，同一错误第 ${v.consecutiveSame} 次` : ""})。已回到 generate / 规则审计语义；请根据 validator-report.json / repairContext 回修 book-source.json，修完运行 advance 重新做 rule-check，再重跑 validator。${v.consecutiveSame >= 2 ? "⚠️ 已连续 " + v.consecutiveSame + " 次相同错误，再失败将停止自动修。" : ""}`;
   } else if (convergenceBlock) {
     baseMessage = convergenceBlock;
   } else {

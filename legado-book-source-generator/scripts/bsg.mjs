@@ -6,6 +6,7 @@
  *
  * 用法:
  *   node scripts/bsg.mjs init <url> [--fast]
+ *   node scripts/bsg.mjs toolbox
  *   node scripts/bsg.mjs run --run <dir>
  *   node scripts/bsg.mjs status --run <dir>
  *   node scripts/bsg.mjs advance --run <dir>
@@ -14,6 +15,7 @@
  *   node scripts/bsg.mjs set-login-features --run <dir> [--flags <json>]
  *   node scripts/bsg.mjs record-validation --run <dir> --status <status>
  *   node scripts/bsg.mjs deliver --run <dir>
+ *   node scripts/bsg.mjs android --run <dir>
  *   node scripts/bsg.mjs debug-bundle [--run <dir>] [--cwd <work-dir>] [--transcript <file>] [--claude-session <id>]
  *   node scripts/bsg.mjs source inspect|set --run <dir>
  *   node scripts/bsg.mjs login [--run <dir> | --url <login-url>] [--keep-cookies]
@@ -23,6 +25,7 @@
 
 import {
   cmdInit,
+  cmdToolbox,
   cmdRun,
   cmdStatus,
   cmdAdvance,
@@ -31,6 +34,7 @@ import {
   cmdSetLoginFeatures,
   cmdResolveUserAction,
   cmdAndroidStatus,
+  cmdAndroid,
   cmdRecordValidation,
   cmdDeliver,
   cmdDebugBundle,
@@ -47,6 +51,7 @@ function printUsage() {
     [
       "用法:",
       "  node scripts/bsg.mjs init <site-url> [--fast]",
+      "  node scripts/bsg.mjs toolbox",
       "  node scripts/bsg.mjs run --run {dir}",
       "  node scripts/bsg.mjs status --run {dir}",
       "  node scripts/bsg.mjs advance --run {dir}",
@@ -54,6 +59,7 @@ function printUsage() {
       "  node scripts/bsg.mjs record-assessment --run {dir}",
       "  node scripts/bsg.mjs set-login-features --run {dir} [--flags <json>]",
       "  node scripts/bsg.mjs resolve-user-action --run {dir} --action <action>",
+      "  node scripts/bsg.mjs android --run {dir}",
       "  node scripts/bsg.mjs record-validation --run {dir} --status <status>",
       "  node scripts/bsg.mjs deliver --run {dir}",
       "  node scripts/bsg.mjs debug-bundle [--run {dir}] [--cwd {work-dir}] [--transcript {file}] [--claude-session {id}]",
@@ -81,6 +87,9 @@ async function main(argv) {
     case "init":
       result = cmdInit(args);
       break;
+    case "toolbox":
+      result = cmdToolbox();
+      break;
     case "run":
       result = cmdRun(args);
       break;
@@ -104,6 +113,9 @@ async function main(argv) {
       break;
     case "android-status":
       result = cmdAndroidStatus();
+      break;
+    case "android":
+      result = cmdAndroid(args);
       break;
     case "record-validation":
       result = cmdRecordValidation(args);
@@ -131,7 +143,7 @@ async function main(argv) {
       break;
     default:
       result = fail(
-        `未知命令: ${command}。可用: init, run, status, advance, check, record-assessment, set-login-features, resolve-user-action, android-status, record-validation, deliver, debug-bundle, source, login, validate, validator-start, validator-stop`
+        `未知命令: ${command}。可用: init, toolbox, run, status, advance, check, record-assessment, set-login-features, resolve-user-action, android, android-status, record-validation, deliver, debug-bundle, source, login, validate, validator-start, validator-stop`
       );
   }
 

@@ -803,9 +803,14 @@ describe("bsg workflow user-action gates", () => {
     const runDir = await initRun(tmpDir);
     await writeRequiredDeliverFiles(tmpDir, runDir);
     await writeGeneratedValidatorReport(runDir, {
-      mode: "http",
+      mode: "android",
       phases: { search: "success", detail: "success", toc: "success", content: "success" },
-      steps: [{ phase: "content", status: "success", mode: "http" }],
+      steps: [
+        { phase: "search", status: "success", mode: "android", extracted: { resultCount: 1 } },
+        { phase: "detail", status: "success", mode: "android", extracted: { name: "Example" } },
+        { phase: "toc", status: "success", mode: "android", extracted: { chapterCount: 20 } },
+        { phase: "content", status: "success", mode: "android", extracted: { contentLength: 80, contentPreview: "正文内容示例".repeat(8) } },
+      ],
     });
 
     const recorded = await runBsg(["record-validation", "--run", runDir, "--status", "passed"]);
@@ -888,7 +893,7 @@ describe("bsg workflow user-action gates", () => {
     assert.equal(recorded.nextAction, "repair_in_generate");
     assert.equal(recorded.repairContext.phase, "content");
     assert.equal(recorded.repairContext.failedField, "ruleContent.content");
-    assert.match(recorded.message, /回退到 generate/);
+    assert.match(recorded.message, /generate \/ 规则审计语义/);
 
     const state = JSON.parse(await fs.readFile(path.join(runDir, "run-state.json"), "utf8"));
     assert.equal(state.phases.generate.status, "in_progress");
@@ -1219,7 +1224,8 @@ describe("bsg workflow user-action gates", () => {
     assert.equal(result.forbiddenActions.includes("validate_http"), true);
     assert.equal(result.forbiddenActions.includes("record_needs_app_review"), true);
     assert.match(result.correctiveAction, /禁止.*deliver|禁止.*交付/);
-    assert.match(result.correctiveAction, /validate --run .* --mode android/);
+    assert.match(result.correctiveAction, /android --run/);
+    assert.doesNotMatch(result.correctiveAction, /validate --run .* --mode android/);
   });
 
   it("blocks HTTP validation after Probe login when Android is available", async () => {
@@ -1246,7 +1252,8 @@ describe("bsg workflow user-action gates", () => {
     assert.equal(result.blockedBy, "android_probe_not_used");
     assert.match(result.message, /Probe 登录/);
     assert.doesNotMatch(result.message, /login\s*→/i);
-    assert.match(result.message, /validate --run dir --mode android/);
+    assert.match(result.message, /android --run/);
+    assert.doesNotMatch(result.message, /validate --run dir --mode android/);
   });
 
   it("blocks HTTP validation after Probe login when Android disconnected", async () => {
@@ -1297,6 +1304,13 @@ describe("bsg workflow user-action gates", () => {
       ],
     });
 
+    const blocked = await runBsgBlocked(["record-validation", "--run", runDir, "--status", "passed"], {
+      env: noAndroidEnv,
+    });
+    assert.equal(blocked.blockedBy, "android_final_authority_not_used");
+    assert.equal(blocked.requiredUserAction, "android_device_needed");
+
+    await runBsg(["android", "--run", runDir, "--no-device"], { env: noAndroidEnv });
     const recorded = await runBsg(["record-validation", "--run", runDir, "--status", "passed"], {
       env: noAndroidEnv,
     });
@@ -1480,7 +1494,7 @@ describe("bsg workflow user-action gates", () => {
       () => execFileAsync("node", [BSG, "record-validation", "--run", runDir, "--status", "passed"], { encoding: "utf8" }),
       (err) => {
         const result = JSON.parse(err.stdout);
-        assert.match(result.error, /book-source\.json|generate|rule-check|回退到 generate/);
+        assert.match(result.error, /book-source\.json|generate|rule-check|规则审计/);
         return true;
       },
     );
@@ -1687,9 +1701,14 @@ describe("bsg workflow user-action gates", () => {
     await writeRequiredDeliverFiles(tmpDir, runDir);
     await fs.rm(path.join(runDir, "validator-summary.md"), { force: true });
     await writeGeneratedValidatorReport(runDir, {
-      mode: "http",
+      mode: "android",
       phases: { search: "success", detail: "success", toc: "success", content: "success" },
-      steps: [{ phase: "content", status: "success", mode: "http" }],
+      steps: [
+        { phase: "search", status: "success", mode: "android", extracted: { resultCount: 1 } },
+        { phase: "detail", status: "success", mode: "android", extracted: { name: "Example" } },
+        { phase: "toc", status: "success", mode: "android", extracted: { chapterCount: 20 } },
+        { phase: "content", status: "success", mode: "android", extracted: { contentLength: 80, contentPreview: "正文内容示例".repeat(8) } },
+      ],
     });
 
     await runBsg(["record-validation", "--run", runDir, "--status", "passed"]);
@@ -1769,7 +1788,7 @@ describe("bsg workflow user-action gates", () => {
     await writeRequiredDeliverFiles(tmpDir, runDir);
     await writeGeneratedValidatorReport(runDir, {
       status: "passed",
-      mode: "http",
+      mode: "android",
       summary: {
         resultCount: 1,
         firstBook: "新书",
@@ -1779,10 +1798,10 @@ describe("bsg workflow user-action gates", () => {
       },
       phases: { search: "success", detail: "success", toc: "success", content: "success" },
       steps: [
-        { phase: "search", status: "success", response: { bodyPreview: "search" }, extracted: { name: "新书" } },
-        { phase: "detail", status: "success", response: { bodyPreview: "detail" } },
-        { phase: "toc", status: "success", response: { bodyPreview: "toc" }, extracted: { chapterCount: 8 } },
-        { phase: "content", status: "success", response: { bodyPreview: "content" }, preview: "这是一段足够长的正文预览。".repeat(10) },
+        { phase: "search", status: "success", mode: "android", response: { bodyPreview: "search" }, extracted: { name: "新书" } },
+        { phase: "detail", status: "success", mode: "android", response: { bodyPreview: "detail" } },
+        { phase: "toc", status: "success", mode: "android", response: { bodyPreview: "toc" }, extracted: { chapterCount: 8 } },
+        { phase: "content", status: "success", mode: "android", response: { bodyPreview: "content" }, preview: "这是一段足够长的正文预览。".repeat(10) },
       ],
     });
 
@@ -1841,7 +1860,7 @@ describe("bsg workflow user-action gates", () => {
     assert.equal(matrix.links.content.blocker, "android_webview_content_not_verified");
   });
 
-  it("does not treat a VIP-lock signal with extracted Android content as missing WebView evidence", async () => {
+  it("stops on VIP-lock Android content instead of sending the agent back to generate", async () => {
     const adbEnv = {
       ...process.env,
       BSG_TEST_ADB_DEVICES_OUTPUT: "List of devices attached\nABC123\tdevice\n",
@@ -1892,14 +1911,42 @@ describe("bsg workflow user-action gates", () => {
       _loginMethod: "probe",
     })]);
 
-    const result = await runBsg(["record-validation", "--run", runDir, "--status", "failed"], { env: adbEnv });
+    const result = await runBsgBlocked(["record-validation", "--run", runDir, "--status", "failed"], { env: adbEnv });
     const matrix = JSON.parse(await fs.readFile(path.join(runDir, "capability-matrix.json"), "utf8"));
 
-    assert.equal(result.status, "failed");
-    assert.equal(result.nextAction, "repair_in_generate");
+    assert.equal(result.status, "blocked");
+    assert.equal(result.blockedBy, "content_vip_lock");
+    assert.equal(result.requiredUserAction, "login_required");
+    assert.equal(result.nextAction, "resolve_user_action");
+    assert.match(result.nextCommand, /android --run/);
     assert.notEqual(result.blockedBy, "android_webview_content_not_verified");
     assert.notEqual(matrix.links.content.blocker, "android_webview_content_not_verified");
     assert.ok(["login", "vip"].includes(matrix.links.content.blocker));
+  });
+
+  it("asks for Android availability before accepting non-Android passed validation", async () => {
+    const runDir = await initRun(tmpDir, { env: noDeviceEnv });
+    await advanceToGenerate(tmpDir, runDir);
+    await writeValidSource(tmpDir);
+    await runBsg(["advance", "--run", runDir]);
+    await writeGeneratedValidatorReport(runDir, {
+      status: "passed",
+      mode: "http",
+      phases: { search: "success", detail: "success", toc: "success", content: "success" },
+      steps: [
+        { phase: "search", status: "success", mode: "http", extracted: { resultCount: 1 } },
+        { phase: "detail", status: "success", mode: "http", extracted: { name: "Example" } },
+        { phase: "toc", status: "success", mode: "http", extracted: { chapterCount: 20 } },
+        { phase: "content", status: "success", mode: "http", extracted: { contentLength: 80, contentPreview: "正文内容示例".repeat(8) } },
+      ],
+    });
+
+    const result = await runBsgBlocked(["record-validation", "--run", runDir, "--status", "passed"], { env: noDeviceEnv });
+
+    assert.equal(result.blockedBy, "android_final_authority_not_used");
+    assert.equal(result.requiredUserAction, "android_device_needed");
+    assert.match(result.nextCommand, /android --run/);
+    assert.doesNotMatch(result.nextCommand, /validate --run .*--mode android/);
   });
 
   it("blocks polluted content preview even when validator marks content success", async () => {
@@ -1967,13 +2014,13 @@ describe("bsg workflow user-action gates", () => {
       answers: [{ lessonId: "ssr-content-does-not-prove-discovery", answer: "checked" }],
     }, null, 2), "utf8");
     await writeGeneratedValidatorReport(runDir, {
-      mode: "http",
+      mode: "android",
       phases: { search: "success", detail: "success", toc: "success", content: "success" },
       steps: [
-        { phase: "search", status: "success", response: { bodyPreview: "search" } },
-        { phase: "detail", status: "success", response: { bodyPreview: "detail" } },
-        { phase: "toc", status: "success", response: { bodyPreview: "toc" } },
-        { phase: "content", status: "success", response: { bodyPreview: "content" } },
+        { phase: "search", status: "success", mode: "android", response: { bodyPreview: "search" }, extracted: { resultCount: 1 } },
+        { phase: "detail", status: "success", mode: "android", response: { bodyPreview: "detail" }, extracted: { name: "Example" } },
+        { phase: "toc", status: "success", mode: "android", response: { bodyPreview: "toc" }, extracted: { chapterCount: 20 } },
+        { phase: "content", status: "success", mode: "android", response: { bodyPreview: "content" }, extracted: { contentLength: 80, contentPreview: "正文内容示例".repeat(8) } },
       ],
     });
 
@@ -2075,12 +2122,15 @@ describe("printHint stderr output", () => {
 });
 
 describe("advance response fields", () => {
-  it("SKILL main workflow points agents to run", async () => {
+  it("SKILL main workflow presents tools and final audit", async () => {
     const skill = await fs.readFile(path.join(ROOT, "SKILL.md"), "utf8");
 
-    assert.match(skill, /默认只运行 run|之后.*run/s);
+    assert.match(skill, /工具箱/);
+    assert.match(skill, /最终审计/);
     assert.match(skill, /requiredUserAction/);
-    assert.match(skill, /专家命令/);
+    assert.match(skill, /references\/android-probe-guide\.md/);
+    assert.match(skill, /references\/workflow\.md/);
+    assert.doesNotMatch(skill, /默认只运行 run/);
   });
 
   it("run starts the next pending phase after init", async () => {
@@ -2093,6 +2143,173 @@ describe("advance response fields", () => {
     assert.equal(run.nextAction, "probe_site");
     assert.ok(Array.isArray(run.readNext));
     assert.ok(run.nextCommand.includes("run"));
+    await fs.rm(tmpDir, { recursive: true, force: true });
+  });
+
+  it("toolbox lists available tools and keeps deliver as final audit", async () => {
+    const result = await runBsg(["toolbox"]);
+
+    assert.equal(result.ok, true);
+    assert.ok(result.tools.some((tool) => tool.command.includes("status")));
+    assert.ok(result.tools.some((tool) => tool.command.includes("validate")));
+    assert.ok(result.scenarios.some((scenario) => scenario.name === "android_webview_or_login"));
+    const android = result.scenarios.find((scenario) => scenario.name === "android_webview_or_login");
+    assert.ok(android.readFirst.includes("references/android-probe-guide.md"));
+    assert.ok(android.readFirst.includes("references/policies.md"));
+    assert.deepEqual(android.commands, [
+      "node \"<skill-dir>/scripts/bsg.mjs\" android --run <run-dir>",
+    ]);
+    assert.ok(result.tools.some((tool) => tool.command.includes("run --run")));
+    assert.ok(result.tools.some((tool) => tool.command.includes("android --run")));
+    assert.equal(result.tools.some((tool) => tool.command.includes("login --run")), false);
+    assert.ok(result.finalAudit.prerequisite.includes("run") || result.finalAudit.prerequisite.includes("advance"));
+    assert.match(result.finalAudit.command, /deliver/);
+  });
+
+  it("workflow reference follows toolbox mode instead of run loop mode", async () => {
+    const workflow = await fs.readFile(path.join(ROOT, "references", "workflow.md"), "utf8");
+
+    assert.match(workflow, /工具箱模式/);
+    assert.match(workflow, /references\/android-probe-guide\.md/);
+    assert.match(workflow, /references\/policies\.md/);
+    assert.doesNotMatch(workflow, /默认执行循环/);
+    assert.doesNotMatch(workflow, /不作为默认 agent 流程/);
+  });
+
+  it("probe and android references do not claim hidden readNext loading", async () => {
+    const probe = await fs.readFile(path.join(ROOT, "references", "probe-guide.md"), "utf8");
+    const android = await fs.readFile(path.join(ROOT, "references", "android-probe-guide.md"), "utf8");
+    const validator = await fs.readFile(path.join(ROOT, "references", "validator-integration.md"), "utf8");
+
+    assert.doesNotMatch(probe, /readNext|nextAction/);
+    assert.doesNotMatch(probe, /必须用 Browser MCP/);
+    assert.doesNotMatch(android, /readNext|nextAction/);
+    assert.doesNotMatch(validator, /advance（进入 validate）/);
+    assert.match(android, /工具箱|场景/);
+    assert.match(validator, /工具箱|run --run/);
+  });
+
+  it("android command asks for a device instead of exposing adb steps", async () => {
+    const tmpDir = await makeTmpDir();
+    const init = await runBsg(["init", "https://example.com", "--cwd", tmpDir], { env: noDeviceEnv });
+
+    const result = await runBsg(["android", "--run", init.runDir], { env: noDeviceEnv });
+
+    assert.equal(result.nextAction, "stop");
+    assert.equal(result.requiredUserAction, "android_device_needed");
+    assert.doesNotMatch(result.message, /adb install|setup-android-probe|curl/);
+    await fs.rm(tmpDir, { recursive: true, force: true });
+  });
+
+  it("android command routes Probe setup through the android wrapper", async () => {
+    const tmpDir = await makeTmpDir();
+    const init = await runBsg(["init", "https://example.com", "--cwd", tmpDir], {
+      env: {
+        ...process.env,
+        BSG_TEST_ADB_DEVICES_OUTPUT: "List of devices attached\nemulator-5554\tdevice\n",
+        BSG_TEST_PROBE_ERROR: "connection refused",
+      },
+    });
+
+    const result = await runBsg(["android", "--run", init.runDir], {
+      env: {
+        ...process.env,
+        BSG_TEST_ADB_DEVICES_OUTPUT: "List of devices attached\nemulator-5554\tdevice\n",
+        BSG_TEST_PROBE_ERROR: "connection refused",
+      },
+    });
+
+    assert.equal(result.nextAction, "setup_android_probe");
+    assert.match(result.nextCommand, /bsg\.mjs" android --run .* --setup/);
+    assert.doesNotMatch(result.nextCommand, /login|adb|curl/);
+    await fs.rm(tmpDir, { recursive: true, force: true });
+  });
+
+  it("android command resumes an android-device pending action when a device appears", async () => {
+    const tmpDir = await makeTmpDir();
+    const runDir = await initRun(tmpDir, { env: noDeviceEnv });
+    await writeAssessmentAndRecord(runDir, ["- 评级: 可生成", "- 风险标签: WebView 依赖"]);
+    await runBsg(["advance", "--run", runDir], { env: noDeviceEnv });
+
+    const result = await runBsg(["android", "--run", runDir], {
+      env: {
+        ...process.env,
+        BSG_TEST_ADB_DEVICES_OUTPUT: "List of devices attached\nemulator-5554\tdevice\n",
+        BSG_TEST_PROBE_ERROR: "connection refused",
+      },
+    });
+    const state = JSON.parse(await fs.readFile(path.join(runDir, "run-state.json"), "utf8"));
+
+    assert.equal(result.nextAction, "setup_android_probe");
+    assert.equal(state.pendingUserAction, null);
+    assert.equal(state.userDecisions.androidDevice, "ready");
+    assert.match(result.nextCommand, /android --run .* --setup/);
+    assert.doesNotMatch(result.nextCommand, /login|adb|curl/);
+    await fs.rm(tmpDir, { recursive: true, force: true });
+  });
+
+  it("android command keeps login repair inside the android wrapper", async () => {
+    const tmpDir = await makeTmpDir();
+    const runDir = await initRun(tmpDir);
+    await writeAssessmentAndRecord(runDir, [
+      "- 评级: 可生成",
+      "- 登录需求: 是",
+      "- 风险标签: 需登录态",
+    ]);
+    await runBsg(["advance", "--run", runDir], {
+      env: {
+        ...process.env,
+        BSG_TEST_ADB_DEVICES_OUTPUT: "List of devices attached\nemulator-5554\tdevice\n",
+      },
+    });
+
+    const result = await runBsg(["android", "--run", runDir], {
+      env: {
+        ...process.env,
+        BSG_TEST_ADB_DEVICES_OUTPUT: "List of devices attached\nemulator-5554\tdevice\n",
+        BSG_TEST_PROBE_INFO: JSON.stringify({ ok: true, api: ["/login", "/cookie-check"] }),
+      },
+    });
+
+    assert.equal(result.nextAction, "open_android_login");
+    assert.equal(result.requiredUserAction, "login_required");
+    assert.match(result.nextCommand, /android --run .* --setup/);
+    assert.match(result.afterUserCommand, /android --run .* --login-completed/);
+    assert.doesNotMatch(result.message, /adb install|curl|cookie-check/);
+    assert.doesNotMatch(result.nextCommand, /\blogin\b|adb|curl/);
+    await fs.rm(tmpDir, { recursive: true, force: true });
+  });
+
+  it("android command records an existing android validator report", async () => {
+    const tmpDir = await makeTmpDir();
+    const runDir = await initRun(tmpDir, {
+      env: { ...process.env, BSG_TEST_ADB_DEVICES_OUTPUT: "List of devices attached\nemulator-5554\tdevice\n" },
+    });
+    await advanceToGenerate(tmpDir, runDir);
+    await writeValidSource(tmpDir);
+    await runBsg(["advance", "--run", runDir]);
+    await writeGeneratedValidatorReport(runDir, {
+      status: "passed",
+      mode: "android",
+      phases: { search: "success", detail: "success", toc: "success", content: "success" },
+      steps: [
+        { phase: "search", status: "success", mode: "android", androidProbeUsed: true, extracted: { resultCount: 1 } },
+        { phase: "detail", status: "success", mode: "android", androidProbeUsed: true, extracted: { name: "Example" } },
+        { phase: "toc", status: "success", mode: "android", androidProbeUsed: true, extracted: { chapterCount: 2 } },
+        { phase: "content", status: "success", mode: "android", androidProbeUsed: true, extracted: { contentLength: 20, contentPreview: "正文内容示例" } },
+      ],
+    });
+
+    const result = await runBsg(["android", "--run", runDir], {
+      env: {
+        ...process.env,
+        BSG_TEST_ADB_DEVICES_OUTPUT: "List of devices attached\nemulator-5554\tdevice\n",
+        BSG_TEST_PROBE_INFO: JSON.stringify({ ok: true, api: [] }),
+      },
+    });
+
+    assert.equal(result.status, "passed");
+    assert.equal(result.via, "record-validation");
     await fs.rm(tmpDir, { recursive: true, force: true });
   });
 
@@ -2123,7 +2340,7 @@ describe("advance response fields", () => {
 
     assert.equal(run.nextAction, "stop");
     assert.equal(run.requiredUserAction, "android_device_needed");
-    assert.match(run.nextCommand, /resolve-user-action/);
+    assert.match(run.nextCommand, /android --run/);
     await fs.rm(tmpDir, { recursive: true, force: true });
   });
 
@@ -2177,6 +2394,35 @@ describe("advance response fields", () => {
     assert.ok(result.nextCommand.includes("validator-start"), "skipped validation should tell the agent to start validator");
     assert.ok(!result.nextCommand.includes("--status skipped"), "nextCommand must not suggest an unsupported record-validation status");
     assert.ok(!/验证完成/.test(result.message), "skipped validator should not be described as completed validation");
+    await fs.rm(tmpDir, { recursive: true, force: true });
+  });
+
+  it("run records an existing validator report instead of waiting for the agent", async () => {
+    const tmpDir = await makeTmpDir();
+    const runDir = await initRun(tmpDir);
+    await advanceToGenerate(tmpDir, runDir);
+    await writeValidSource(tmpDir);
+    await runBsg(["advance", "--run", runDir]);
+    await writeGeneratedValidatorReport(runDir, {
+      status: "passed",
+      mode: "android",
+      phases: { search: "success", detail: "success", toc: "success", content: "success" },
+      steps: [
+        { phase: "search", status: "success", mode: "android", extracted: { resultCount: 1 } },
+        { phase: "detail", status: "success", mode: "android", extracted: { name: "Example" } },
+        { phase: "toc", status: "success", mode: "android", extracted: { chapterCount: 20 } },
+        { phase: "content", status: "success", mode: "android", extracted: { contentLength: 80, contentPreview: "正文内容示例".repeat(8) } },
+      ],
+    });
+
+    const result = await runBsg(["run", "--run", runDir]);
+    const state = JSON.parse(await fs.readFile(path.join(runDir, "run-state.json"), "utf8"));
+
+    assert.equal(result.status, "passed");
+    assert.equal(result.nextAction, "run_command");
+    assert.ok(result.nextCommand.includes("run"));
+    assert.equal(state.phases.validate.status, "completed");
+    assert.equal(state.phases.validate.lastStatus, "passed");
     await fs.rm(tmpDir, { recursive: true, force: true });
   });
 });

@@ -86,7 +86,7 @@
 
 **关键依赖**：`java.getCookie()` 从 CookieStore 读取。validator v0.4.1+ 支持 CookieStore 持久化（JSON 文件）。验证前按设备状态注入 cookie：
 
-1. **Android/Probe 可用**：启动 Probe → 打开 `/login` → 用户在手机 WebView 登录 → `/cookie-check` 确认 → Android mode 验证
+1. **Android/Probe 可用**：运行 `android --run <run-dir>` → 用户在手机/模拟器 WebView 登录 → `android --login-completed` → Android mode 验证
 2. **Android/Probe 不可用**：用户在桌面浏览器登录 → AI 通过 `browser_network_requests` 提取 Cookie/Authorization header → 注入 validator（`--cookie=` 参数或 API `/api/cookie/set`）
 3. **App 登录后同步**：用户在 Legado App 内通过 `loginUrl` 登录 → Legado 将 cookie 存入 Room DB → （未来）validator 可从 App 导出导入
 
