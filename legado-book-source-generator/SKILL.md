@@ -27,11 +27,11 @@ node "<skill-dir>/scripts/bsg.mjs" init <url> [--cwd <输出目录>]
 
 出现以下想法时停止自动发挥，读命令返回的 `correctiveAction` / `requiredUserAction`：
 
-- “搜索被验证码拦了，所以用排行榜/书库代替搜索。”
-- “电脑端能看到正文，所以阅读 App 一定可用。”
-- “adb/Probe 麻烦，先用 HTTP 验证。”
+- “某条必需链路失败，所以用未验证的替代入口继续。”
+- “桌面浏览器或 HTTP 能看到内容，所以 Android WebView / 阅读 App 一定可用。”
+- “Android 真机或模拟器可用，但先用 HTTP 验证交付。”
 - “validate 阶段发现问题，直接改 book-source.json。”
-- “规则错误可以标 needs_app_review / validator_limitation。”
+- “规则错误或验证器缺证据可以标 needs_app_review / validator_limitation 通过。”
 
 这些情况必须由脚本门禁或用户确认解除，不能靠经验跳过。
 

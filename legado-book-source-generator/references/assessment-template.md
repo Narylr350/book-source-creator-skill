@@ -57,7 +57,7 @@
 
 `status` 使用 `success`、`blocked`、`failed`，不能保留 `unknown` 后运行 `record-assessment`。`ok/pass/error` 会被脚本归一化，`available/good/可用` 这类自由词会被拒绝。
 
-`render` 使用事实类型，如 `ssr_or_http`、`csr`、`webview`、`csr_encrypted`。`csr`/`webview` 会推导为 `WebView 依赖`，`encrypted`/`crypto` 会推导为 `加密正文`。
+`render` 只能使用枚举值 `ssr_or_http`、`csr`、`webview`、`csr_encrypted` 或 `null`，不要写“正常阅读”“SSR 渲染”“CSR 可用”等自由文本。`csr`/`webview` 会推导为 `WebView 依赖`，`csr_encrypted` 会同时推导为 `WebView 依赖` 和 `加密正文`。
 
 `blocker` 使用阻塞类型，如 `captcha`、`login`、`vip`、`cloudflare`、`encrypt`。不要把风险只写在 `assessment.md` 备注里，必须进入 facts。
 

@@ -376,6 +376,8 @@ export function loadSiteFacts(runDir) {
   }
   const missing = [];
   const invalid = [];
+  const invalidRender = [];
+  const allowedRenderKinds = new Set(["ssr_or_http", "csr", "webview", "csr_encrypted"]);
   for (const phase of LINK_PHASES) {
     const link = facts.links?.[phase];
     if (!link || !link.status || link.status === "unknown") {
@@ -387,6 +389,9 @@ export function loadSiteFacts(runDir) {
       invalid.push(`${phase}:${link.status}`);
       continue;
     }
+    if (link.render != null && !allowedRenderKinds.has(String(link.render))) {
+      invalidRender.push(`${phase}:${link.render}`);
+    }
     link.status = normalizedStatus;
   }
   if (missing.length > 0) {
@@ -394,6 +399,9 @@ export function loadSiteFacts(runDir) {
   }
   if (invalid.length > 0) {
     return { ok: false, error: `site-facts.json 链路 status 必须是 success/blocked/failed（ok/pass/error 可自动归一化）。无效值: ${invalid.join(", ")}。` };
+  }
+  if (invalidRender.length > 0) {
+    return { ok: false, error: `site-facts.json 链路 render 必须是 ssr_or_http/csr/webview/csr_encrypted 或 null。无效值: ${invalidRender.join(", ")}。` };
   }
   return { ok: true, facts };
 }
@@ -447,14 +455,14 @@ export function deriveAssessmentFromFacts(facts) {
   const successCount = statuses.filter((s) => s === "success").length;
   const allSuccess = successCount === LINK_PHASES.length;
   const rating = successCount > 0 ? "可生成" : "不建议生成";
-  const overallStatus = allSuccess ? "full_pass_candidate" : successCount > 0 ? "partial_candidate" : "blocked";
-  const fullPass = allSuccess && blockers.length === 0;
   const riskLabels = risks.size > 0 ? Array.from(risks).join(" / ") : "无风险";
   const loginDemand = risks.has("需登录态") ? "部分需要" : "否";
   const requiredActions = [];
   if (risks.has("需登录态")) requiredActions.push("login_required");
   if (risks.has("WebView 依赖")) requiredActions.push("android_device_needed");
   if (hasEntryAntiBotRisk) requiredActions.push("android_entry_review_needed");
+  const fullPass = allSuccess && blockers.length === 0 && requiredActions.length === 0;
+  const overallStatus = fullPass ? "full_pass_candidate" : successCount > 0 ? "partial_candidate" : "blocked";
 
   return {
     rating,

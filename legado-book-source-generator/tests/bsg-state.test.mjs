@@ -482,10 +482,26 @@ describe("bsg workflow user-action gates", () => {
     assert.match(content, /- 评级: 可生成/);
     assert.match(content, /- 风险标签: .*WebView 依赖/);
     assert.match(content, /- 风险标签: .*加密正文/);
-    assert.match(content, /- 总体状态: full_pass_candidate/);
+    assert.match(content, /- 总体状态: partial_candidate/);
+    assert.match(content, /- full pass: 否/);
     assert.match(content, /- 正文链路: success \(csr_encrypted\)/);
     assert.match(content, /- 登录\/Android\/WebView: android_device_needed/);
     assert.doesNotMatch(content, /- 评级: 不建议生成[\s\S]*- 风险标签: 无风险/);
+  });
+
+  it("rejects free-form render labels before deriving assessment", async () => {
+    const runDir = await initRun(tmpDir);
+    await writeSiteFacts(runDir, { links: { content: { render: "normal_reading" } } });
+    await fs.writeFile(path.join(runDir, "assessment.md"), assessmentContent(), "utf8");
+
+    await assert.rejects(
+      () => execFileAsync("node", [BSG, "record-assessment", "--run", runDir], { encoding: "utf8" }),
+      (err) => {
+        const result = JSON.parse(err.stdout);
+        assert.match(result.error, /render|normal_reading/);
+        return true;
+      },
+    );
   });
 
   it("rejects unstructured link status before deriving assessment", async () => {
