@@ -386,7 +386,7 @@ export function loadSiteFacts(runDir) {
       continue;
     }
     const normalizedStatus = normalizeLinkStatus(link.status);
-    if (!["success", "blocked", "failed"].includes(normalizedStatus)) {
+    if (!["success", "partial", "blocked", "failed"].includes(normalizedStatus)) {
       invalid.push(`${phase}:${link.status}`);
       continue;
     }
@@ -399,7 +399,7 @@ export function loadSiteFacts(runDir) {
     return { ok: false, error: `site-facts.json 四链路事实不完整，缺少明确状态: ${missing.join(", ")}。` };
   }
   if (invalid.length > 0) {
-    return { ok: false, error: `site-facts.json 链路 status 必须是 success/blocked/failed（ok/pass/error 可自动归一化）。无效值: ${invalid.join(", ")}。` };
+    return { ok: false, error: `site-facts.json 链路 status 必须是 success/partial/blocked/failed（ok/pass/error 可自动归一化）。无效值: ${invalid.join(", ")}。` };
   }
   if (invalidRender.length > 0) {
     return { ok: false, error: `site-facts.json 链路 render 必须是 ssr_or_http/csr/webview/csr_encrypted 或 null。无效值: ${invalidRender.join(", ")}。` };
@@ -439,7 +439,8 @@ export function deriveAssessmentFromFacts(facts) {
   let hasEntryAntiBotRisk = false;
   const statuses = LINK_PHASES.map((phase) => {
     const link = links[phase] || { status: "unknown" };
-    const status = normalizeLinkStatus(link.status);
+    let status = normalizeLinkStatus(link.status);
+    if (status === "success" && link.blocker) status = "partial";
     link.status = status;
     const risk = riskFromBlocker(link.blocker);
     if (risk) risks.add(risk);
@@ -454,8 +455,8 @@ export function deriveAssessmentFromFacts(facts) {
   });
 
   const successCount = statuses.filter((s) => s === "success").length;
+  const progressCount = statuses.filter((s) => s === "success" || s === "partial").length;
   const allSuccess = successCount === LINK_PHASES.length;
-  const rating = successCount > 0 ? "可生成" : "不建议生成";
   const riskLabels = risks.size > 0 ? Array.from(risks).join(" / ") : "无风险";
   const loginDemand = risks.has("需登录态") ? "部分需要" : "否";
   const requiredActions = [];
@@ -463,7 +464,8 @@ export function deriveAssessmentFromFacts(facts) {
   if (risks.has("WebView 依赖")) requiredActions.push("android_device_needed");
   if (hasEntryAntiBotRisk) requiredActions.push("android_entry_review_needed");
   const fullPass = allSuccess && blockers.length === 0 && requiredActions.length === 0;
-  const overallStatus = fullPass ? "full_pass_candidate" : successCount > 0 ? "partial_candidate" : "blocked";
+  const rating = fullPass ? "可生成" : progressCount > 0 ? "部分候选" : "不建议生成";
+  const overallStatus = fullPass ? "full_pass_candidate" : progressCount > 0 ? "partial_candidate" : "blocked";
 
   return {
     rating,
@@ -586,6 +588,19 @@ export function validateEvidenceNotes(content, facts) {
     });
   if (badLines.length === 0) return null;
   return `证据说明必须引用有效 evidence id（格式 evidence:<id>）。问题行: ${badLines.slice(0, 3).join(" | ")}`;
+}
+
+export function validateAssessmentRemarks(content, facts) {
+  const search = facts?.links?.search || {};
+  const searchBlocked = normalizeLinkStatus(search.status) === "blocked" || search.blocker;
+  if (!searchBlocked) return null;
+
+  const remarkSection = content.match(/## 分析备注([\s\S]*?)(?:\n## |\s*$)/);
+  const text = remarkSection ? remarkSection[1] : content;
+  const suggestsBypass = /(?:不依赖|绕过|替代).{0,16}(?:搜索|入口)|(?:搜索|入口).{0,16}(?:不需要|不用|可不用)|(?:排行榜|书库|排行|book[_ -]?id|书籍\s*ID|直达详情|直接输入)/i.test(text);
+  if (!suggestsBypass) return null;
+
+  return "搜索链路已阻塞时，assessment.md 不能建议用排行榜、书库、book_id、直达详情替代完整搜索链路。必须保留入口不完整/待复核结论。";
 }
 
 // ── official rule check ────────────────────────────────────────────────────
@@ -829,6 +844,8 @@ export function loadAndValidateAssessment(runDir, state) {
   const facts = factsResult.facts;
   const evidenceError = validateEvidenceNotes(content, facts);
   if (evidenceError) return { ok: false, error: evidenceError };
+  const remarksError = validateAssessmentRemarks(content, facts);
+  if (remarksError) return { ok: false, error: remarksError };
   const derived = deriveAssessmentFromFacts(facts);
 
   const userChoiceMatch = content.match(/用户选择[：:]\s*([^\n\r]+)/);

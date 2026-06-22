@@ -243,19 +243,74 @@ export function buildProbeCookieCheckUrl(siteUrl) {
   return `http://localhost:18888/cookie-check?domain=${encodeURIComponent(domain)}`;
 }
 
+export function probeCookieCheckDomains(siteUrl) {
+  const domain = targetDomainFromSiteUrl(siteUrl);
+  if (!domain) return [];
+  const domains = [domain];
+  const base = domain.startsWith("www.") ? domain.slice(4) : domain;
+  for (const candidate of [`wap.${base}`, `m.${base}`, base]) {
+    if (!domains.includes(candidate)) domains.push(candidate);
+  }
+  return domains;
+}
+
+function probeCookieCheckUrlForDomain(domain) {
+  return `http://localhost:18888/cookie-check?domain=${encodeURIComponent(domain)}`;
+}
+
+function cookieStringHasLoginEvidence(cookieString) {
+  return String(cookieString || "")
+    .split(";")
+    .map((part) => part.split("=")[0]?.trim().toLowerCase())
+    .some((name) => /(^|[_-])(login|auth|token|user|uid|reader|member|account)([_-]|$)/.test(name || ""));
+}
+
+export function hasProbeLoginEvidence(parsed) {
+  if (!parsed || typeof parsed !== "object") return false;
+  if (parsed.authenticated === true || parsed.loggedIn === true || parsed.isLoggedIn === true) return true;
+  if (typeof parsed.sessionMode === "string" && parsed.sessionMode && parsed.sessionMode !== "anonymous") return true;
+  if (typeof parsed.user === "string" && parsed.user.trim()) return true;
+  if (parsed.user && typeof parsed.user === "object" && Object.keys(parsed.user).length > 0) return true;
+  if (typeof parsed.account === "string" && parsed.account.trim()) return true;
+  if (parsed.account && typeof parsed.account === "object" && Object.keys(parsed.account).length > 0) return true;
+  return cookieStringHasLoginEvidence(parsed.cookies || parsed.cookie || "");
+}
+
+export function selectBestProbeCookieResult(siteUrl, results) {
+  const candidates = probeCookieCheckDomains(siteUrl);
+  let firstCookieResult = null;
+  let firstResult = null;
+  for (const result of results) {
+    if (!result) continue;
+    if (!firstResult) firstResult = result;
+    const parsed = result.parsed || {};
+    const checkedDomain = targetDomainFromSiteUrl(parsed.url || parsed.domain || "");
+    if (checkedDomain && !candidates.includes(checkedDomain)) continue;
+    if (hasProbeLoginEvidence(parsed)) return result;
+    if (!firstCookieResult && parsed.hasCookies === true) firstCookieResult = result;
+  }
+  return firstCookieResult || firstResult || { ok: false, error: "Probe cookie-check returned no result" };
+}
+
 export function checkProbeCookies(siteUrl) {
   try {
-    const targetDomain = targetDomainFromSiteUrl(siteUrl);
-    if (!targetDomain) return { ok: false, error: "Probe cookie-check requires a target domain" };
-    const raw = process.env.BSG_TEST_PROBE_COOKIE_CHECK != null
-      ? process.env.BSG_TEST_PROBE_COOKIE_CHECK
-      : execSync(`curl -s "${buildProbeCookieCheckUrl(siteUrl)}" 2>&1`, { encoding: "utf-8", timeout: 3000 });
-    const parsed = JSON.parse(raw);
-    const checkedDomain = targetDomainFromSiteUrl(parsed.url || parsed.domain || "");
-    if (checkedDomain && checkedDomain !== targetDomain) {
-      return { ok: false, parsed, error: `Probe cookies belong to ${checkedDomain}, expected ${targetDomain}` };
+    const domains = probeCookieCheckDomains(siteUrl);
+    if (domains.length === 0) return { ok: false, error: "Probe cookie-check requires a target domain" };
+    if (process.env.BSG_TEST_PROBE_COOKIE_CHECK != null) {
+      const parsed = JSON.parse(process.env.BSG_TEST_PROBE_COOKIE_CHECK);
+      return { ok: parsed.hasCookies === true, parsed };
     }
-    return { ok: parsed.hasCookies === true, parsed };
+    const results = domains.map((domain) => {
+      try {
+        const raw = execSync(`curl -s "${probeCookieCheckUrlForDomain(domain)}" 2>&1`, { encoding: "utf-8", timeout: 3000 });
+        const parsed = JSON.parse(raw);
+        return { ok: parsed.hasCookies === true, parsed };
+      } catch (e) {
+        return { ok: false, error: String(e.message || e) };
+      }
+    });
+    const best = selectBestProbeCookieResult(siteUrl, results);
+    return { ...best, ok: best.parsed?.hasCookies === true };
   } catch (e) {
     return { ok: false, error: String(e.message || e) };
   }

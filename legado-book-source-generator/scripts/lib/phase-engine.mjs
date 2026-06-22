@@ -7,14 +7,14 @@ import {
   bookSourceHasWebView, factsSuggestWebView, loadAndValidateAssessment, validateCookieFileShape, runOfficialRuleCheck, writeRuleCheck,
 } from "./facts.mjs";
 import {
-  diagnoseAndroid, checkAdb, checkProbeCookies, detectAuthFromAnalysis,
+  diagnoseAndroid, checkAdb, checkProbeCookies, detectAuthFromAnalysis, hasProbeLoginEvidence,
 } from "./environment.mjs";
 import { cmdDeliverCheck } from "./deliver-check.mjs";
 import { PHASE_ORDER, currentPhaseIndex, resetPhasesFrom } from "./phase-order.mjs";
 
 export {
   checkEnvironment, parseAdbDevicesOutput, diagnoseAndroid, checkAdb,
-  cmdAndroidStatus, checkProbeCookies, detectAuthFromAnalysis,
+  cmdAndroidStatus, checkProbeCookies, detectAuthFromAnalysis, hasProbeLoginEvidence,
 } from "./environment.mjs";
 export { cmdDeliverCheck } from "./deliver-check.mjs";
 export { PHASE_ORDER, currentPhaseIndex, resetPhasesFrom } from "./phase-order.mjs";
@@ -203,7 +203,7 @@ export function completePhase(phase, state, runDir) {
       } else if (state.userDecisions?.login === "completed") {
         if (adbOk) {
           const probeCookies = checkProbeCookies(state.siteUrl);
-          if (!probeCookies.ok) {
+          if (!probeCookies.ok || !hasProbeLoginEvidence(probeCookies.parsed)) {
             return fail("Android 真机或模拟器在线时，已完成登录状态必须来自 Probe /cookie-check。请重新运行登录流程，不要用 Browser Cookie 或口头确认绕过。");
           }
           state.loginFeatures._loginMethod = "probe";

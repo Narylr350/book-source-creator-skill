@@ -58,6 +58,7 @@ export function emptyLinks() {
 export function normalizeLinkStatus(status) {
   const value = String(status || "").trim().toLowerCase();
   if (["success", "ok", "passed", "pass"].includes(value)) return "success";
+  if (["partial", "partial_success", "partial_candidate"].includes(value)) return "partial";
   if (["blocked", "block", "captcha", "login_required"].includes(value)) return "blocked";
   if (["failed", "fail", "error"].includes(value)) return "failed";
   return value || "unknown";

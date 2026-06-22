@@ -467,6 +467,41 @@ describe("bsg workflow user-action gates", () => {
     assert.match(content, /- 登录需求: 部分需要/);
   });
 
+  it("does not label a blocked partial content chain as directly generatable", async () => {
+    const runDir = await initRun(tmpDir);
+    const result = await writeAssessmentAndRecord(runDir, [], {
+      links: {
+        content: { status: "success", blocker: "vip", render: "ssr_or_http" },
+      },
+    });
+    const content = await fs.readFile(path.join(runDir, "assessment.md"), "utf8");
+
+    assert.equal(result.rating, "部分候选");
+    assert.equal(result.summary.overallStatus, "partial_candidate");
+    assert.equal(result.summary.fullPass, false);
+    assert.match(content, /- 评级: 部分候选/);
+    assert.match(content, /- 正文链路: partial \(ssr_or_http\) \(vip\)/);
+    assert.doesNotMatch(content, /- 评级: 可生成/);
+  });
+
+  it("rejects analysis remarks that bypass a blocked search chain with direct IDs", async () => {
+    const runDir = await initRun(tmpDir);
+    await writeSiteFacts(runDir, searchCaptchaFacts());
+    await fs.writeFile(path.join(runDir, "assessment.md"), assessmentContent(
+      ["- evidence:search-1 搜索触发验证码。"],
+      ["- 不依赖站内搜索，优先用书籍 ID 直达详情页。"],
+    ), "utf8");
+
+    await assert.rejects(
+      () => execFileAsync("node", [BSG, "record-assessment", "--run", runDir], { encoding: "utf8" }),
+      (err) => {
+        const result = JSON.parse(err.stdout);
+        assert.match(result.error, /搜索链路|直达|排行榜|book_id/i);
+        return true;
+      },
+    );
+  });
+
   it("normalizes ok status and derives WebView/encryption risk from csr_encrypted render", async () => {
     const runDir = await initRun(tmpDir);
     await writeAssessmentAndRecord(runDir, [], {
@@ -479,7 +514,7 @@ describe("bsg workflow user-action gates", () => {
     });
     const content = await fs.readFile(path.join(runDir, "assessment.md"), "utf8");
 
-    assert.match(content, /- 评级: 可生成/);
+    assert.match(content, /- 评级: 部分候选/);
     assert.match(content, /- 风险标签: .*WebView 依赖/);
     assert.match(content, /- 风险标签: .*加密正文/);
     assert.match(content, /- 总体状态: partial_candidate/);
@@ -689,6 +724,65 @@ describe("bsg workflow user-action gates", () => {
         return true;
       },
     );
+  });
+
+  it("does not mark Probe login completed from cookie presence alone", async () => {
+    const runDir = await initRun(tmpDir);
+    await writeAssessmentAndRecord(runDir, [
+      "- 评级: 可生成",
+      "- 登录需求: 是",
+      "- 用户选择: 登录分析 / 不登录分析",
+      "- 当前分析会话: 匿名 / 已登录 / 登录失败",
+      "- 风险标签: 需登录态",
+    ]);
+    await runBsg(["advance", "--run", runDir], {
+      env: {
+        ...process.env,
+        BSG_TEST_ADB_DEVICES_OUTPUT: "List of devices attached\nABC123\tdevice\n",
+      },
+    });
+
+    await assert.rejects(
+      () => execFileAsync("node", [BSG, "resolve-user-action", "--run", runDir, "--action", "login_completed"], {
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          BSG_TEST_ADB_DEVICES_OUTPUT: "List of devices attached\nABC123\tdevice\n",
+          BSG_TEST_PROBE_COOKIE_CHECK: JSON.stringify({
+            hasCookies: true,
+            cookies: "ci_session=abc; readPage_visits=2",
+            url: "https://example.com",
+          }),
+        },
+      }),
+      (err) => {
+        const result = JSON.parse(err.stdout);
+        assert.match(result.error, /登录态|authenticated|sessionMode|Cookie/);
+        return true;
+      },
+    );
+  });
+
+  it("clears current pending action after resolving it", async () => {
+    const runDir = await initRun(tmpDir);
+    await writeAssessmentAndRecord(runDir, [], searchCaptchaFacts());
+    await runBsg(["advance", "--run", runDir], {
+      env: {
+        ...process.env,
+        BSG_TEST_ADB_DEVICES_OUTPUT: "List of devices attached\nABC123\tdevice\n",
+      },
+    });
+
+    await runBsg(["resolve-user-action", "--run", runDir, "--action", "android_device_ready"], {
+      env: {
+        ...process.env,
+        BSG_TEST_ADB_DEVICES_OUTPUT: "List of devices attached\nABC123\tdevice\n",
+      },
+    });
+    const state = JSON.parse(await fs.readFile(path.join(runDir, "run-state.json"), "utf8"));
+
+    assert.equal(state.pendingUserAction, null);
+    assert.equal(state.userActionHistory.at(-1).action, "android_device_ready");
   });
 
   it("refuses deliver when validation was fabricated without record-validation", async () => {

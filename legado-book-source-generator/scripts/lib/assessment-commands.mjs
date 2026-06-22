@@ -6,7 +6,7 @@ import {
 } from "./state.mjs";
 import {
   PHASE_ORDER, currentPhaseIndex, diagnoseAndroid,
-  detectAuthFromAnalysis, checkProbeCookies,
+  detectAuthFromAnalysis, checkProbeCookies, hasProbeLoginEvidence,
 } from "./phase-engine.mjs";
 import {
   loadAndValidateAssessment, validateCookieFileShape,
@@ -295,6 +295,9 @@ export function cmdResolveUserAction(args) {
       if (!probeCookies.ok) {
         return fail("Android 真机或模拟器在线时，login_completed 必须先通过 Probe /cookie-check 确认 Cookie。请运行 node scripts/bsg.mjs login，在手机/模拟器登录完成后再重试。");
       }
+      if (!hasProbeLoginEvidence(probeCookies.parsed)) {
+        return fail("Probe /cookie-check 只证明目标域存在 Cookie，不能证明已登录账号态。login_completed 需要 Probe 返回 authenticated/loggedIn/isLoggedIn=true、非 anonymous sessionMode，或 user/account 证据；否则请选择 no_account 或继续在手机/模拟器完成登录后重试。");
+      }
       state.loginFeatures._loginMethod = "probe";
     } else {
       const cookieShape = validateCookieFileShape(path.join(runDir, "cookies.json"));
@@ -324,7 +327,7 @@ export function cmdResolveUserAction(args) {
     action,
     resolvedAt: new Date().toISOString(),
   });
-  state.pendingUserAction = { ...pending, resolved: true, action, resolvedAt: new Date().toISOString() };
+  state.pendingUserAction = null;
   saveRunState(runDir, state);
 
   return {
