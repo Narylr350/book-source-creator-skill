@@ -2,6 +2,15 @@
 
 `outputs/<site-slug>/book-source.json` 是唯一默认用户交付物。过程文档写入 `runs/<site-slug>/`。阶段顺序和关隘条件由 `bsg.mjs` 强制执行。
 
+默认执行循环：
+
+1. `init`
+2. `run`
+3. 按 `run` 返回的 `readNext` / `writeTarget` / `nextCommand` / `requiredUserAction` 执行
+4. 再 `run`
+
+`advance`、`record-assessment`、`validate`、`record-validation`、`deliver`、`login` 等旧命令仍保留为专家调试入口，不作为默认 agent 流程。除非 `run.nextCommand` 明确要求，不要自行组合这些命令。
+
 ## 1. 匿名初探 / 登录判定
 
 - 先匿名访问 search/detail/toc/content 四条链路，只判断站点结构、接口路径、是否有反爬、是否需要 WebView。

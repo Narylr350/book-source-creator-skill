@@ -1,4 +1,4 @@
-export { cmdInit, cmdStatus, cmdAdvance } from "./workflow-commands.mjs";
+export { cmdInit, cmdStatus, cmdAdvance, cmdRun } from "./workflow-commands.mjs";
 export {
   cmdRecordAssessment, cmdCheck, cmdSetLoginFeatures, cmdResolveUserAction,
 } from "./assessment-commands.mjs";

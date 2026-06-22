@@ -6,6 +6,7 @@
  *
  * 用法:
  *   node scripts/bsg.mjs init <url> [--fast]
+ *   node scripts/bsg.mjs run --run <dir>
  *   node scripts/bsg.mjs status --run <dir>
  *   node scripts/bsg.mjs advance --run <dir>
  *   node scripts/bsg.mjs check --run <dir>
@@ -22,6 +23,7 @@
 
 import {
   cmdInit,
+  cmdRun,
   cmdStatus,
   cmdAdvance,
   cmdCheck,
@@ -45,6 +47,7 @@ function printUsage() {
     [
       "用法:",
       "  node scripts/bsg.mjs init <site-url> [--fast]",
+      "  node scripts/bsg.mjs run --run {dir}",
       "  node scripts/bsg.mjs status --run {dir}",
       "  node scripts/bsg.mjs advance --run {dir}",
       "  node scripts/bsg.mjs check --run {dir}",
@@ -77,6 +80,9 @@ async function main(argv) {
   switch (command) {
     case "init":
       result = cmdInit(args);
+      break;
+    case "run":
+      result = cmdRun(args);
       break;
     case "status":
       result = cmdStatus(args);
@@ -125,7 +131,7 @@ async function main(argv) {
       break;
     default:
       result = fail(
-        `未知命令: ${command}。可用: init, status, advance, check, record-assessment, set-login-features, resolve-user-action, android-status, record-validation, deliver, debug-bundle, source, login, validate, validator-start, validator-stop`
+        `未知命令: ${command}。可用: init, run, status, advance, check, record-assessment, set-login-features, resolve-user-action, android-status, record-validation, deliver, debug-bundle, source, login, validate, validator-start, validator-stop`
       );
   }
 

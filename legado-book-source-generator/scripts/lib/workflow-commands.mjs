@@ -1,10 +1,11 @@
+import fs from "node:fs";
 import path from "node:path";
 import { deriveSiteSlug } from "./slug.mjs";
 import { initializeRunBundle } from "./output-bundle.mjs";
 import {
   fail, parseArg, freshRunState, saveRunState, loadAndVerify,
   isInSkillInstallDir, blockForPendingUserAction, getPendingUserAction,
-  ensureRunArtifacts,
+  ensureRunArtifacts, fileExists, readJsonFile,
 } from "./state.mjs";
 import {
   PHASE_ORDER, currentPhaseIndex, startPhase, completePhase,
@@ -121,6 +122,189 @@ export function cmdStatus(args) {
     loginFeatures: state.loginFeatures,
     phases,
   };
+}
+
+function runAgainCommand(runDir) {
+  return `node "<skill-dir>/scripts/bsg.mjs" run --run ${runDir}`;
+}
+
+function recordAssessmentCommand(runDir) {
+  return `node "<skill-dir>/scripts/bsg.mjs" record-assessment --run ${runDir}`;
+}
+
+function recordValidationCommand(runDir, status) {
+  const value = status && status !== "skipped" ? status : "<passed|failed|needs_app_review|validator_limitation|degraded>";
+  return `node "<skill-dir>/scripts/bsg.mjs" record-validation --run ${runDir} --status ${value}`;
+}
+
+function assessmentFactsReady(runDir) {
+  const facts = readJsonFile(path.join(runDir, "site-facts.json"), null);
+  if (!facts?.links) return false;
+  return ["search", "detail", "toc", "content"].every((phase) => {
+    const status = String(facts.links?.[phase]?.status || "unknown").trim().toLowerCase();
+    return status && status !== "unknown";
+  });
+}
+
+function analysisHasContent(runDir) {
+  const analysisPath = path.join(runDir, "analysis.md");
+  if (!fileExists(analysisPath)) return false;
+  const text = readTextSafe(analysisPath);
+  return /-\s+[^:\n]+:\s*\S/.test(text);
+}
+
+function sourcePathForState(state) {
+  return path.join(state.workingDir, "outputs", state.siteSlug, "book-source.json");
+}
+
+function sourceExists(state) {
+  const sourcePath = sourcePathForState(state);
+  if (!fileExists(sourcePath)) return false;
+  const parsed = readJsonFile(sourcePath, null);
+  return Array.isArray(parsed) && parsed.length > 0;
+}
+
+function readTextSafe(filePath) {
+  try {
+    return fs.readFileSync(filePath, "utf8");
+  } catch {
+    return "";
+  }
+}
+
+function instructionForPhase(current, state, runDir) {
+  if (current === "assess") {
+    if (state.phases.assess.recorded === true) return completePhase(current, state, runDir);
+    if (assessmentFactsReady(runDir)) {
+      return {
+        ok: true,
+        currentPhase: "assess",
+        nextAction: "run_command",
+        readNext: PHASE_READ_NEXT.assess,
+        message: "assessment.md 和 site-facts.json 已具备记录条件。执行 record-assessment，完成后继续运行 bsg run。",
+        nextCommand: recordAssessmentCommand(runDir),
+      };
+    }
+    return {
+      ok: true,
+      currentPhase: "assess",
+      nextAction: "write_assessment",
+      writeTarget: path.join(runDir, "assessment.md"),
+      readNext: PHASE_READ_NEXT.assess,
+      message: "填写 site-facts.json 和 assessment.md 的证据说明区；完成后继续运行 bsg run。",
+      nextCommand: runAgainCommand(runDir),
+    };
+  }
+
+  if (current === "analyze") {
+    if (analysisHasContent(runDir)) return completePhase(current, state, runDir);
+    return {
+      ok: true,
+      currentPhase: "analyze",
+      nextAction: "write_analysis",
+      writeTarget: path.join(runDir, "analysis.md"),
+      readNext: PHASE_READ_NEXT.analyze,
+      message: "按 search/detail/toc/content 写 analysis.md；完成后继续运行 bsg run。",
+      nextCommand: runAgainCommand(runDir),
+    };
+  }
+
+  if (current === "generate") {
+    if (sourceExists(state)) return completePhase(current, state, runDir);
+    return {
+      ok: true,
+      currentPhase: "generate",
+      nextAction: "generate_json",
+      writeTarget: sourcePathForState(state),
+      readNext: PHASE_READ_NEXT.generate,
+      message: "生成 book-source.json；完成后继续运行 bsg run。",
+      nextCommand: runAgainCommand(runDir),
+    };
+  }
+
+  if (current === "validate") {
+    const report = readJsonFile(path.join(runDir, "validator-report.json"), null);
+    if (report?._generatedBy === "validate-with-validator.mjs" && report.status !== "skipped") {
+      return {
+        ok: true,
+        currentPhase: "validate",
+        nextAction: "run_command",
+        readNext: PHASE_READ_NEXT.validate,
+        message: "validator-report.json 已生成。执行 record-validation，完成后继续运行 bsg run。",
+        nextCommand: recordValidationCommand(runDir, report.status),
+      };
+    }
+    return {
+      ok: true,
+      currentPhase: "validate",
+      nextAction: "run_command",
+      readNext: PHASE_READ_NEXT.validate,
+      message: "运行真实 validator；完成后继续运行 bsg run。",
+      nextCommand: phaseNextCommand(runDir, "validate"),
+    };
+  }
+
+  if (current === "deliver") {
+    return {
+      ok: true,
+      currentPhase: "deliver",
+      nextAction: "run_command",
+      readNext: PHASE_READ_NEXT.deliver,
+      message: "运行 deliver 完成最终交付。",
+      nextCommand: phaseNextCommand(runDir, "deliver"),
+    };
+  }
+
+  return completePhase(current, state, runDir);
+}
+
+export function cmdRun(args) {
+  const runDir = parseArg(args, "--run");
+  if (!runDir) return fail("用法: node scripts/bsg.mjs run --run <run-dir>");
+
+  const { state, error } = loadAndVerify(runDir);
+  if (error) return fail(error);
+
+  const pendingBlock = blockForPendingUserAction(state);
+  if (pendingBlock) {
+    return {
+      ...pendingBlock,
+      nextAction: "stop",
+      nextCommand: `node "<skill-dir>/scripts/bsg.mjs" resolve-user-action --run ${runDir} --action <action>`,
+    };
+  }
+
+  const idx = currentPhaseIndex(state);
+  if (idx >= PHASE_ORDER.length) {
+    return {
+      ok: true,
+      message: "所有阶段已完成。运行 deliver 完成交付。",
+      nextAction: "run_command",
+      readNext: PHASE_READ_NEXT.deliver,
+      nextCommand: phaseNextCommand(runDir, "deliver"),
+    };
+  }
+
+  const current = PHASE_ORDER[idx];
+  const currentPhase = state.phases[current];
+
+  if (currentPhase.status === "pending") {
+    const started = startPhase(current, state, runDir);
+    return { ...started, nextCommand: runAgainCommand(runDir) };
+  }
+
+  if (currentPhase.status !== "in_progress") {
+    return fail(`阶段 ${current} 状态异常: ${currentPhase.status}`);
+  }
+
+  if (current === "probe") {
+    const moved = completePhase(current, state, runDir);
+    if (!moved.ok) return moved;
+    const next = moved.currentPhase || "assess";
+    return instructionForPhase(next, state, runDir);
+  }
+
+  return instructionForPhase(current, state, runDir);
 }
 
 export function cmdAdvance(args) {

@@ -2010,6 +2010,58 @@ describe("printHint stderr output", () => {
 });
 
 describe("advance response fields", () => {
+  it("SKILL main workflow points agents to run", async () => {
+    const skill = await fs.readFile(path.join(ROOT, "SKILL.md"), "utf8");
+
+    assert.match(skill, /默认只运行 run|之后.*run/s);
+    assert.match(skill, /requiredUserAction/);
+    assert.match(skill, /专家命令/);
+  });
+
+  it("run starts the next pending phase after init", async () => {
+    const tmpDir = await makeTmpDir();
+    const result = await runBsg(["init", "https://example.com", "--cwd", tmpDir]);
+
+    const run = await runBsg(["run", "--run", result.runDir]);
+
+    assert.equal(run.ok, true);
+    assert.equal(run.nextAction, "probe_site");
+    assert.ok(Array.isArray(run.readNext));
+    assert.ok(run.nextCommand.includes("run"));
+    await fs.rm(tmpDir, { recursive: true, force: true });
+  });
+
+  it("run stops at assessment authoring instead of asking the agent to advance", async () => {
+    const tmpDir = await makeTmpDir();
+    const result = await runBsg(["init", "https://example.com", "--cwd", tmpDir]);
+    await runBsg(["run", "--run", result.runDir]);
+
+    const run = await runBsg(["run", "--run", result.runDir]);
+
+    assert.equal(run.nextAction, "write_assessment");
+    assert.ok(run.writeTarget.endsWith(path.join("runs", "example-com", "assessment.md")));
+    assert.ok(run.readNext.some((p) => p.includes("assessment-template")));
+    assert.ok(run.nextCommand.includes("run"));
+    assert.doesNotMatch(run.message, /展示评估摘要/);
+    await fs.rm(tmpDir, { recursive: true, force: true });
+  });
+
+  it("run stops when requiredUserAction is pending", async () => {
+    const tmpDir = await makeTmpDir();
+    const runDir = await initRun(tmpDir);
+    await writeAssessmentAndRecord(runDir, ["- 评级: 可生成", "- 风险标签: WebView 依赖"]);
+    await runBsg(["advance", "--run", runDir], {
+      env: { ...process.env, BSG_TEST_ADB_DEVICES_OUTPUT: "List of devices attached\n" },
+    });
+
+    const run = await runBsg(["run", "--run", runDir]);
+
+    assert.equal(run.nextAction, "stop");
+    assert.equal(run.requiredUserAction, "android_device_needed");
+    assert.match(run.nextCommand, /resolve-user-action/);
+    await fs.rm(tmpDir, { recursive: true, force: true });
+  });
+
   it("init response has nextCommand", async () => {
     const tmpDir = await makeTmpDir();
     const result = await runBsg(["init", "https://example.com", "--cwd", tmpDir]);
