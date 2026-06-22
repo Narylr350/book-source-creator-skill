@@ -103,16 +103,16 @@ export function reportHasAndroidWebViewContentEvidence(reportPath) {
   try {
     const report = JSON.parse(fs.readFileSync(reportPath, "utf-8"));
     const androidContentSteps = (report.steps || []).filter((step) => step?.mode === "android" && step.phase === "content");
-    if (androidContentSteps.some((step) => step.status === "error")) return false;
     const contentSteps = androidContentSteps.filter((step) => stepUsedAndroidProbe(step));
-    return contentSteps.some((step) => {
-      if (step.status !== "success") return false;
+    const hasExtractedContent = (step) => {
       if (step.preview && String(step.preview).trim().length > 0) return true;
       if (step.evidence?.contentPreview && String(step.evidence.contentPreview).trim().length > 0) return true;
       const evidenceLength = Number(step.evidence?.contentLength || 0);
       const extractedLength = Number(step.extracted?.contentLength || 0);
       return evidenceLength > 0 || extractedLength > 0;
-    });
+    };
+    if (androidContentSteps.some((step) => step.status === "error" && !hasExtractedContent(step))) return false;
+    return contentSteps.some(hasExtractedContent);
   } catch {
     return false;
   }

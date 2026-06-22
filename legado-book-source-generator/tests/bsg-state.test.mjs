@@ -1533,7 +1533,11 @@ describe("bsg workflow user-action gates", () => {
   });
 
   it("refuses deliver after blocked validation matrix", async () => {
-    const runDir = await initRun(tmpDir);
+    const adbEnv = {
+      ...process.env,
+      BSG_TEST_ADB_DEVICES_OUTPUT: "List of devices attached\nABC123\tdevice\n",
+    };
+    const runDir = await initRun(tmpDir, { env: adbEnv });
     await advanceToValidateWithWebViewSource(tmpDir, runDir);
     await fs.writeFile(path.join(runDir, "validation-checklist.md"), "# 清单\n", "utf8");
     await writeGeneratedValidatorReport(runDir, {
@@ -1544,7 +1548,7 @@ describe("bsg workflow user-action gates", () => {
       ],
     });
 
-    const blocked = await runBsgBlocked(["record-validation", "--run", runDir, "--status", "validator_limitation"]);
+    const blocked = await runBsgBlocked(["record-validation", "--run", runDir, "--status", "validator_limitation"], { env: adbEnv });
     assert.equal(blocked.status, "blocked");
     assert.equal(blocked.blockedBy, "android_probe_not_used");
 
@@ -1835,6 +1839,67 @@ describe("bsg workflow user-action gates", () => {
     assert.equal(result.blockedBy, "android_webview_content_not_verified");
     assert.equal(matrix.links.content.status, "blocked");
     assert.equal(matrix.links.content.blocker, "android_webview_content_not_verified");
+  });
+
+  it("does not treat a VIP-lock signal with extracted Android content as missing WebView evidence", async () => {
+    const adbEnv = {
+      ...process.env,
+      BSG_TEST_ADB_DEVICES_OUTPUT: "List of devices attached\nABC123\tdevice\n",
+    };
+    const runDir = await initRun(tmpDir, { env: adbEnv });
+    await advanceToValidateWithWebViewSource(tmpDir, runDir);
+    const preview = "这是一段从 Android WebView DOM 中提取出的章节正文。".repeat(8);
+    await writeGeneratedValidatorReport(runDir, {
+      status: "failed",
+      mode: "android",
+      phases: { search: "success", detail: "success", toc: "success", content: "success" },
+      summary: {
+        resultCount: 1,
+        firstBook: "Example",
+        chapterCount: 20,
+        contentLength: preview.length,
+        contentPreview: preview,
+      },
+      steps: [
+        {
+          phase: "content",
+          status: "error",
+          mode: "android",
+          errorCode: "CONTENT_IS_VIP_LOCK_PAGE",
+          error: "正文页提示 VIP/付费，需要登录且有付费权限的账号。",
+          request: { headers: { Cookie: "a=b" }, url: "https://example.com/chapter/1" },
+          androidBackend: "probe_webview",
+          webViewHtmlPreview: "<html><body><div id=\"J_BookRead\">正文</div></body></html>",
+          evidence: { contentLength: preview.length, contentPreview: preview },
+          preview,
+          extracted: { contentLength: preview.length },
+        },
+        {
+          phase: "content",
+          status: "success",
+          mode: "android",
+          request: { headers: { Cookie: "a=b" }, url: "https://example.com/chapter/2" },
+          androidBackend: "probe_webview",
+          webViewHtmlPreview: "<html><body><div id=\"J_BookRead\">正文</div></body></html>",
+          evidence: { contentLength: preview.length, contentPreview: preview },
+          preview,
+          extracted: { contentLength: preview.length },
+        },
+      ],
+    });
+    await runBsg(["set-login-features", "--run", runDir, "--flags", JSON.stringify({
+      hasEnabledCookieJar: true,
+      _loginMethod: "probe",
+    })]);
+
+    const result = await runBsg(["record-validation", "--run", runDir, "--status", "failed"], { env: adbEnv });
+    const matrix = JSON.parse(await fs.readFile(path.join(runDir, "capability-matrix.json"), "utf8"));
+
+    assert.equal(result.status, "failed");
+    assert.equal(result.nextAction, "repair_in_generate");
+    assert.notEqual(result.blockedBy, "android_webview_content_not_verified");
+    assert.notEqual(matrix.links.content.blocker, "android_webview_content_not_verified");
+    assert.ok(["login", "vip"].includes(matrix.links.content.blocker));
   });
 
   it("blocks polluted content preview even when validator marks content success", async () => {

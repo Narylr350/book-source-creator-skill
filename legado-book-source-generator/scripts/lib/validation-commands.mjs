@@ -410,6 +410,16 @@ export function cmdRecordValidation(args) {
         "然后运行: node scripts/bsg.mjs login → bsg.mjs validate --run dir --mode android → record-validation。",
         "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
       ].join("\n");
+    } else {
+      androidWarning = [
+        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+        "⛔ Probe 登录后未用 Android 验证",
+        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+        "run-state 记录登录态来自 Android Probe，但 validator-report.json 没有 Android Probe 证据。",
+        "当前未检测到可用 Android 真机或模拟器，不能把 Probe 登录后的验证退回 HTTP 或直接交付。",
+        "请连接真机或启动模拟器后重新运行 Android mode 验证。",
+        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+      ].join("\n");
     }
   }
 
@@ -523,6 +533,25 @@ export function cmdRecordValidation(args) {
         saveRunState(runDir, state);
         writeCapabilityMatrix(runDir, reportPathForMode, "blocked:android_device_disconnected");
         return { ok: true, status: "blocked", blockedBy: "android_device_disconnected", shouldRetry: true, nextAction: "reconnect_device_and_retry", message: androidWarning };
+      }
+      if (state.loginFeatures._loginMethod === "probe") {
+        v.attempts -= 1;
+        saveRunState(runDir, state);
+        writeCapabilityMatrix(runDir, reportPathForMode, "blocked:android_probe_not_used");
+        writeValidatorSummary(runDir, status, "blocked:android_probe_not_used", reportPathForMode);
+        const correctiveAction = "run-state 记录登录来自 Android Probe，但 validator-report.json 没有 Android Probe 证据。必须重新运行 Android Probe 验证，不能退回 HTTP 或直接交付。";
+        const nextCommand = `node "<skill-dir>/scripts/bsg.mjs" validate --run ${runDir} --mode android`;
+        printHint(correctiveAction, nextCommand);
+        return {
+          ok: true,
+          status: "blocked",
+          blockedBy: "android_probe_not_used",
+          shouldRetry: true,
+          nextAction: "rerun_android_validation_with_probe",
+          message: androidWarning,
+          correctiveAction,
+          nextCommand,
+        };
       }
     } else if (!reportUsedAndroidWebView(reportPathForMode) && (state.loginFeatures.hasWebView || state.loginFeatures.hasWebJs)) {
       v.attempts -= 1;

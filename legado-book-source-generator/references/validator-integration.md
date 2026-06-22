@@ -183,7 +183,7 @@ node scripts/bsg.mjs record-validation --run runs/<slug> --status <status>
 `mode=android` 不是 Android WebView 正文验证的充分证据。生成源含 `webView:true` / `webJs` 时，报告必须在 content 阶段同时留下两类证据：
 
 1. Android WebView 渲染证据：`webViewHtmlPreview`、`webViewScreenshotBase64`、`debugArtifacts["response.rendered.html"]` 或 `debugArtifacts["screenshot.png"]`。缺失时 `record-validation` 返回 `blockedBy=android_webview_not_used`。
-2. WebView 后正文提取证据：整条 content 链路没有失败 step，并且有 `preview`、`evidence.contentPreview`、`evidence.contentLength` 或 `extracted.contentLength`。缺失或同轮 content 仍有失败 step 时，`record-validation` 返回 `blockedBy=android_webview_content_not_verified`。
+2. WebView 后正文提取证据：Android content step 必须有 `preview`、`evidence.contentPreview`、`evidence.contentLength` 或 `extracted.contentLength`。如果 content 失败 step 没有这些提取证据，`record-validation` 返回 `blockedBy=android_webview_content_not_verified`；如果失败 step 同时带有有效正文证据，则按具体错误码（例如登录/VIP/验证码）处理，不误报为 WebView 未提取正文。
 
 截图或 rendered HTML 只能证明页面打开过，不能证明阅读 App 能按 `ruleContent.content` / `webJs` 提取正文。正文可用性必须以后者为准。
 
