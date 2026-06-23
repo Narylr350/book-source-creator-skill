@@ -14,15 +14,16 @@ async function makeTmpDir() {
   return fs.mkdtemp(path.join(os.tmpdir(), "opencode-export-"));
 }
 
-async function writeFakeOpencode(tmpDir, sessions) {
+async function writeFakeOpencode(tmpDir, sessions, exports = {}) {
   const fakeOpencode = path.join(tmpDir, process.platform === "win32" ? "opencode.cmd" : "opencode");
   const fakeCli = path.join(tmpDir, "fake-opencode.mjs");
   const sessionsJson = JSON.stringify(sessions);
   await fs.writeFile(fakeCli, [
     `const sessions = ${JSON.stringify(sessionsJson)};`,
+    `const exports = ${JSON.stringify(exports)};`,
     "const args = process.argv.slice(2);",
     "if (args[0] === 'session') { console.log(sessions); process.exit(0); }",
-    "if (args[0] === 'export') { console.log(JSON.stringify({ exported: args[1] })); process.exit(0); }",
+    "if (args[0] === 'export') { console.log(exports[args[1]] || JSON.stringify({ exported: args[1] })); process.exit(0); }",
     "process.exit(1);",
   ].join("\n"), "utf8");
 
@@ -64,7 +65,30 @@ describe("export-opencode-session", () => {
         updated: 9,
         directory: "D:\\Narylr\\other",
       },
-    ]);
+    ], {
+      ses_latest: JSON.stringify({
+        id: "ses_latest",
+        title: "生成刺猬猫书源",
+        messages: [
+          {
+            role: "user",
+            parts: [{ type: "text", text: "生成刺猬猫书源" }],
+          },
+          {
+            role: "assistant",
+            parts: [
+              { type: "text", text: "我先检查状态。" },
+              {
+                type: "tool",
+                tool: "Bash",
+                input: { command: "node scripts/bsg.mjs android --run runs/ciweimao-com" },
+                output: "requiredUserAction: android_device_needed",
+              },
+            ],
+          },
+        ],
+      }),
+    });
 
     const result = await execFileAsync("node", [
       SCRIPT,
@@ -76,7 +100,13 @@ describe("export-opencode-session", () => {
     const parsed = JSON.parse(result.stdout);
     assert.equal(parsed.ok, true);
     assert.equal(parsed.sessionId, "ses_latest");
-    assert.equal(await fs.readFile(out, "utf8"), "{\"exported\":\"ses_latest\"}\n");
+    assert.equal(parsed.cleanPath, out.replace(/\.json$/i, ".clean.md"));
+    const cleaned = await fs.readFile(parsed.cleanPath, "utf8");
+    assert.match(cleaned, /# OpenCode Session Clean Export/);
+    assert.match(cleaned, /生成刺猬猫书源/);
+    assert.match(cleaned, /node scripts\/bsg\.mjs android --run runs\/ciweimao-com/);
+    assert.match(cleaned, /requiredUserAction: android_device_needed/);
+    assert.doesNotMatch(cleaned, /"parts":/);
   });
 
   it("defaults to current directory and writes a fixed export filename", async () => {
@@ -100,6 +130,7 @@ describe("export-opencode-session", () => {
     assert.equal(parsed.ok, true);
     assert.equal(parsed.sessionId, "ses_current");
     assert.equal(parsed.outPath, defaultOut);
+    assert.equal(parsed.cleanPath, path.join(tmpDir, "opencode-session-export.clean.md"));
     assert.equal(await fs.readFile(defaultOut, "utf8"), "{\"exported\":\"ses_current\"}\n");
   });
 
@@ -126,5 +157,80 @@ describe("export-opencode-session", () => {
     assert.equal(parsed.ok, true);
     assert.equal(parsed.sessionId, "ses_positional");
     assert.equal(parsed.outPath, path.join(workDir, "opencode-session-export.json"));
+  });
+
+  it("cleans an existing opencode export without invoking opencode", async () => {
+    const tmpDir = await makeTmpDir();
+    const input = path.join(tmpDir, "raw.json");
+    await fs.writeFile(input, JSON.stringify({
+      id: "ses_clean_only",
+      directory: tmpDir,
+      messages: [
+        { role: "user", parts: [{ text: "开始黑盒" }] },
+        {
+          role: "assistant",
+          parts: [
+            { text: "读取文件。" },
+            { tool: "Read", input: { filePath: "D:/Narylr/skill-test/test.md" }, output: "# test" },
+          ],
+        },
+      ],
+    }), "utf8");
+
+    const result = await execFileAsync("node", [
+      SCRIPT,
+      "--clean-only", input,
+    ], { encoding: "utf8" });
+
+    const parsed = JSON.parse(result.stdout);
+    assert.equal(parsed.ok, true);
+    assert.equal(parsed.outPath, input);
+    assert.equal(parsed.cleanPath, path.join(tmpDir, "raw.clean.md"));
+    const cleaned = await fs.readFile(parsed.cleanPath, "utf8");
+    assert.match(cleaned, /ses_clean_only/);
+    assert.match(cleaned, /开始黑盒/);
+    assert.match(cleaned, /D:\/Narylr\/skill-test\/test\.md/);
+  });
+
+  it("extracts opencode state tool input and output fields", async () => {
+    const tmpDir = await makeTmpDir();
+    const input = path.join(tmpDir, "state-tool.json");
+    await fs.writeFile(input, JSON.stringify({
+      info: { id: "ses_state_tool", title: "真实结构" },
+      messages: [
+        {
+          info: { role: "assistant" },
+          parts: [
+            {
+              type: "tool",
+              tool: "bash",
+              state: {
+                status: "completed",
+                input: { command: "node bsg.mjs status --run runs/demo" },
+                output: "{\"ok\":true}",
+              },
+            },
+            {
+              type: "tool",
+              tool: "read",
+              state: {
+                status: "completed",
+                input: { filePath: "D:/Narylr/skill-test/test.md" },
+                output: "# test",
+              },
+            },
+          ],
+        },
+      ],
+    }), "utf8");
+
+    const result = await execFileAsync("node", [SCRIPT, "--clean-only", input], { encoding: "utf8" });
+    const parsed = JSON.parse(result.stdout);
+    const cleaned = await fs.readFile(parsed.cleanPath, "utf8");
+
+    assert.match(cleaned, /tool calls: 2/);
+    assert.match(cleaned, /node bsg\.mjs status --run runs\/demo/);
+    assert.match(cleaned, /D:\/Narylr\/skill-test\/test\.md/);
+    assert.match(cleaned, /\{"ok":true\}/);
   });
 });
