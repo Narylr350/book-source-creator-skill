@@ -340,6 +340,14 @@ curl.exe -X POST http://localhost:1111/api/debug/run -H "Content-Type: applicati
 
 Cookie API 只在脚本故障时手工使用；正常流程优先写 `runs/<slug>/cookies.json`，由 `bsg.mjs validate` 自动注入。
 
+Android Probe 登录后的 Cookie 如果需要人工核对，优先用封装命令导出，不要手拼 `/cookie-check`：
+
+```powershell
+node "<skill-dir>/scripts/bsg.mjs" android --run runs/<slug> --dump-cookie "runs/<slug>/cookies.json"
+```
+
+该命令会检查目标域、`wap.`、`m.` 和根域，选择最佳 Probe Cookie，写成 validator 可读的 JSON。命令输出只显示域名和 Cookie 名；原始 Cookie 只在指定文件里。该文件用于 validator 调试，不得写死进 `book-source.json`。
+
 ```powershell
 curl.exe -s -X POST http://localhost:1111/api/cookie/set -H "Content-Type: application/json" -d '{"domain":"www.example.com","cookie":"a=b; c=d"}'
 curl.exe -s "http://localhost:1111/api/cookie/get?domain=www.example.com"

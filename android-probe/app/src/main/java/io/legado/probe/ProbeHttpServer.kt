@@ -5,6 +5,27 @@ import com.google.gson.Gson
 import fi.iki.elonen.NanoHTTPD
 import kotlinx.coroutines.runBlocking
 
+data class CookieSummary(
+    val cookieNames: List<String>,
+    val hasLoginEvidence: Boolean
+) {
+    val cookieCount: Int get() = cookieNames.size
+}
+
+fun summarizeCookies(cookies: String?): CookieSummary {
+    val names = cookies.orEmpty()
+        .split(";")
+        .mapNotNull { part ->
+            val name = part.substringBefore("=", "").trim()
+            name.ifEmpty { null }
+        }
+    val loginName = Regex("(^|[_-])(login|auth|token|user|uid|reader|member|account)([_-]|$)", RegexOption.IGNORE_CASE)
+    return CookieSummary(
+        cookieNames = names,
+        hasLoginEvidence = names.any { loginName.containsMatchIn(it) }
+    )
+}
+
 class ProbeHttpServer(
     private val context: Context,
     port: Int = 18888
@@ -12,6 +33,10 @@ class ProbeHttpServer(
 
     private val runner = WebViewRunner(context)
     private val gson = Gson()
+
+    private fun status(message: String) {
+        WebViewProbeActivity.instance?.updateStatus(message)
+    }
 
     override fun serve(session: IHTTPSession): Response {
         val uri = session.uri
@@ -56,6 +81,7 @@ class ProbeHttpServer(
             val jsonBody = bodyMap["postData"] ?: return newFixedLengthResponse(
                 Response.Status.BAD_REQUEST, "application/json", """{"error":"Empty body"}""")
             val req = gson.fromJson(jsonBody, LoginRequest::class.java)
+            status("HTTP POST /login url=${req.url.take(80)}")
             val resp = runBlocking { runner.openLoginWebView(req.url) }
             newFixedLengthResponse(Response.Status.OK, "application/json", gson.toJson(resp))
         } catch (e: Exception) {
@@ -81,16 +107,27 @@ class ProbeHttpServer(
         val url = "https://$domain"
         val cookies = cm.getCookie(url) ?: ""
         val hasCookies = cookies.isNotEmpty()
+        val summary = summarizeCookies(cookies)
+        status("HTTP GET /cookie-check domain=$domain cookies=${summary.cookieNames.joinToString(",").ifEmpty { "none" }} loginEvidence=${summary.hasLoginEvidence}")
         return newFixedLengthResponse(Response.Status.OK, "application/json", gson.toJson(mapOf(
+            "domain" to domain,
             "url" to url,
             "cookies" to cookies,
             "hasCookies" to hasCookies,
-            "message" to if (hasCookies) "Cookies found — login likely successful" else "No cookies yet — user may still be on login page"
+            "cookieNames" to summary.cookieNames,
+            "cookieCount" to summary.cookieCount,
+            "hasLoginEvidence" to summary.hasLoginEvidence,
+            "message" to when {
+                !hasCookies -> "No cookies yet — user may still be on login page"
+                summary.hasLoginEvidence -> "Cookies found with login evidence"
+                else -> "Cookies found, but no login evidence"
+            }
         )))
     }
 
     private fun handleCookieClear(): Response {
         return try {
+            status("HTTP POST /cookie-clear")
             val cm = android.webkit.CookieManager.getInstance()
             val latch = java.util.concurrent.CountDownLatch(1)
             var clearError: String? = null
@@ -116,6 +153,7 @@ class ProbeHttpServer(
                 return newFixedLengthResponse(Response.Status.INTERNAL_ERROR, "application/json",
                     """{"ok":false,"error":"${clearError?.replace("\"", "\\\"")}"}""")
             }
+            status("Cookie clear completed")
             newFixedLengthResponse(Response.Status.OK, "application/json", gson.toJson(mapOf(
                 "ok" to true,
                 "message" to "All WebView cookies cleared"
@@ -133,6 +171,7 @@ class ProbeHttpServer(
             val jsonBody = bodyMap["postData"] ?: return newFixedLengthResponse(
                 Response.Status.BAD_REQUEST, "application/json", """{"error":"Empty body"}""")
             val request = gson.fromJson(jsonBody, RenderRequest::class.java)
+            status("HTTP POST /render url=${request.url.take(80)} timeout=${request.timeout}")
             val response = runBlocking { runner.render(request) }
             newFixedLengthResponse(Response.Status.OK, "application/json", gson.toJson(response))
         } catch (e: Exception) {

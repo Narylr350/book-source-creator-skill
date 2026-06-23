@@ -15,6 +15,7 @@ import { PHASE_ORDER, currentPhaseIndex, resetPhasesFrom } from "./phase-order.m
 export {
   checkEnvironment, parseAdbDevicesOutput, diagnoseAndroid, checkAdb,
   cmdAndroidStatus, checkProbeCookies, detectAuthFromAnalysis, hasProbeLoginEvidence,
+  summarizeProbeCookieCheck,
 } from "./environment.mjs";
 export { cmdDeliverCheck } from "./deliver-check.mjs";
 export { PHASE_ORDER, currentPhaseIndex, resetPhasesFrom } from "./phase-order.mjs";

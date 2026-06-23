@@ -27,6 +27,7 @@ node "<skill-dir>/scripts/bsg.mjs" status --run <run-dir>
 - `check --run <run-dir>`：检查评估、登录、Android 决策是否缺证据。
 - `source inspect --run <run-dir>`：审计当前 `book-source.json` 的风险字段。
 - `android --run <run-dir>`：Android 单入口；检查真机/模拟器和 Probe，必要时启动 Probe，运行 `mode=android` 验证并收敛报告。
+- `android --run <run-dir> --dump-cookie <file>`：显式导出 Probe 原始 Cookie 到本地文件，供人工核对或 validator 调试；默认输出不显示 Cookie 值。
 - `android-status`：只读诊断；检查 adb、真机/模拟器和 Android Probe。
 - `validate --run <run-dir> [--mode http|browser|android]`：运行 validator，写入 `validator-report.json`。
 - `record-validation --run <run-dir> --status <status>`：把真实验证报告收敛成状态、能力矩阵和修复上下文。
@@ -59,6 +60,8 @@ node "<skill-dir>/scripts/bsg.mjs" status --run <run-dir>
 PC HTTP / Browser 只用于观察站点和辅助写规则。交付前如果 validator 结果不是 Android mode，`record-validation` 会先要求确认 Android 真机或模拟器可用性；用户明确没有设备后才允许降级记录，不能把 PC passed 写成 full pass。
 
 `android --run` 是默认收敛入口，不是所有 Android 问题的唯一调试手段。只有在它返回明确诊断、脚本失败需要定位环境问题、或用户要求调试 Probe/设备时，才展开底层 adb、Probe API 或 validator 子步骤；调试结束后仍回到 `android --run` / `record-validation` 收敛结果。
+
+如果 Probe 登录后自动 Cookie 判断和手机页面状态矛盾，先看 `android --login-completed` 的 `probeCookieEvidence`。仍不清楚时运行 `android --run <run-dir> --dump-cookie "runs/<slug>/cookies.json"`，人工核对域名和 Cookie 名；原始 Cookie 只用于本地调试，不要写进书源。
 
 ## 最终审计
 

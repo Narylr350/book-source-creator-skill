@@ -15,7 +15,7 @@
  *   node "<skill-dir>/scripts/bsg.mjs" set-login-features --run <dir> [--flags <json>]
  *   node "<skill-dir>/scripts/bsg.mjs" record-validation --run <dir> --status <status>
  *   node "<skill-dir>/scripts/bsg.mjs" deliver --run <dir>
- *   node "<skill-dir>/scripts/bsg.mjs" android --run <dir>
+ *   node "<skill-dir>/scripts/bsg.mjs" android --run <dir> [--dump-cookie <file>]
  *   node "<skill-dir>/scripts/bsg.mjs" debug-bundle [--run <dir>] [--cwd <work-dir>] [--transcript <file>] [--claude-session <id>]
  *   node "<skill-dir>/scripts/bsg.mjs" source inspect|set --run <dir>
  *   node "<skill-dir>/scripts/bsg.mjs" login [--run <dir> | --url <login-url>] [--keep-cookies]
@@ -59,7 +59,7 @@ function printUsage() {
       "  node \"<skill-dir>/scripts/bsg.mjs\" record-assessment --run {dir}",
       "  node \"<skill-dir>/scripts/bsg.mjs\" set-login-features --run {dir} [--flags <json>]",
       "  node \"<skill-dir>/scripts/bsg.mjs\" resolve-user-action --run {dir} --action <action>",
-      "  node \"<skill-dir>/scripts/bsg.mjs\" android --run {dir}",
+      "  node \"<skill-dir>/scripts/bsg.mjs\" android --run {dir} [--dump-cookie <file>]",
       "  node \"<skill-dir>/scripts/bsg.mjs\" record-validation --run {dir} --status <status>",
       "  node \"<skill-dir>/scripts/bsg.mjs\" deliver --run {dir}",
       "  node \"<skill-dir>/scripts/bsg.mjs\" debug-bundle [--run {dir}] [--cwd {work-dir}] [--transcript {file}] [--claude-session {id}]",

@@ -52,6 +52,36 @@ curl.exe -s "http://127.0.0.1:18888/cookie-check?domain=<目标域名>"
 
 只读诊断命令可以帮助定位问题，但不能替代 `android --run` 的最终结果。
 
+### Cookie 可见性和手动导出
+
+默认输出只显示安全摘要，不显示原始 Cookie：
+
+- `checkedDomains`：脚本检查过的域名
+- `selectedDomain`：最终选中的 Cookie 域名
+- `cookieNames`：Cookie 名，不含值
+- `hasLoginEvidence`：是否命中登录证据
+
+自动选择域名不可能覆盖所有站点。登录 Cookie 可能落在移动域名、API 子域，或 Cookie 名不含 `login/token/user` 这类关键词。需要人工核对时，显式导出原始 Cookie：
+
+```powershell
+node "<skill-dir>/scripts/bsg.mjs" android --run <run-dir> --dump-cookie "runs/<slug>/cookies.json"
+```
+
+导出的文件是 validator 可直接读取的格式：
+
+```json
+{
+  "wap.example.com": "user_id=...; login_token=...; ci_session=..."
+}
+```
+
+使用边界：
+
+- `--dump-cookie` 只用于本地 validator 调试或手动核对域名，不改变 run 状态。
+- 文件包含原始 Cookie，不要贴进对话、debug-bundle、日志或 `book-source.json`。
+- 书源里不要写死 Cookie；优先用 `enabledCookieJar`、`loginUrl`、`java.getCookie()` 复用阅读 App 登录态。
+- 如果 `hasLoginEvidence=false`，说明只导出了可见 Cookie，不代表账号已登录；继续让用户在手机/模拟器完成登录，或按站点实际 Cookie 规则人工判断。
+
 ### 底层 Probe API 速查
 
 只在 `android --run` 明确指向 Probe/设备环境问题，或用户要求调试 Probe 时使用。常规验证仍回到 `android --run`。
@@ -125,6 +155,8 @@ Probe 会优先检查目标域名及常见移动域名：
 - Cookie 名包含 `login`、`auth`、`token`、`user`、`uid`、`reader`、`member`、`account`
 
 只有匿名 Cookie 时，不要运行 `--login-completed`，应让用户继续在手机/模拟器里完成登录。
+
+若自动判断和页面状态矛盾，先看 `android --login-completed` 返回的 `probeCookieEvidence`。仍不清楚时用 `--dump-cookie` 导出本地文件，人工检查域名和 Cookie 名，再决定是否保存为 `runs/<slug>/cookies.json` 供 validator 调试。
 
 ### Android Report 判断
 

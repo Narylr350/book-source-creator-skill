@@ -258,22 +258,55 @@ function probeCookieCheckUrlForDomain(domain) {
   return `http://localhost:18888/cookie-check?domain=${encodeURIComponent(domain)}`;
 }
 
-function cookieStringHasLoginEvidence(cookieString) {
+export function cookieNamesFromString(cookieString) {
   return String(cookieString || "")
     .split(";")
     .map((part) => part.split("=")[0]?.trim().toLowerCase())
+    .filter(Boolean);
+}
+
+function cookieStringHasLoginEvidence(cookieString) {
+  return cookieNamesFromString(cookieString)
     .some((name) => /(^|[_-])(login|auth|token|user|uid|reader|member|account)([_-]|$)/.test(name || ""));
 }
 
 export function hasProbeLoginEvidence(parsed) {
   if (!parsed || typeof parsed !== "object") return false;
   if (parsed.authenticated === true || parsed.loggedIn === true || parsed.isLoggedIn === true) return true;
+  if (parsed.hasLoginEvidence === true) return true;
   if (typeof parsed.sessionMode === "string" && parsed.sessionMode && parsed.sessionMode !== "anonymous") return true;
   if (typeof parsed.user === "string" && parsed.user.trim()) return true;
   if (parsed.user && typeof parsed.user === "object" && Object.keys(parsed.user).length > 0) return true;
   if (typeof parsed.account === "string" && parsed.account.trim()) return true;
   if (parsed.account && typeof parsed.account === "object" && Object.keys(parsed.account).length > 0) return true;
   return cookieStringHasLoginEvidence(parsed.cookies || parsed.cookie || "");
+}
+
+export function probeCookieResultDomain(parsed, fallbackSiteUrl = "") {
+  for (const value of [parsed?.url, parsed?.domain]) {
+    const domain = targetDomainFromSiteUrl(value || "");
+    if (domain) return domain;
+  }
+  return targetDomainFromSiteUrl(fallbackSiteUrl);
+}
+
+export function probeCookieResultNames(parsed) {
+  if (Array.isArray(parsed?.cookieNames)) {
+    return parsed.cookieNames.map((name) => String(name).trim()).filter(Boolean);
+  }
+  return cookieNamesFromString(parsed?.cookies || parsed?.cookie || "");
+}
+
+export function summarizeProbeCookieCheck(siteUrl, result) {
+  const parsed = result?.parsed || {};
+  return {
+    selectedDomain: probeCookieResultDomain(parsed, siteUrl),
+    selectedUrl: parsed.url || null,
+    checkedDomains: result?.checkedDomains || probeCookieCheckDomains(siteUrl),
+    hasCookies: parsed.hasCookies === true,
+    hasLoginEvidence: hasProbeLoginEvidence(parsed),
+    cookieNames: probeCookieResultNames(parsed),
+  };
 }
 
 export function selectBestProbeCookieResult(siteUrl, results) {
@@ -298,7 +331,7 @@ export function checkProbeCookies(siteUrl) {
     if (domains.length === 0) return { ok: false, error: "Probe cookie-check requires a target domain" };
     if (process.env.BSG_TEST_PROBE_COOKIE_CHECK != null) {
       const parsed = JSON.parse(process.env.BSG_TEST_PROBE_COOKIE_CHECK);
-      return { ok: parsed.hasCookies === true, parsed };
+      return { ok: parsed.hasCookies === true, parsed, checkedDomains: domains };
     }
     const results = domains.map((domain) => {
       try {
@@ -310,7 +343,7 @@ export function checkProbeCookies(siteUrl) {
       }
     });
     const best = selectBestProbeCookieResult(siteUrl, results);
-    return { ...best, ok: best.parsed?.hasCookies === true };
+    return { ...best, ok: best.parsed?.hasCookies === true, checkedDomains: domains };
   } catch (e) {
     return { ok: false, error: String(e.message || e) };
   }

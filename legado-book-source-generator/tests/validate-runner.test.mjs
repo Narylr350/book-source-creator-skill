@@ -42,4 +42,38 @@ describe("validate runner cookie resolution", () => {
       fs.rmSync(runDir, { recursive: true, force: true });
     }
   });
+
+  it("uses the selected Probe cookie result domain for mobile login cookies", () => {
+    const runDir = fs.mkdtempSync(path.join(os.tmpdir(), "bsg-validate-cookie-"));
+    const previous = process.env.BSG_TEST_PROBE_COOKIE_CHECK;
+    process.env.BSG_TEST_PROBE_COOKIE_CHECK = JSON.stringify({
+      hasCookies: true,
+      url: "https://wap.ciweimao.com",
+      cookies: "user_id=1; reader_id=1; login_token=abc; ci_session=def",
+    });
+
+    try {
+      const state = {
+        siteUrl: "https://www.ciweimao.com",
+        loginFeatures: {
+          _loginMethod: "probe",
+          _loginVerified: true,
+        },
+      };
+
+      const result = resolveValidateCookieFile(runDir, state, "android");
+
+      assert.equal(result.ok, true);
+      assert.equal(result.source, "probe");
+      const cookieJson = JSON.parse(fs.readFileSync(result.cookieFile, "utf-8"));
+      assert.deepEqual(cookieJson, {
+        "wap.ciweimao.com": "user_id=1; reader_id=1; login_token=abc; ci_session=def",
+      });
+      result.cleanup?.();
+    } finally {
+      if (previous == null) delete process.env.BSG_TEST_PROBE_COOKIE_CHECK;
+      else process.env.BSG_TEST_PROBE_COOKIE_CHECK = previous;
+      fs.rmSync(runDir, { recursive: true, force: true });
+    }
+  });
 });

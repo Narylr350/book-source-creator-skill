@@ -92,6 +92,8 @@ function waitForPing(_adb, _serial, retries = 20) {
 export function cmdLogin(args) {
   const runDir = parseArg(args, "--run");
   let targetUrl = parseArg(args, "--url");
+  let targetUrlSource = targetUrl ? "explicit_url" : null;
+  const verbose = args.includes("--verbose");
   const clearCookies = !args.includes("--keep-cookies");
   if (!targetUrl && runDir) {
     try {
@@ -100,10 +102,12 @@ export function cmdLogin(args) {
       if (fileExists(factsPath)) {
         const facts = JSON.parse(fs.readFileSync(factsPath, "utf-8"));
         targetUrl = facts.loginFeatures?.loginUrl || null;
+        if (targetUrl) targetUrlSource = "site_facts_login_url";
       }
       if (!targetUrl && fileExists(statePath)) {
         const state = JSON.parse(fs.readFileSync(statePath, "utf-8"));
         targetUrl = state.siteUrl || null;
+        if (targetUrl) targetUrlSource = "state_site_url_fallback";
       }
     } catch {}
   }
@@ -191,7 +195,12 @@ export function cmdLogin(args) {
     cookieClearMessage,
   ];
   if (targetUrl) {
-    lines.push(`登录页面已推送至手机: ${targetUrl}`);
+    if (targetUrlSource === "state_site_url_fallback") {
+      lines.push(`未找到明确 loginUrl，已打开站点首页/登录入口页: ${targetUrl}`);
+      lines.push("请在页面内进入登录入口并完成账号密码/验证码。");
+    } else {
+      lines.push(`登录页面已推送至手机: ${targetUrl}`);
+    }
   } else {
     lines.push("用法: 重新运行并指定登录 URL:");
     lines.push("  node \"<skill-dir>/scripts/bsg.mjs\" android --run <dir> --setup");
@@ -208,5 +217,14 @@ export function cmdLogin(args) {
     ok: true,
     nextAction: "login_on_device",
     message: lines.join("\n"),
+    openedUrl: targetUrl || null,
+    openedUrlSource: targetUrlSource,
+    cookiesCleared: clearCookies,
+    ...(verbose ? {
+      probeRequests: [
+        ...(clearCookies ? [{ method: "POST", path: "/cookie-clear" }] : []),
+        ...(targetUrl ? [{ method: "POST", path: "/login", url: targetUrl }] : []),
+      ],
+    } : {}),
   };
 }

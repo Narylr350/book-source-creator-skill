@@ -7,6 +7,7 @@ import {
 import {
   PHASE_ORDER, currentPhaseIndex, diagnoseAndroid,
   detectAuthFromAnalysis, checkProbeCookies, hasProbeLoginEvidence,
+  summarizeProbeCookieCheck,
 } from "./phase-engine.mjs";
 import {
   loadAndValidateAssessment, validateCookieFileShape,
@@ -269,6 +270,7 @@ export function cmdResolveUserAction(args) {
   }
 
   state.userDecisions = state.userDecisions || {};
+  let probeCookieEvidence = null;
   if (action === "android_device_unavailable") {
     const android = diagnoseAndroid();
     if (android.state === "device_ready") {
@@ -292,11 +294,18 @@ export function cmdResolveUserAction(args) {
     const adbOnline = pending.details?.adbAvailable === true || pendingAndroid?.state === "device_ready" || android.state === "device_ready";
     if (adbOnline) {
       const probeCookies = checkProbeCookies(state.siteUrl);
+      probeCookieEvidence = summarizeProbeCookieCheck(state.siteUrl, probeCookies);
       if (!probeCookies.ok) {
-        return fail("Android 真机或模拟器在线时，login_completed 必须先通过 Probe Cookie 检查。请运行 node \"<skill-dir>/scripts/bsg.mjs\" android --run <dir> 打开手机/模拟器登录页，登录完成后再运行 node \"<skill-dir>/scripts/bsg.mjs\" android --run <dir> --login-completed。");
+        return {
+          ...fail("Android 真机或模拟器在线时，login_completed 必须先通过 Probe Cookie 检查。请运行 node \"<skill-dir>/scripts/bsg.mjs\" android --run <dir> 打开手机/模拟器登录页，登录完成后再运行 node \"<skill-dir>/scripts/bsg.mjs\" android --run <dir> --login-completed。"),
+          probeCookieEvidence,
+        };
       }
       if (!hasProbeLoginEvidence(probeCookies.parsed)) {
-        return fail("Probe /cookie-check 只证明目标域存在 Cookie，不能证明已登录账号态。login_completed 需要 Probe 返回 authenticated/loggedIn/isLoggedIn=true、非 anonymous sessionMode，或 user/account 证据；否则请选择 no_account 或继续在手机/模拟器完成登录后重试。");
+        return {
+          ...fail("Probe /cookie-check 只证明目标域存在 Cookie，不能证明已登录账号态。login_completed 需要 Probe 返回 authenticated/loggedIn/isLoggedIn=true、非 anonymous sessionMode，或 user/account 证据；否则请选择 no_account 或继续在手机/模拟器完成登录后重试。"),
+          probeCookieEvidence,
+        };
       }
       state.loginFeatures._loginMethod = "probe";
     } else {
@@ -336,5 +345,6 @@ export function cmdResolveUserAction(args) {
     action,
     nextAction: "run",
     message: `已记录用户选择: ${action}。继续运行 run。`,
+    ...(probeCookieEvidence ? { probeCookieEvidence } : {}),
   };
 }

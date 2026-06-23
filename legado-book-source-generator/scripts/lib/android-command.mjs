@@ -5,7 +5,10 @@ import {
   fail, parseArg, fileExists, loadAndVerify, saveRunState,
   getPendingUserAction, setPendingUserAction, pendingUserActionResponse,
 } from "./state.mjs";
-import { diagnoseAndroid, diagnoseProbe } from "./environment.mjs";
+import {
+  checkProbeCookies, diagnoseAndroid, diagnoseProbe,
+  probeCookieResultDomain, summarizeProbeCookieCheck,
+} from "./environment.mjs";
 import { cmdLogin } from "./login.mjs";
 import { cmdValidate } from "./validate-runner.mjs";
 import { cmdRecordValidation } from "./validation-commands.mjs";
@@ -53,6 +56,36 @@ function recordAndroidReady(state, pending) {
   state.pendingUserAction = null;
 }
 
+function dumpProbeCookie(state, dumpPath) {
+  if (!dumpPath) return fail("用法: node \"<skill-dir>/scripts/bsg.mjs\" android --run <run-dir> --dump-cookie <file>");
+  const probeCookies = checkProbeCookies(state.siteUrl);
+  const evidence = summarizeProbeCookieCheck(state.siteUrl, probeCookies);
+  const cookie = probeCookies.parsed?.cookies || probeCookies.parsed?.cookie || "";
+  if (!probeCookies.ok || !cookie) {
+    return {
+      ...fail("Probe Cookie 检查没有可导出的 Cookie。请先用 android --setup 打开手机/模拟器登录页，完成登录后重试。"),
+      probeCookieEvidence: evidence,
+    };
+  }
+
+  const domain = probeCookieResultDomain(probeCookies.parsed, state.siteUrl);
+  fs.mkdirSync(path.dirname(dumpPath), { recursive: true });
+  fs.writeFileSync(dumpPath, JSON.stringify({ [domain]: cookie }, null, 2) + "\n", "utf-8");
+  return {
+    ok: true,
+    nextAction: "manual_cookie_review",
+    cookieFile: dumpPath,
+    probeCookieEvidence: evidence,
+    message: [
+      `已导出 Probe Cookie 到: ${dumpPath}`,
+      `选中域名: ${domain}`,
+      `Cookie 名: ${evidence.cookieNames.join(", ") || "无"}`,
+      `登录证据: ${evidence.hasLoginEvidence ? "是" : "否"}`,
+      "该文件含原始 Cookie，只用于本地 validator 调试或手动核对；不要写入 book-source.json。",
+    ].join("\n"),
+  };
+}
+
 export function cmdAndroid(args) {
   const runDir = parseArg(args, "--run");
   if (!runDir) return fail("用法: node \"<skill-dir>/scripts/bsg.mjs\" android --run <run-dir> [--setup]");
@@ -79,6 +112,16 @@ export function cmdAndroid(args) {
   if (error) return fail(error);
 
   const android = diagnoseAndroid();
+  if (args.includes("--dump-cookie")) {
+    if (android.state !== "device_ready") {
+      return {
+        ...fail(`Android 真机或模拟器尚未可用，无法从 Probe 导出 Cookie: ${android.state}。${android.message}`),
+        android,
+      };
+    }
+    return dumpProbeCookie(state, parseArg(args, "--dump-cookie"));
+  }
+
   const pending = getPendingUserAction(state);
   if (pending) {
     if (["android_device_needed", "android_entry_review_needed"].includes(pending.type)) {
@@ -140,7 +183,17 @@ export function cmdAndroid(args) {
   }
 
   if (args.includes("--setup")) {
-    const result = cmdLogin(["--run", runDir]);
+    if (state.loginFeatures?._loginMethod === "probe" && state.loginFeatures?._loginVerified === true) {
+      return {
+        ok: true,
+        via: "android:setup",
+        nextAction: "run",
+        message: "Probe 登录态已验证，未重新清理 Cookie 或打开登录页。继续运行 Android 验证。",
+        android,
+        nextCommand: androidCommand(runDir),
+      };
+    }
+    const result = cmdLogin(["--run", runDir, ...(args.includes("--verbose") ? ["--verbose"] : [])]);
     if (!result.ok) {
       return {
         ...result,

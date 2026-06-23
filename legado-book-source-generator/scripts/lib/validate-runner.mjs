@@ -4,7 +4,7 @@ import path from "node:path";
 import { execSync } from "node:child_process";
 import { SKILL_ROOT, fileExists, parseArg, fail } from "./state.mjs";
 import { checkAdb } from "./phase-engine.mjs";
-import { checkProbeCookies, targetDomainFromSiteUrl } from "./environment.mjs";
+import { checkProbeCookies, probeCookieResultDomain, targetDomainFromSiteUrl } from "./environment.mjs";
 
 function shellQuote(value) {
   return `"${String(value).replace(/"/g, '\\"')}"`;
@@ -23,6 +23,7 @@ export function resolveValidateCookieFile(runDir, state, mode) {
   const domain = targetDomainFromSiteUrl(state.siteUrl);
   const probeCookies = checkProbeCookies(state.siteUrl);
   const cookie = probeCookies.parsed?.cookies || probeCookies.parsed?.cookie || "";
+  const cookieDomain = probeCookieResultDomain(probeCookies.parsed, state.siteUrl);
   if (!probeCookies.ok || !cookie) {
     return {
       ok: false,
@@ -31,7 +32,7 @@ export function resolveValidateCookieFile(runDir, state, mode) {
   }
 
   const tempFile = path.join(os.tmpdir(), `bsg-probe-cookies-${process.pid}-${Date.now()}.json`);
-  fs.writeFileSync(tempFile, JSON.stringify({ [domain]: cookie }, null, 2), "utf-8");
+  fs.writeFileSync(tempFile, JSON.stringify({ [cookieDomain || domain]: cookie }, null, 2), "utf-8");
   return {
     ok: true,
     cookieFile: tempFile,

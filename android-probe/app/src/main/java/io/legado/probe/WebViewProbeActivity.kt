@@ -47,13 +47,14 @@ class WebViewProbeActivity : Activity() {
                 setTextColor(Color.WHITE)
                 setBackgroundColor(Color.parseColor("#4CAF50"))
                 setOnClickListener {
+                    val currentUrl = webView.url ?: ""
                     rootLayout.removeAllViews()
                     rootLayout.addView(scrollView, FrameLayout.LayoutParams(
                         FrameLayout.LayoutParams.MATCH_PARENT,
                         FrameLayout.LayoutParams.MATCH_PARENT
                     ))
                     refreshDisplay()
-                    status("登录完成")
+                    status("登录完成，当前页: ${currentUrl.take(80)}")
                 }
             }
             val btnParams = FrameLayout.LayoutParams(
@@ -93,6 +94,7 @@ class WebViewProbeActivity : Activity() {
         val line = "$ts | #$requestCount | $msg"
         logLines.add(line)
         while (logLines.size > 50) logLines.removeAt(0)
+        refreshDisplay()
     }
 
     private fun refreshDisplay() {

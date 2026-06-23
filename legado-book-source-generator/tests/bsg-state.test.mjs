@@ -2306,6 +2306,8 @@ describe("advance response fields", () => {
     const stateAfterSetup = JSON.parse(await fs.readFile(path.join(init.runDir, "run-state.json"), "utf8"));
 
     assert.equal(setup.requiredUserAction, "login_required");
+    assert.match(setup.message, /站点首页|登录入口/);
+    assert.doesNotMatch(setup.message, /登录页面已推送/);
     assert.equal(stateAfterSetup.pendingUserAction?.type, "login_required");
 
     const completed = await runBsg(["android", "--run", init.runDir, "--login-completed"], {
@@ -2321,8 +2323,104 @@ describe("advance response fields", () => {
     const stateAfterComplete = JSON.parse(await fs.readFile(path.join(init.runDir, "run-state.json"), "utf8"));
 
     assert.equal(completed.resolved, "login_required");
+    assert.equal(completed.probeCookieEvidence.selectedDomain, "example.com");
+    assert.deepEqual(completed.probeCookieEvidence.cookieNames, ["auth_token"]);
     assert.equal(stateAfterComplete.pendingUserAction, null);
     assert.equal(stateAfterComplete.loginFeatures._loginMethod, "probe");
+    await fs.rm(tmpDir, { recursive: true, force: true });
+  });
+
+  it("android setup does not clear an already verified Probe login", async () => {
+    const tmpDir = await makeTmpDir();
+    const runDir = await initRun(tmpDir);
+    await writeAssessmentAndRecord(runDir, [
+      "- 评级: 可生成",
+      "- 登录需求: 是",
+      "- 风险标签: 需登录态",
+    ]);
+    await runBsg(["advance", "--run", runDir], {
+      env: {
+        ...process.env,
+        BSG_TEST_ADB_DEVICES_OUTPUT: "List of devices attached\nemulator-5554\tdevice\n",
+      },
+    });
+    await runBsg(["android", "--run", runDir, "--login-completed"], {
+      env: await fakeAndroidToolEnv(tmpDir, {
+        BSG_TEST_PROBE_COOKIE_CHECK: JSON.stringify({
+          hasCookies: true,
+          authenticated: true,
+          cookies: "auth_token=abc",
+          url: "https://example.com",
+        }),
+      }),
+    });
+
+    const setup = await runBsg(["android", "--run", runDir, "--setup"], {
+      env: await fakeAndroidToolEnv(tmpDir),
+    });
+    const stateAfterSetup = JSON.parse(await fs.readFile(path.join(runDir, "run-state.json"), "utf8"));
+
+    assert.notEqual(setup.requiredUserAction, "login_required");
+    assert.match(setup.message, /登录态已验证/);
+    assert.equal(stateAfterSetup.pendingUserAction, null);
+    assert.equal(stateAfterSetup.loginFeatures._loginVerified, true);
+    await fs.rm(tmpDir, { recursive: true, force: true });
+  });
+
+  it("android command dumps selected Probe cookies to a validator cookie file on explicit request", async () => {
+    const tmpDir = await makeTmpDir();
+    const init = await runBsg(["init", "https://www.example.com", "--cwd", tmpDir]);
+    const dumpPath = path.join(tmpDir, "probe-cookies.json");
+
+    const result = await runBsg(["android", "--run", init.runDir, "--dump-cookie", dumpPath], {
+      env: await fakeAndroidToolEnv(tmpDir, {
+        BSG_TEST_PROBE_COOKIE_CHECK: JSON.stringify({
+          hasCookies: true,
+          url: "https://wap.example.com",
+          cookies: "user_id=1; login_token=abc; ci_session=def",
+        }),
+      }),
+    });
+
+    const dumped = JSON.parse(await fs.readFile(dumpPath, "utf8"));
+
+    assert.equal(result.nextAction, "manual_cookie_review");
+    assert.equal(result.cookieFile, dumpPath);
+    assert.equal(result.probeCookieEvidence.selectedDomain, "wap.example.com");
+    assert.deepEqual(result.probeCookieEvidence.cookieNames, ["user_id", "login_token", "ci_session"]);
+    assert.deepEqual(dumped, {
+      "wap.example.com": "user_id=1; login_token=abc; ci_session=def",
+    });
+    assert.doesNotMatch(result.message, /login_token=abc|user_id=1/);
+    await fs.rm(tmpDir, { recursive: true, force: true });
+  });
+
+  it("android cookie dump fails with diagnostic evidence instead of writing empty cookies", async () => {
+    const tmpDir = await makeTmpDir();
+    const init = await runBsg(["init", "https://example.com", "--cwd", tmpDir]);
+    const dumpPath = path.join(tmpDir, "probe-cookies.json");
+    const env = await fakeAndroidToolEnv(tmpDir, {
+      BSG_TEST_PROBE_COOKIE_CHECK: JSON.stringify({
+        hasCookies: false,
+        url: "https://example.com",
+        cookies: "",
+      }),
+    });
+
+    await assert.rejects(
+      () => execFileAsync("node", [BSG, "android", "--run", init.runDir, "--dump-cookie", dumpPath], {
+        encoding: "utf8",
+        env,
+      }),
+      (err) => {
+        const result = JSON.parse(err.stdout);
+        assert.match(result.error, /Probe Cookie|没有可导出的 Cookie/);
+        assert.equal(result.probeCookieEvidence.selectedDomain, "example.com");
+        assert.deepEqual(result.probeCookieEvidence.checkedDomains, ["example.com", "wap.example.com", "m.example.com"]);
+        return true;
+      },
+    );
+    assert.equal(await fs.access(dumpPath).then(() => true, () => false), false);
     await fs.rm(tmpDir, { recursive: true, force: true });
   });
 
