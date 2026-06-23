@@ -53,7 +53,7 @@ PC HTTP / Browser 只用于观察站点和辅助写规则。交付前如果 vali
 node "<skill-dir>/scripts/bsg.mjs" deliver --run <run-dir>
 ```
 
-如果尚未进入 deliver 阶段，先运行 `run --run <run-dir>` 或 `advance --run <run-dir>` 推进状态；`validator-report.json` 必须已通过 `record-validation` 或 `run` 收敛。
+前提是 `validator-report.json` 已通过 `record-validation` 或 `run` 收敛，并且 `rule-check.json`、`capability-matrix.json` 等产物仍对应当前 `book-source.json`。缺什么让 `deliver` 返回 `nextCommand` / `correctiveAction`，不要自己补结论。
 
 `deliver` 是唯一最终审计。它通过之前，不要宣称书源“可用”、“正常阅读”、“full pass”。
 
@@ -63,7 +63,7 @@ node "<skill-dir>/scripts/bsg.mjs" deliver --run <run-dir>
 
 **2. `requiredUserAction` 非 null 时停止自动操作。** 等用户确认后再运行 `resolve-user-action`。
 
-**3. validate 阶段不要靠猜测改结论。** validator 报告已经存在时，运行 `record-validation` 或 `run` 收敛状态。
+**3. 验证报告生成后不要靠猜测改结论。** validator 报告已经存在时，运行 `record-validation` 或 `run` 收敛状态。
 
 **4. 最终交付事实优先来自 Android。** 桌面 HTTP 或浏览器能看到内容，只能辅助写规则；Android 可用时 passed 必须来自 Android mode，没设备时先问用户并降级说明。
 

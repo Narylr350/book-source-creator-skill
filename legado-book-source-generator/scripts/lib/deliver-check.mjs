@@ -4,7 +4,7 @@ import {
   SKILL_ROOT, fail, fileExists, readJsonFile, saveRunState,
   getPendingUserAction, printHint,
 } from "./state.mjs";
-import { PHASE_ORDER, currentPhaseIndex, resetPhasesFrom } from "./phase-order.mjs";
+import { resetPhasesFrom } from "./phase-order.mjs";
 import {
   loadBookSource, validateBookSourceStructure, ensureAssessmentFactsFresh,
   ensureRuleCheckSourceFresh,
@@ -16,11 +16,6 @@ export function cmdDeliverCheck(state, runDir) {
   const pending = getPendingUserAction(state);
   if (pending) {
     return fail(`仍有待用户确认动作: ${pending.type}。请先运行 resolve-user-action。`);
-  }
-
-  const current = PHASE_ORDER[currentPhaseIndex(state)] || "all_completed";
-  if (current !== "deliver" || state.phases.deliver.status !== "in_progress") {
-    return fail("尚未进入 deliver 阶段。record-validation 完成后先运行 run 或 advance 进入 deliver，再运行 deliver；不能跳过最终审计直接交付。");
   }
 
   const requiredFiles = [
@@ -70,10 +65,10 @@ export function cmdDeliverCheck(state, runDir) {
     resetPhasesFrom(state, "generate");
     saveRunState(runDir, state);
     const correctiveAction = "当前 validator-report.json 已不对应最新 book-source.json，不能复用旧报告交付。已回到 generate / 规则审计语义；修正书源后重新通过 rule-check，再重跑 validator。";
-    const nextCommand = `node "<skill-dir>/scripts/bsg.mjs" advance --run ${runDir}`;
+    const nextCommand = `node "<skill-dir>/scripts/bsg.mjs" run --run ${runDir}`;
     printHint(correctiveAction, nextCommand);
     return {
-      ...fail(`${sourceFreshError} 已回到 generate / 规则审计语义，请重新运行 advance 完成规则校验。`),
+      ...fail(`${sourceFreshError} 已回到 generate / 规则审计语义，请重新通过 rule-check 后再验证。`),
       correctiveAction,
       nextCommand,
     };
@@ -90,7 +85,7 @@ export function cmdDeliverCheck(state, runDir) {
 
   const ruleCheck = readJsonFile(path.join(runDir, "rule-check.json"));
   if (!ruleCheck || ruleCheck.status !== "passed") {
-    return fail("rule-check.json 未通过。必须先完成 generate 阶段的 official-rule-pack 校验，不能跳过规则审计。");
+    return fail("rule-check.json 未通过。必须先完成 official-rule-pack 校验，不能跳过规则审计。");
   }
 
   const matrix = readJsonFile(path.join(runDir, "capability-matrix.json"));

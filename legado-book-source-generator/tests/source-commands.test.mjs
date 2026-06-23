@@ -66,9 +66,13 @@ describe("bsg source commands", () => {
     }
   });
 
-  it("blocks source edits outside generate phase", () => {
+  it("allows source edits outside generate phase and invalidates stale validation artifacts", () => {
     const { root, runDir } = makeRun("validate");
     try {
+      for (const name of ["rule-check.json", "validator-report.json", "validator-summary.md", "capability-matrix.json"]) {
+        fs.writeFileSync(path.join(runDir, name), "{}");
+      }
+
       const result = cmdSource([
         "set",
         "--run", runDir,
@@ -76,8 +80,13 @@ describe("bsg source commands", () => {
         "--value", "@css:.content@text"
       ]);
 
-      assert.equal(result.ok, false);
-      assert.match(result.error, /只能在 generate 阶段/);
+      assert.equal(result.ok, true);
+      assert.equal(result.invalidatedArtifacts.length, 4);
+      const source = JSON.parse(fs.readFileSync(path.join(root, "outputs", "example", "book-source.json"), "utf-8"))[0];
+      assert.equal(source.ruleContent.content, "@css:.content@text");
+      for (const name of ["rule-check.json", "validator-report.json", "validator-summary.md", "capability-matrix.json"]) {
+        assert.equal(fs.existsSync(path.join(runDir, name)), false);
+      }
     } finally {
       fs.rmSync(root, { recursive: true, force: true });
     }

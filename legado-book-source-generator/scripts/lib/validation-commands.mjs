@@ -6,7 +6,7 @@ import {
   blockForPendingUserAction, printHint, setPendingUserAction, fileSha256,
 } from "./state.mjs";
 import {
-  PHASE_ORDER, currentPhaseIndex, resetPhasesFrom, checkAdb,
+  resetPhasesFrom, checkAdb,
   cmdDeliverCheck,
 } from "./phase-engine.mjs";
 import { diagnoseAndroid } from "./environment.mjs";
@@ -169,11 +169,6 @@ export function cmdRecordValidation(args) {
     return fail(`仍有待用户确认动作: ${pendingBlock.requiredUserAction}。请先运行 resolve-user-action。`);
   }
 
-  const current = PHASE_ORDER[currentPhaseIndex(state)];
-  if (current !== "validate" || state.phases.validate.status !== "in_progress") {
-    return fail("record-validation 只能在 validate 阶段 in_progress 时运行。请先按状态机完成 assess/analyze/generate 并进入 validate。");
-  }
-
   const reportPathForMode = path.join(runDir, "validator-report.json");
   if (args.includes("--report")) {
     return fail("record-validation 不再接受 --report。必须运行 validate-with-validator.mjs，让脚本把 validator-report.json 写入当前 run 目录。");
@@ -211,10 +206,10 @@ export function cmdRecordValidation(args) {
     });
     saveRunState(runDir, state);
     const correctiveAction = "当前 validator-report.json 已不对应最新 book-source.json，不能复用旧报告继续记录或交付。已回到 generate / 规则审计语义；修正书源后重新通过 rule-check，再重跑 validator。";
-    const nextCommand = `node "<skill-dir>/scripts/bsg.mjs" advance --run ${runDir}`;
+    const nextCommand = `node "<skill-dir>/scripts/bsg.mjs" run --run ${runDir}`;
     printHint(correctiveAction, nextCommand);
     return {
-      ...fail(`${sourceFreshError} 已回到 generate / 规则审计语义，请重新运行 advance 完成规则校验。`),
+      ...fail(`${sourceFreshError} 已回到 generate / 规则审计语义，请重新通过 rule-check 后再验证。`),
       correctiveAction,
       nextCommand,
     };
@@ -226,14 +221,15 @@ export function cmdRecordValidation(args) {
     return fail(`--status ${status} 与 validator-report.json status ${report.status} 不一致。必须使用 validate 返回的 nextCommand 记录真实状态，不能把 failed 改写成 degraded / needs_app_review。`);
   }
 
-  const v = state.phases.validate;
-  v.attempts += 1;
+  const v = state.phases.validate || (state.phases.validate = { status: "pending", attempts: 0, lastStatus: null, lastError: "", consecutiveSame: 0 });
+  if (v.status === "pending") v.status = "in_progress";
+  v.attempts = Number(v.attempts || 0) + 1;
   v.lastStatus = status;
 
   let hasLoginFeatures = Object.values(state.loginFeatures).some((b) => b === true);
   let shouldRetry = false;
   let finalStatus = null;
-  let nextAction = "advance";
+  let nextAction = "deliver";
   let cookieWarning = null;
   let androidWarning = null;
   let webViewAndroidUnavailable = false;
@@ -261,8 +257,8 @@ export function cmdRecordValidation(args) {
     saveRunState(runDir, state);
     writeCapabilityMatrix(runDir, reportPathForMode, "blocked:hard_rule_error");
     writeValidatorSummary(runDir, status, "blocked:hard_rule_error", reportPathForMode);
-    const correctiveAction = "validator 报告包含明确规则错误。已回到 generate / 规则审计语义；修正书源规则后运行 advance 重新做 rule-check，再重跑 validator。不要把规则错误标成 needs_app_review 或 validator_limitation。";
-    const nextCommand = `node "<skill-dir>/scripts/bsg.mjs" advance --run ${runDir}`;
+    const correctiveAction = "validator 报告包含明确规则错误。已回到 generate / 规则审计语义；修正书源规则后重新通过 rule-check，再重跑 validator。不要把规则错误标成 needs_app_review 或 validator_limitation。";
+    const nextCommand = `node "<skill-dir>/scripts/bsg.mjs" run --run ${runDir}`;
     printHint(correctiveAction, nextCommand);
     return {
       ok: true,
@@ -320,10 +316,10 @@ export function cmdRecordValidation(args) {
       writeValidatorSummary(runDir, status, finalBlocked, reportPathForMode);
       const correctiveAction = acceptanceError.blockedBy === "toc_chapter_count_too_low"
         ? "validator 报告的目录样本过短。先确认这是目标书本身章节少，还是 ruleToc 只提取到部分章节；确认短目录合理后用 resolve-user-action 记录，否则修 ruleToc 并重跑。"
-        : "validator 报告包含成功状态但缺少阅读语义证据。已回到 generate / 规则审计语义；修正对应规则后运行 advance 重新做 rule-check，再重跑 validator。不要改写成可交付结论。";
+        : "validator 报告包含成功状态但缺少阅读语义证据。已回到 generate / 规则审计语义；修正对应规则后重新通过 rule-check，再重跑 validator。不要改写成可交付结论。";
       const nextCommand = acceptanceError.blockedBy === "toc_chapter_count_too_low"
         ? `node "<skill-dir>/scripts/bsg.mjs" resolve-user-action --run ${runDir} --action toc_chapter_count_confirmed`
-        : `node "<skill-dir>/scripts/bsg.mjs" advance --run ${runDir}`;
+        : `node "<skill-dir>/scripts/bsg.mjs" run --run ${runDir}`;
       printHint(correctiveAction, nextCommand);
       return {
         ok: true,
@@ -804,11 +800,11 @@ export function cmdRecordValidation(args) {
 
   let baseMessage;
   if (shouldRetry) {
-    baseMessage = `验证失败 (第 ${v.attempts} 次${v.consecutiveSame > 1 ? `，同一错误第 ${v.consecutiveSame} 次` : ""})。已回到 generate / 规则审计语义；请根据 validator-report.json / repairContext 回修 book-source.json，修完运行 advance 重新做 rule-check，再重跑 validator。${v.consecutiveSame >= 2 ? "⚠️ 已连续 " + v.consecutiveSame + " 次相同错误，再失败将停止自动修。" : ""}`;
+    baseMessage = `验证失败 (第 ${v.attempts} 次${v.consecutiveSame > 1 ? `，同一错误第 ${v.consecutiveSame} 次` : ""})。已回到 generate / 规则审计语义；请根据 validator-report.json / repairContext 回修 book-source.json，修完重新通过 rule-check，再重跑 validator。${v.consecutiveSame >= 2 ? "⚠️ 已连续 " + v.consecutiveSame + " 次相同错误，再失败将停止自动修。" : ""}`;
   } else if (convergenceBlock) {
     baseMessage = convergenceBlock;
   } else {
-    baseMessage = `验证完成。状态: ${finalStatus}。执行 advance 进入 deliver。`;
+    baseMessage = `验证完成。状态: ${finalStatus}。可直接运行 deliver 做最终审计。`;
   }
 
   return {
@@ -819,7 +815,9 @@ export function cmdRecordValidation(args) {
     shouldRetry,
     nextAction,
     repairContext: state.repairContext || null,
-    ...(shouldRetry ? { nextCommand: `node "<skill-dir>/scripts/bsg.mjs" advance --run ${runDir}` } : {}),
+    ...(shouldRetry
+      ? { nextCommand: `node "<skill-dir>/scripts/bsg.mjs" run --run ${runDir}` }
+      : { nextCommand: `node "<skill-dir>/scripts/bsg.mjs" deliver --run ${runDir}` }),
     message: baseMessage + (state._androidWarning ? "\n" + state._androidWarning : ""),
     ...(state._androidWarning ? { androidWarning: state._androidWarning } : {}),
     ...(convergenceBlock ? { convergenceBlock } : {}),

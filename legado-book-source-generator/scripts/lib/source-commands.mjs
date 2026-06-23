@@ -1,6 +1,8 @@
+import fs from "node:fs";
+import path from "node:path";
 import { loadBookSource } from "./facts.mjs";
 import { PHASE_ORDER } from "./phase-order.mjs";
-import { fail, fileSha256, loadAndVerify, parseArg, writeJsonFile } from "./state.mjs";
+import { fail, fileSha256, loadAndVerify, parseArg, saveRunState, writeJsonFile } from "./state.mjs";
 
 function activePhase(state) {
   const active = PHASE_ORDER.find((name) => state.phases[name]?.status === "in_progress");
@@ -67,6 +69,30 @@ function inspectSource(source) {
   };
 }
 
+function invalidateSourceDependentArtifacts(runDir, state) {
+  const names = ["rule-check.json", "validator-report.json", "validator-summary.md", "capability-matrix.json"];
+  const removed = [];
+  for (const name of names) {
+    const filePath = path.join(runDir, name);
+    if (!fs.existsSync(filePath)) continue;
+    fs.unlinkSync(filePath);
+    removed.push(name);
+  }
+
+  if (state.phases?.validate) {
+    state.phases.validate.status = "pending";
+    state.phases.validate.lastStatus = null;
+    delete state.phases.validate.completedAt;
+  }
+  if (state.phases?.deliver) {
+    state.phases.deliver.status = "pending";
+    delete state.phases.deliver.completedAt;
+  }
+  state.sourceChangedAt = new Date().toISOString();
+  saveRunState(runDir, state);
+  return removed;
+}
+
 export function cmdSource(args) {
   const subcommand = args[0];
   const runDir = parseArg(args, "--run");
@@ -99,9 +125,6 @@ export function cmdSource(args) {
   }
 
   if (subcommand === "set") {
-    if (phase !== "generate") {
-      return fail("source set 只能在 generate 阶段使用。修改 book-source.json 会让旧 validator-report/matrix/deliver 结论失效；请先按 record-validation/status 的 correctiveAction 回到 generate / 规则审计语义。");
-    }
     const fieldPath = parseArg(args, "--path");
     const rawValue = parseArg(args, "--value");
     if (!fieldPath || rawValue == null) {
@@ -113,6 +136,7 @@ export function cmdSource(args) {
       return fail(e.message);
     }
     writeJsonFile(loaded.bookSourcePath, loaded.parsed);
+    const invalidatedArtifacts = invalidateSourceDependentArtifacts(runDir, state);
     return {
       ok: true,
       phase,
@@ -120,7 +144,8 @@ export function cmdSource(args) {
       sourceHash: fileSha256(loaded.bookSourcePath),
       changedField: fieldPath,
       value: getPathValue(source, fieldPath),
-      nextCommand: `node scripts/bsg.mjs check --run ${runDir}`,
+      invalidatedArtifacts,
+      nextCommand: `node scripts/bsg.mjs source inspect --run ${runDir}`,
     };
   }
 

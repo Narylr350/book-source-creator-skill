@@ -15,7 +15,7 @@
 | 场景 | 先读 | 工具 |
 |------|------|------|
 | 匿名初探 / site-facts | `references/probe-guide.md`, `references/assessment-template.md` | `status`, `check`, `record-assessment` |
-| 生成规则 | `references/legado-json-structure.md`, `references/official-rule-pack.json`, `references/legado-source-behavior.md` | `source inspect`, `advance` |
+| 生成规则 | `references/legado-json-structure.md`, `references/official-rule-pack.json`, `references/legado-source-behavior.md` | `source inspect`, `run/advance`（兼容生成 `rule-check.json`） |
 | 验证失败回修 | `references/failure-diagnosis.md`, `references/validation-policy.md`, `references/validator-integration.md` | `record-validation`, `status`, `source inspect` |
 | Android / WebView / 登录态 | `references/android-probe-guide.md`, `references/policies.md`, `references/validator-integration.md`, `references/webview-behavior-matrix.md` | `android --run <run-dir>` |
 
@@ -32,8 +32,8 @@ Android、模拟器、登录态、WebView/WebJs、入口反爬复核不要靠命
 
 - 先把 search/detail/toc/content 四链路写入 `site-facts.json`，再补 `assessment.md` 的证据说明。
 - `record-assessment` 从 `site-facts.json` 生成 AUTO 结论区；AI 不写评级、风险标签、full pass、阻塞原因。
-- `record-assessment` 通过前不要展示评估摘要，不要询问用户选择，不要继续 `advance`。
-- 评级为"可生成"：若 `record-assessment` / `advance` 没有返回 `requiredUserAction`，继续自动生成。
+- `record-assessment` 通过前不要展示评估摘要，不要询问用户选择，不要继续下一步。
+- 评级为"可生成"：若 `record-assessment` / `check` 没有返回 `requiredUserAction`，继续自动生成。
 - 评级为"不建议生成"：停下来等用户决策。
 - 评估至少覆盖：登录依赖、搜索链路、详情链路、目录链路、正文链路、反爬/验证码/会员/签名/加密/付费限制。
 - VIP、付费、订阅、会员、登录态、Cookie、Authorization、401/403 写入 facts 的 blocker，由脚本推导登录/风险结论。
@@ -79,7 +79,7 @@ Android、模拟器、登录态、WebView/WebJs、入口反爬复核不要靠命
 
 使用 `references/legado-json-structure.md` 检查最终 JSON。
 
-生成完成后 `advance` 会运行 official-rule-pack 校验并写 `rule-check.json`。失败时先修书源，不进入 validator。
+生成完成后必须产生通过的 `rule-check.json`。当前兼容入口是 `run/advance` 的 official-rule-pack 校验；失败时先修书源，不进入 validator。
 
 ## 5. Validator 验证
 

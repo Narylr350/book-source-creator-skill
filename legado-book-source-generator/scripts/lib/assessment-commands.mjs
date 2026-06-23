@@ -21,8 +21,8 @@ export function cmdRecordAssessment(args) {
 
   const current = PHASE_ORDER[currentPhaseIndex(state)];
   if (current !== "assess" || state.phases.assess.status !== "in_progress") {
-    const correctiveAction = `record-assessment 只能在 assess 阶段 in_progress 时运行。当前阶段是 ${current}（${state.phases[current]?.status || "unknown"}）。请先按状态机推进到 assess 阶段。`;
-    const nextCommand = `node "<skill-dir>/scripts/bsg.mjs" advance --run ${runDir}`;
+    const correctiveAction = `record-assessment 需要 assessment.md 和 site-facts.json 已到可记录状态。当前阶段是 ${current}（${state.phases[current]?.status || "unknown"}）。请先运行 status 查看缺什么，或运行 run 进入下一步。`;
+    const nextCommand = `node "<skill-dir>/scripts/bsg.mjs" status --run ${runDir}`;
     printHint(correctiveAction, nextCommand);
     return { ...fail(correctiveAction), correctiveAction, nextCommand };
   }
@@ -38,7 +38,7 @@ export function cmdRecordAssessment(args) {
 
   return {
     ok: true,
-    nextAction: "advance",
+    nextAction: "run",
     rating: assessment.rating,
     summary: {
       riskLabels: assessment.derived.riskLabels,
@@ -55,8 +55,8 @@ export function cmdRecordAssessment(args) {
       hasEncryptedContent: assessment.signals.hasEncryptedContent,
       hasEntryAntiBotRisk: assessment.signals.hasEntryAntiBotRisk,
     },
-    message: "assessment.md 已通过一致性检查并记录。现在运行 advance；如返回 requiredUserAction，先让用户确认。",
-    nextCommand: `node "<skill-dir>/scripts/bsg.mjs" advance --run ${runDir}`,
+    message: "assessment.md 已通过一致性检查并记录。现在运行 run；如返回 requiredUserAction，先让用户确认。",
+    nextCommand: `node "<skill-dir>/scripts/bsg.mjs" run --run ${runDir}`,
   };
 }
 
@@ -334,7 +334,7 @@ export function cmdResolveUserAction(args) {
     ok: true,
     resolved: pending.type,
     action,
-    nextAction: "advance",
-    message: `已记录用户选择: ${action}。继续运行 advance。`,
+    nextAction: "run",
+    message: `已记录用户选择: ${action}。继续运行 run。`,
   };
 }

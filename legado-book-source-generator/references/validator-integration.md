@@ -48,7 +48,7 @@ curl -X POST http://localhost:1111/api/debug/run \
 | `_generatedBy` | 必须是 `validate-with-validator.mjs` | `record-validation` 用它拒绝手写 report |
 | `_schemaVersion` | 当前为 `1.0` | 版本不匹配时重跑 validator |
 | `_runDir` | report 所属 run 目录 | 防止复用其它 run 的报告 |
-| `_sourceHash` | 生成报告时的 `book-source.json` hash | validate 阶段改源会触发回退 |
+| `_sourceHash` | 生成报告时的 `book-source.json` hash | 修改书源会让旧报告失效 |
 | `status` | validator 基础状态 | `record-validation --status` 必须与它一致 |
 | `mode` | `http` / `browser` / `android` | Android 是交付事实来源，PC 只是辅助 |
 | `reason` | 总体失败原因 | 给人读，不替代 errorCode |
@@ -345,8 +345,7 @@ curl -s http://localhost:1111/api/sources >nul 2>&1 && echo Running || echo Not 
 status --run runs/<slug>
 → validate --run runs/<slug> [--mode android]
 → record-validation --run runs/<slug> --status <validator-report.status>
-→ run --run runs/<slug>（或 advance --run runs/<slug>）进入 deliver
 → deliver --run runs/<slug>
 ```
 
-常见错误：`validator-report.json` 已生成后直接交付，跳过 `record-validation`。此时最终审计会失败；运行 `run --run <run-dir>` 或手动 `record-validation` 收敛报告。
+常见错误：`validator-report.json` 已生成后直接交付，跳过 `record-validation`。此时最终审计会失败；运行 `record-validation` 收敛报告，或让 `run --run <run-dir>` 自动收敛已有报告。

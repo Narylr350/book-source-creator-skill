@@ -89,6 +89,20 @@ async function writeGeneratedValidatorReport(runDir, report) {
   }), "utf8");
 }
 
+async function writeRuleCheckForCurrentSource(runDir) {
+  const state = JSON.parse(await fs.readFile(path.join(runDir, "run-state.json"), "utf8"));
+  const sourcePath = path.join(state.workingDir, "outputs", state.siteSlug, "book-source.json");
+  const sourceBytes = await fs.readFile(sourcePath);
+  await fs.writeFile(path.join(runDir, "rule-check.json"), JSON.stringify({
+    version: "1.0",
+    status: "passed",
+    source: "test",
+    sourceHash: createHash("sha256").update(sourceBytes).digest("hex"),
+    errors: [],
+    warnings: [],
+  }), "utf8");
+}
+
 async function advanceToGenerate(tmpDir, runDir) {
   await writeAssessmentAndRecord(runDir);
   await runBsg(["advance", "--run", runDir]);
@@ -793,13 +807,13 @@ describe("bsg workflow user-action gates", () => {
       () => execFileAsync("node", [BSG, "deliver", "--run", runDir], { encoding: "utf8" }),
       (err) => {
         const result = JSON.parse(err.stdout);
-        assert.match(result.error, /deliver 阶段|advance|record-validation|验证状态/);
+        assert.match(result.error, /record-validation|验证状态|validator-summary/);
         return true;
       },
     );
   });
 
-  it("requires record-validation then advance before deliver", async () => {
+  it("delivers directly after record-validation without requiring advance", async () => {
     const runDir = await initRun(tmpDir);
     await writeRequiredDeliverFiles(tmpDir, runDir);
     await writeGeneratedValidatorReport(runDir, {
@@ -814,28 +828,7 @@ describe("bsg workflow user-action gates", () => {
     });
 
     const recorded = await runBsg(["record-validation", "--run", runDir, "--status", "passed"]);
-    assert.equal(recorded.nextAction, "advance");
-
-    await assert.rejects(
-      () => execFileAsync("node", [BSG, "deliver", "--run", runDir], { encoding: "utf8" }),
-      (err) => {
-        const result = JSON.parse(err.stdout);
-        assert.match(result.error, /先运行 advance|不能跳过 advance|deliver 阶段/);
-        return true;
-      },
-    );
-
-    const advanced = await runBsg(["advance", "--run", runDir]);
-    assert.equal(advanced.nextAction, "deliver");
-
-    await assert.rejects(
-      () => execFileAsync("node", [BSG, "advance", "--run", runDir], { encoding: "utf8" }),
-      (err) => {
-        const result = JSON.parse(err.stdout);
-        assert.match(result.error, /运行 deliver|不要用 advance/);
-        return true;
-      },
-    );
+    assert.equal(recorded.nextAction, "deliver");
 
     const delivered = await runBsg(["deliver", "--run", runDir]);
     assert.equal(delivered.finalStatus, "passed");
@@ -948,18 +941,30 @@ describe("bsg workflow user-action gates", () => {
     assert.equal(state.phases.validate.consecutiveSame, 2);
   });
 
-  it("refuses record-validation before validate phase is active", async () => {
+  it("records validation from matching artifacts before validate phase is active", async () => {
     const runDir = await initRun(tmpDir);
+    await writeAssessmentAndRecord(runDir);
+    await fs.writeFile(path.join(runDir, "analysis.md"), "# 网站分析\n", "utf8");
     await writeValidSource(tmpDir);
+    await writeRuleCheckForCurrentSource(runDir);
+    await writeGeneratedValidatorReport(runDir, {
+      status: "passed",
+      mode: "android",
+      phases: { search: "success", detail: "success", toc: "success", content: "success" },
+      steps: [
+        { phase: "search", status: "success", mode: "android", extracted: { resultCount: 1 } },
+        { phase: "detail", status: "success", mode: "android", extracted: { name: "Example" } },
+        { phase: "toc", status: "success", mode: "android", extracted: { chapterCount: 20 } },
+        { phase: "content", status: "success", mode: "android", extracted: { contentLength: 120, contentPreview: "正文内容示例".repeat(20) } },
+      ],
+    });
 
-    await assert.rejects(
-      () => execFileAsync("node", [BSG, "record-validation", "--run", runDir, "--status", "passed"], { encoding: "utf8" }),
-      (err) => {
-        const result = JSON.parse(err.stdout);
-        assert.match(result.error, /validate 阶段|record-validation/);
-        return true;
-      },
-    );
+    const result = await runBsg(["record-validation", "--run", runDir, "--status", "passed"]);
+    const state = JSON.parse(await fs.readFile(path.join(runDir, "run-state.json"), "utf8"));
+
+    assert.equal(result.status, "passed");
+    assert.equal(result.nextAction, "deliver");
+    assert.equal(state.phases.validate.status, "completed");
   });
 
   it("rejects external validator report paths", async () => {
@@ -1665,7 +1670,7 @@ describe("bsg workflow user-action gates", () => {
     const result = await runBsg(["record-validation", "--run", runDir, "--status", "passed"], { env: adbEnv });
 
     assert.equal(result.status, "anonymous_candidate");
-    assert.equal(result.nextAction, "advance");
+    assert.equal(result.nextAction, "deliver");
   });
 
   it("blocks Probe login when android report stays anonymous with no cookie evidence", async () => {
@@ -1814,7 +1819,7 @@ describe("bsg workflow user-action gates", () => {
     assert.equal(resolved.action, "toc_chapter_count_confirmed");
 
     const result = await runBsg(["record-validation", "--run", runDir, "--status", "passed"]);
-    assert.equal(result.nextAction, "advance");
+    assert.equal(result.nextAction, "deliver");
   });
 
   it("does not accept Android WebView content evidence when another content step failed", async () => {
@@ -2162,7 +2167,8 @@ describe("advance response fields", () => {
     assert.ok(result.tools.some((tool) => tool.command.includes("run --run")));
     assert.ok(result.tools.some((tool) => tool.command.includes("android --run")));
     assert.equal(result.tools.some((tool) => tool.command.includes("login --run")), false);
-    assert.ok(result.finalAudit.prerequisite.includes("run") || result.finalAudit.prerequisite.includes("advance"));
+    assert.ok(result.finalAudit.prerequisite.includes("record-validation"));
+    assert.doesNotMatch(result.finalAudit.prerequisite, /进入 deliver 阶段|advance/);
     assert.match(result.finalAudit.command, /deliver/);
   });
 
@@ -2222,6 +2228,31 @@ describe("advance response fields", () => {
     assert.equal(result.nextAction, "setup_android_probe");
     assert.match(result.nextCommand, /bsg\.mjs" android --run .* --setup/);
     assert.doesNotMatch(result.nextCommand, /login|adb|curl/);
+    await fs.rm(tmpDir, { recursive: true, force: true });
+  });
+
+  it("android command runs android validation without requiring validate phase", async () => {
+    const tmpDir = await makeTmpDir();
+    const runDir = await initRun(tmpDir, {
+      env: {
+        ...process.env,
+        BSG_TEST_ADB_DEVICES_OUTPUT: "List of devices attached\nemulator-5554\tdevice\n",
+      },
+    });
+    await writeValidSource(tmpDir);
+
+    const result = await runBsg(["android", "--run", runDir], {
+      env: {
+        ...process.env,
+        BSG_TEST_ADB_DEVICES_OUTPUT: "List of devices attached\nemulator-5554\tdevice\n",
+        BSG_TEST_PROBE_INFO: JSON.stringify({ ok: true, api: [] }),
+      },
+    });
+
+    assert.equal(result.via, "validate");
+    assert.equal(result.mode, "android");
+    assert.notEqual(result.nextAction, "prepare_validate_phase");
+    assert.doesNotMatch(result.message || "", /进入 validate 阶段|推进到 validate/);
     await fs.rm(tmpDir, { recursive: true, force: true });
   });
 
@@ -2349,7 +2380,7 @@ describe("advance response fields", () => {
     const result = await runBsg(["init", "https://example.com", "--cwd", tmpDir]);
 
     assert.ok(result.nextCommand, "init should return nextCommand");
-    assert.ok(result.nextCommand.includes("advance"), "nextCommand should suggest advance");
+    assert.ok(result.nextCommand.includes("run"), "nextCommand should suggest run");
     await fs.rm(tmpDir, { recursive: true, force: true });
   });
 

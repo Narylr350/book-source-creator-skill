@@ -25,7 +25,7 @@
 
 ## 入口反爬处理
 
-搜索、详情、目录任一入口链路出现验证码、Cloudflare、极验、人机验证，属于入口链路阻塞。不得自行写“改用排行榜/书库”继续生成；先记录 `site-facts.json` 的 `blocker`，后续由 `record-assessment` / `advance` 生成用户确认或 Android 复核动作。
+搜索、详情、目录任一入口链路出现验证码、Cloudflare、极验、人机验证，属于入口链路阻塞。不得自行写“改用排行榜/书库”继续生成；先记录 `site-facts.json` 的 `blocker`，后续由 `record-assessment` / `run` 生成用户确认或 Android 复核动作。
 
 ## site-facts.json 写法
 

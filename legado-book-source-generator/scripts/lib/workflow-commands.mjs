@@ -173,7 +173,7 @@ export function cmdToolbox() {
     ],
     finalAudit: {
       command: "node \"<skill-dir>/scripts/bsg.mjs\" deliver --run <run-dir>",
-      prerequisite: "先用 run --run <run-dir> 或 advance --run <run-dir> 进入 deliver 阶段；validator-report.json 必须已通过 record-validation 收敛。",
+      prerequisite: "validator-report.json 必须已通过 record-validation 收敛，rule-check.json / capability-matrix.json 必须对应当前 book-source.json。",
       use: "唯一最终交付审计；通过它之前不要宣称书源可用或 full pass。",
     },
   };

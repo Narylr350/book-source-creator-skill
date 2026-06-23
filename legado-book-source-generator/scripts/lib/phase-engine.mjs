@@ -36,10 +36,10 @@ export const PHASE_READ_NEXT = {
 
 export function phaseNextCommand(runDir, phase) {
   const commands = {
-    probe: `node "<skill-dir>/scripts/bsg.mjs" advance --run ${runDir}`,
+    probe: `node "<skill-dir>/scripts/bsg.mjs" run --run ${runDir}`,
     assess: `node "<skill-dir>/scripts/bsg.mjs" record-assessment --run ${runDir}`,
-    analyze: `node "<skill-dir>/scripts/bsg.mjs" advance --run ${runDir}`,
-    generate: `node "<skill-dir>/scripts/bsg.mjs" advance --run ${runDir}`,
+    analyze: `node "<skill-dir>/scripts/bsg.mjs" run --run ${runDir}`,
+    generate: `node "<skill-dir>/scripts/bsg.mjs" run --run ${runDir}`,
     validate: `node "<skill-dir>/scripts/bsg.mjs" validate --run ${runDir}`,
     deliver: `node "<skill-dir>/scripts/bsg.mjs" deliver --run ${runDir}`,
   };
@@ -70,9 +70,9 @@ export function startPhase(phase, state, runDir) {
   saveRunState(runDir, state);
 
   const actions = {
-    assess:  { nextAction: "record_assessment", message: "写 assessment.md 后必须先运行 record-assessment。record-assessment 通过前不要展示评估摘要，也不要 advance。" },
-    analyze: { nextAction: "write_analysis",   message: "按 search→detail→toc→content 顺序分析，写 analysis.md。完成后 advance。" },
-    generate:{ nextAction: "generate_json",     message: "生成 book-source.json 到 outputs/<slug>/。完成后 advance。" },
+    assess:  { nextAction: "record_assessment", message: "写 assessment.md 后必须先运行 record-assessment。record-assessment 通过前不要展示评估摘要，也不要进入下一步。" },
+    analyze: { nextAction: "write_analysis",   message: "按 search→detail→toc→content 顺序分析，写 analysis.md。完成后运行 run。" },
+    generate:{ nextAction: "generate_json",     message: "生成 book-source.json 到 outputs/<slug>/。完成后运行 run 做规则审计。" },
     validate:{ nextAction: "run_validator",     message: "运行 bsg.mjs validate --run {dir}，让它写入 validator-report.json。完成后 record-validation。" },
     deliver: { nextAction: "deliver",           message: "运行 deliver 完成最终交付。" },
   };
@@ -416,7 +416,7 @@ export function completePhase(phase, state, runDir) {
         "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
         ...structuralErrors.map((e, i) => `  ${i + 1}. ${e}`),
         "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
-        "修复以上问题后重新 advance。",
+        "修复以上问题后重新通过规则审计。",
       ].join("\n");
       return fail(msg);
     }
@@ -430,18 +430,18 @@ export function completePhase(phase, state, runDir) {
   }
 
   if (phase === "validate") {
-    const correctiveAction = "advance 需要先完成 record-validation。运行 record-validation --status <状态> 记录验证结果后再 advance。";
+    const correctiveAction = "已有 validator-report.json 时先运行 record-validation 收敛验证结果；收敛成功后可直接运行 deliver。";
     const nextCommand = `node "<skill-dir>/scripts/bsg.mjs" record-validation --run ${runDir} --status <passed|failed|needs_app_review|validator_limitation|degraded>`;
     printHint(correctiveAction, nextCommand);
     return {
-      ...fail("请先运行 record-validation 记录验证结果，再 advance 进入 deliver。"),
+      ...fail("请先运行 record-validation 记录验证结果；不要用 advance 代替验证收敛。"),
       correctiveAction,
       nextCommand,
     };
   }
 
   if (phase === "deliver") {
-    return fail("当前已进入 deliver 阶段。请运行 deliver --run <run-dir> 完成交付；不要用 advance 代替 deliver。");
+    return fail("验证产物已具备交付审计条件。请运行 deliver --run <run-dir> 完成交付；不要用 advance 代替 deliver。");
   }
 
   return fail(`未知阶段: ${phase}`);
@@ -530,11 +530,11 @@ export function moveToNext(fromPhase, state, runDir) {
   }
 
   const actions = {
-    assess:  { nextAction: "record_assessment", message: "写 assessment.md 到 runs/<slug>/ 后运行 record-assessment。record-assessment 通过前不要展示评估摘要或 advance。" },
-    analyze: { nextAction: "write_analysis",   message: "按 search→detail→toc→content 顺序分析 4 条链路。双样本。完成后 advance。" },
+    assess:  { nextAction: "record_assessment", message: "写 assessment.md 到 runs/<slug>/ 后运行 record-assessment。record-assessment 通过前不要展示评估摘要或进入下一步。" },
+    analyze: { nextAction: "write_analysis",   message: "按 search→detail→toc→content 顺序分析 4 条链路。双样本。完成后运行 run。" },
     generate:{
       nextAction: "generate_json",
-      message: "生成 book-source.json 到 outputs/<slug>/。完成后 advance 会执行 official-rule-pack 校验并写 rule-check.json。若站点有登录/session/token/cookie 依赖，必须配置 enabledCookieJar + header。" + (authReminder ? "\n" + authReminder : ""),
+      message: "生成 book-source.json 到 outputs/<slug>/。完成后运行 run 做 official-rule-pack 校验并写 rule-check.json。若站点有登录/session/token/cookie 依赖，必须配置 enabledCookieJar + header。" + (authReminder ? "\n" + authReminder : ""),
     },
     validate:{ nextAction: "run_validator", message: validateMessage },
     deliver: { nextAction: "deliver", message: "最终交付检查。运行 deliver 命令。" },

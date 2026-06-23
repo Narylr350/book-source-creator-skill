@@ -1,6 +1,6 @@
 # 验证策略
 
-> **validate 阶段核心约束**：`validator-report.json` 只对应生成它时的 `book-source.json`。
+> **验证产物核心约束**：`validator-report.json` 只对应生成它时的 `book-source.json`。
 > 如果需要修改 `book-source.json`，必须按工具返回的 `correctiveAction` 回到 generate / 规则审计语义，
 > 修改后重新通过 rule-check 并重跑 validator。不能修改书源后继续复用旧 report、matrix 或 deliver 结论。
 

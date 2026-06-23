@@ -5,7 +5,6 @@ import {
   getPendingUserAction, setPendingUserAction, pendingUserActionResponse,
 } from "./state.mjs";
 import { diagnoseAndroid, diagnoseProbe } from "./environment.mjs";
-import { currentPhaseIndex, PHASE_ORDER } from "./phase-order.mjs";
 import { cmdLogin } from "./login.mjs";
 import { cmdValidate } from "./validate-runner.mjs";
 import { cmdRecordValidation } from "./validation-commands.mjs";
@@ -169,18 +168,6 @@ export function cmdAndroid(args) {
       android,
       probe,
       nextCommand: recorded.nextCommand || `node "<skill-dir>/scripts/bsg.mjs" run --run ${runDir}`,
-    };
-  }
-
-  const current = PHASE_ORDER[currentPhaseIndex(state)];
-  if (current !== "validate" || state.phases.validate.status !== "in_progress") {
-    return {
-      ok: true,
-      nextAction: "prepare_validate_phase",
-      android,
-      probe,
-      message: "Android Probe 已就绪，但当前还未进入 validate 阶段。先推进到 validate；之后再次运行 Android 单入口。",
-      nextCommand: `node "<skill-dir>/scripts/bsg.mjs" run --run "${runDir}"`,
     };
   }
 

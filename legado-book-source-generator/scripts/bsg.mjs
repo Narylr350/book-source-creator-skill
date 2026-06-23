@@ -2,7 +2,7 @@
 /* eslint-env node */
 
 /**
- * bsg.mjs ― Legado 书源生成工作流状态机 CLI
+ * bsg.mjs ― Legado 书源生成工具箱 CLI
  *
  * 用法:
  *   node scripts/bsg.mjs init <url> [--fast]
