@@ -42,15 +42,71 @@ node "<skill-dir>/scripts/bsg.mjs" android --run <run-dir>
 
 常用只读诊断命令：
 
-```bash
+```powershell
 node "<skill-dir>/scripts/bsg.mjs" android-status
 adb devices
-curl -s --max-time 3 http://127.0.0.1:18888/ping
-curl -s --max-time 3 http://127.0.0.1:18888/info
-curl -s "http://127.0.0.1:18888/cookie-check?domain=<目标域名>"
+curl.exe -s --max-time 3 http://127.0.0.1:18888/ping
+curl.exe -s --max-time 3 http://127.0.0.1:18888/info
+curl.exe -s "http://127.0.0.1:18888/cookie-check?domain=<目标域名>"
 ```
 
 只读诊断命令可以帮助定位问题，但不能替代 `android --run` 的最终结果。
+
+### 底层 Probe API 速查
+
+只在 `android --run` 明确指向 Probe/设备环境问题，或用户要求调试 Probe 时使用。常规验证仍回到 `android --run`。
+
+PowerShell 下用 `curl.exe`，不要用 `curl` 别名。
+
+#### `/render`
+
+最小可用请求必须带 `timeout`。漏传 `timeout` 时旧 Probe/JSON 解析路径可能返回 `Timeout after 0ms`，这不能证明 WebView 坏了。
+
+```powershell
+curl.exe -s --max-time 90 -X POST http://127.0.0.1:18888/render -H "Content-Type: application/json" -d '{"url":"https://example.com","timeout":60000,"screenshot":false}'
+```
+
+常用字段：
+
+| 字段 | 必填 | 说明 |
+|------|------|------|
+| `url` | 是 | WebView 打开的 URL |
+| `timeout` | 是 | 页面整体超时，常用 `60000` |
+| `headers` | 否 | 请求头，例如 `User-Agent` |
+| `cookies` | 否 | 额外注入 Cookie；优先用 Probe 登录后的 CookieManager |
+| `javaScript` | 否 | 页面加载后执行；默认 `document.documentElement.outerHTML` |
+| `jsRetries` | 否 | `javaScript` 返回空时重试次数，默认 `30` |
+| `jsDelay` | 否 | 页面完成后和每次重试的等待毫秒数，默认 `1000` |
+| `screenshot` | 否 | 是否返回 base64 截图；诊断 HTML 时可设 `false` |
+
+判断结果：
+
+- `ok:true` + `html`：WebView 渲染通道可用。
+- `ok:false` + `Timeout after 0ms`：先检查请求体是否带 `timeout`，不要直接判 Probe/WebView 故障。
+- `ok:false` + `Timeout after 60000ms`：页面确实在给定时间内未完成，继续查网络、页面阻断或 `webJs` 等待逻辑。
+
+#### `/login`
+
+打开手机或模拟器上的 Probe WebView 让用户手动登录：
+
+```powershell
+curl.exe -s --max-time 10 -X POST http://127.0.0.1:18888/login -H "Content-Type: application/json" -d '{"url":"https://example.com/login","timeout":180000}'
+```
+
+返回 `ok:true` 只说明登录页已显示，不说明用户已登录。用户完成登录后，回到常规命令：
+
+```bash
+node "<skill-dir>/scripts/bsg.mjs" android --run <run-dir> --login-completed
+```
+
+#### `/cookie-check` 和 `/cookie-clear`
+
+```powershell
+curl.exe -s "http://127.0.0.1:18888/cookie-check?domain=www.example.com"
+curl.exe -s -X POST http://127.0.0.1:18888/cookie-clear
+```
+
+`/cookie-clear` 清理的是 Probe WebView CookieManager，不是 validator 的 `validator-cookies.json`。
 
 ### Probe Cookie 判断
 

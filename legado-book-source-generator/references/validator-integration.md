@@ -24,10 +24,14 @@ validator/
 
 单次验证：传入书源 JSON + 关键词，返回完整步骤详情。
 
-```bash
-curl -X POST http://localhost:1111/api/debug/run \
-  -H "Content-Type: application/json" \
-  -d '{"sourceJson": "<书源JSON>", "sourceUrl": "https://...", "keyword": "关键词", "mode": "http", "debugDir": "runs/<slug>/debug"}'
+```json
+{
+  "sourceJson": "[{\"bookSourceUrl\":\"https://example.com\",\"bookSourceName\":\"example\"}]",
+  "sourceUrl": "https://example.com",
+  "keyword": "关键词",
+  "mode": "http",
+  "debugDir": "runs/<slug>/debug"
+}
 ```
 
 参数：
@@ -38,6 +42,22 @@ curl -X POST http://localhost:1111/api/debug/run \
 - `debugDir`（可选）：调试产物输出目录。必须已存在，validator 只写入该目录内部。产物文件名固定格式：`<phase>[-<index>]-<kind>`。失败时记入 `evidence.artifactWriteError`。
 
 返回结构见 `validator-report.json`（包含 phases、steps、errorCode、evidence、debugArtifacts）。
+
+如果手工调用 API，不要把 `sourceJson` 写成 `"<书源JSON>"` 占位字符串。PowerShell 下用下面的方式从真实文件构造请求体：
+
+```powershell
+$sourceJson = Get-Content -Raw "outputs/<slug>/book-source.json"
+$body = @{
+  sourceJson = $sourceJson
+  sourceUrl = "https://example.com"
+  keyword = "关键词"
+  mode = "http"
+  debugDir = "runs/<slug>/debug"
+} | ConvertTo-Json -Depth 8
+curl.exe -s -X POST http://localhost:1111/api/debug/run -H "Content-Type: application/json" --data-binary $body
+```
+
+`debugDir` 必须预先存在；不存在时 validator 会忽略该目录，不会写调试产物。
 
 ## validator-report.json 结构速查
 
@@ -305,22 +325,34 @@ else:
 
 如果 `bsg.mjs validate` 不可用，直接 curl API：
 
-```bash
+```powershell
 # 导入书源
-curl -X POST http://localhost:1111/api/source/import \
-  -H "Content-Type: application/json" \
-  -d @outputs/<slug>/book-source.json
+curl.exe -X POST http://localhost:1111/api/source/import -H "Content-Type: application/json" --data-binary "@outputs/<slug>/book-source.json"
 
 # 运行验证（含 debug 产物）
-curl -X POST http://localhost:1111/api/debug/run \
-  -H "Content-Type: application/json" \
-  -d '{"sourceUrl":"https://...","keyword":"关键词","mode":"http","debugDir":"runs/<slug>/debug"}'
+curl.exe -X POST http://localhost:1111/api/debug/run -H "Content-Type: application/json" -d '{"sourceUrl":"https://example.com","keyword":"关键词","mode":"http","debugDir":"runs/<slug>/debug"}'
 ```
+
+直接调用 `/api/debug/run` 有两种合法方式：
+
+- 先 `/api/source/import`，再传 `sourceUrl`。
+- 不 import，直接在请求体传真实 `sourceJson` 字符串。不要传占位文本。
+
+Cookie API 只在脚本故障时手工使用；正常流程优先写 `runs/<slug>/cookies.json`，由 `bsg.mjs validate` 自动注入。
+
+```powershell
+curl.exe -s -X POST http://localhost:1111/api/cookie/set -H "Content-Type: application/json" -d '{"domain":"www.example.com","cookie":"a=b; c=d"}'
+curl.exe -s "http://localhost:1111/api/cookie/get?domain=www.example.com"
+curl.exe -s -X POST http://localhost:1111/api/cookie/clear -H "Content-Type: application/json" -d '{"domain":"www.example.com"}'
+curl.exe -s -X POST http://localhost:1111/api/cookie/clear -H "Content-Type: application/json" -d '{"all":true}'
+```
+
+这里的 `/api/cookie/clear` 清理 validator CookieStore；Probe WebView Cookie 要用 `http://127.0.0.1:18888/cookie-clear`。
 
 ## 前置检查
 
-```bash
-curl -s http://localhost:1111/api/sources >nul 2>&1 && echo Running || echo Not running
+```powershell
+if ((curl.exe -s --max-time 3 http://localhost:1111/api/sources 2>$null) -match "^\[") { "Running" } else { "Not running" }
 ```
 
 **禁止用 `/health` 探测（该端点不存在，返回 404）。只用 `/api/sources`。**

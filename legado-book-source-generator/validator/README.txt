@@ -30,10 +30,12 @@ Android Probe：
   - Probe ping：http://127.0.0.1:18888/ping，应返回 pong
   - Probe info：http://127.0.0.1:18888/info
   - Probe Cookie：http://127.0.0.1:18888/cookie-check?domain=<目标域名>
+  - Probe render：POST http://127.0.0.1:18888/render 必须带 JSON 字段 timeout，例如 {"url":"https://example.com","timeout":60000,"screenshot":false}
   - Validator API：http://localhost:1111/api/debug/run
 
 调试原则：
   - adb、Probe API、curl 可以用于定位问题，但不能替代 bsg.mjs android / record-validation 的最终收敛
+  - Probe 返回 Timeout after 0ms 时，先检查 /render 请求体是否漏传 timeout，不要直接判断 WebView 坏了
   - PC HTTP / Browser passed 只算开发辅助；Android 可用时最终 passed 必须来自 Android mode
   - screenshot 或 rendered HTML 只能证明页面渲染过，正文可用还要看 extracted/contentPreview/contentLength
 
