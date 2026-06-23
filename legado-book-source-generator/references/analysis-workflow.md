@@ -103,7 +103,7 @@
 node scripts/audit-source.mjs outputs/<site-slug>/book-source.json
 
 # 全链路验证（需要 validator 运行中）
-node scripts/bsg.mjs validate --run runs/<site-slug>/
+node "<skill-dir>/scripts/bsg.mjs" validate --run runs/<site-slug>/
 ```
 
 **自检清单**：

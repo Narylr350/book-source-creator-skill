@@ -96,7 +96,7 @@ function invalidateSourceDependentArtifacts(runDir, state) {
 export function cmdSource(args) {
   const subcommand = args[0];
   const runDir = parseArg(args, "--run");
-  if (!subcommand || !runDir) return fail("用法: node scripts/bsg.mjs source inspect|set --run {dir}");
+  if (!subcommand || !runDir) return fail("用法: node \"<skill-dir>/scripts/bsg.mjs\" source inspect|set --run {dir}");
 
   const { state, error } = loadAndVerify(runDir);
   if (error) return fail(error);
@@ -128,7 +128,7 @@ export function cmdSource(args) {
     const fieldPath = parseArg(args, "--path");
     const rawValue = parseArg(args, "--value");
     if (!fieldPath || rawValue == null) {
-      return fail("用法: node scripts/bsg.mjs source set --run {dir} --path ruleContent.content --value <value>");
+      return fail("用法: node \"<skill-dir>/scripts/bsg.mjs\" source set --run {dir} --path ruleContent.content --value <value>");
     }
     try {
       setPathValue(source, fieldPath, parseValue(rawValue));
@@ -145,7 +145,7 @@ export function cmdSource(args) {
       changedField: fieldPath,
       value: getPathValue(source, fieldPath),
       invalidatedArtifacts,
-      nextCommand: `node scripts/bsg.mjs source inspect --run ${runDir}`,
+      nextCommand: `node "<skill-dir>/scripts/bsg.mjs" source inspect --run ${runDir}`,
     };
   }
 

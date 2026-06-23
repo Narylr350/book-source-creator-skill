@@ -16,6 +16,46 @@ const noDeviceEnv = {
   BSG_TEST_ADB_DEVICES_OUTPUT: "List of devices attached\n",
 };
 
+async function fakeAndroidToolEnv(tmpDir, extraEnv = {}) {
+  const toolsDir = path.join(tmpDir, "fake-android-tools");
+  await fs.mkdir(toolsDir, { recursive: true });
+  if (process.platform === "win32") {
+    await fs.writeFile(path.join(toolsDir, "adb.cmd"), [
+      "@echo off",
+      "if \"%1\"==\"version\" echo Android Debug Bridge version 1.0.41& exit /b 0",
+      "if \"%1\"==\"devices\" echo List of devices attached& echo emulator-5554\tdevice& exit /b 0",
+      "exit /b 0",
+    ].join("\r\n"), "utf8");
+    await fs.writeFile(path.join(toolsDir, "curl.cmd"), [
+      "@echo off",
+      "echo %* | findstr /C:\"/ping\" >nul",
+      "if %errorlevel%==0 (echo pong& exit /b 0)",
+      "echo {\"ok\":true}",
+    ].join("\r\n"), "utf8");
+  } else {
+    await fs.writeFile(path.join(toolsDir, "adb"), [
+      "#!/bin/sh",
+      "if [ \"$1\" = \"version\" ]; then echo 'Android Debug Bridge version 1.0.41'; exit 0; fi",
+      "if [ \"$1\" = \"devices\" ]; then printf 'List of devices attached\\nemulator-5554\\tdevice\\n'; exit 0; fi",
+      "exit 0",
+    ].join("\n"), "utf8");
+    await fs.writeFile(path.join(toolsDir, "curl"), [
+      "#!/bin/sh",
+      "case \"$*\" in */ping*) echo pong ;; *) echo '{\"ok\":true}' ;; esac",
+    ].join("\n"), "utf8");
+    await fs.chmod(path.join(toolsDir, "adb"), 0o755);
+    await fs.chmod(path.join(toolsDir, "curl"), 0o755);
+  }
+
+  const pathKey = Object.keys(process.env).find((key) => key.toLowerCase() === "path") || "PATH";
+  return {
+    ...process.env,
+    [pathKey]: `${toolsDir}${path.delimiter}${process.env[pathKey] || ""}`,
+    BSG_TEST_ADB_DEVICES_OUTPUT: "List of devices attached\nemulator-5554\tdevice\n",
+    ...extraEnv,
+  };
+}
+
 async function makeTmpDir() {
   return fs.mkdtemp(path.join(os.tmpdir(), "bsg-state-"));
 }
@@ -2195,6 +2235,32 @@ describe("advance response fields", () => {
     assert.match(validator, /工具箱|run --run/);
   });
 
+  it("user-facing command examples do not use run-relative bsg paths", async () => {
+    const files = [
+      path.join(ROOT, "scripts", "validate-with-validator.mjs"),
+      path.join(ROOT, "scripts", "lib", "assessment-commands.mjs"),
+      path.join(ROOT, "scripts", "lib", "debug-bundle.mjs"),
+      path.join(ROOT, "scripts", "lib", "deliver-check.mjs"),
+      path.join(ROOT, "scripts", "lib", "environment.mjs"),
+      path.join(ROOT, "scripts", "lib", "login.mjs"),
+      path.join(ROOT, "scripts", "lib", "phase-engine.mjs"),
+      path.join(ROOT, "scripts", "lib", "source-commands.mjs"),
+      path.join(ROOT, "scripts", "lib", "validate-runner.mjs"),
+      path.join(ROOT, "scripts", "lib", "validation-commands.mjs"),
+      path.join(ROOT, "scripts", "lib", "validator-lifecycle.mjs"),
+      path.join(ROOT, "scripts", "lib", "workflow-commands.mjs"),
+      path.join(ROOT, "references", "analysis-workflow.md"),
+      path.join(ROOT, "references", "assessment-template.md"),
+      path.join(ROOT, "references", "outputs.md"),
+      path.join(ROOT, "references", "policies.md"),
+      path.join(ROOT, "references", "validator-integration.md"),
+    ];
+    for (const file of files) {
+      const text = await fs.readFile(file, "utf8");
+      assert.doesNotMatch(text, /\bnode scripts\/bsg\.mjs\b/, file);
+    }
+  });
+
   it("android command asks for a device instead of exposing adb steps", async () => {
     const tmpDir = await makeTmpDir();
     const init = await runBsg(["init", "https://example.com", "--cwd", tmpDir], { env: noDeviceEnv });
@@ -2228,6 +2294,35 @@ describe("advance response fields", () => {
     assert.equal(result.nextAction, "setup_android_probe");
     assert.match(result.nextCommand, /bsg\.mjs" android --run .* --setup/);
     assert.doesNotMatch(result.nextCommand, /login|adb|curl/);
+    await fs.rm(tmpDir, { recursive: true, force: true });
+  });
+
+  it("android setup persists login pending action so login-completed can resolve it", async () => {
+    const tmpDir = await makeTmpDir();
+    const init = await runBsg(["init", "https://example.com", "--cwd", tmpDir]);
+    const setupEnv = await fakeAndroidToolEnv(tmpDir);
+
+    const setup = await runBsg(["android", "--run", init.runDir, "--setup"], { env: setupEnv });
+    const stateAfterSetup = JSON.parse(await fs.readFile(path.join(init.runDir, "run-state.json"), "utf8"));
+
+    assert.equal(setup.requiredUserAction, "login_required");
+    assert.equal(stateAfterSetup.pendingUserAction?.type, "login_required");
+
+    const completed = await runBsg(["android", "--run", init.runDir, "--login-completed"], {
+      env: await fakeAndroidToolEnv(tmpDir, {
+        BSG_TEST_PROBE_COOKIE_CHECK: JSON.stringify({
+          hasCookies: true,
+          authenticated: true,
+          cookies: "auth_token=abc",
+          url: "https://example.com",
+        }),
+      }),
+    });
+    const stateAfterComplete = JSON.parse(await fs.readFile(path.join(init.runDir, "run-state.json"), "utf8"));
+
+    assert.equal(completed.resolved, "login_required");
+    assert.equal(stateAfterComplete.pendingUserAction, null);
+    assert.equal(stateAfterComplete.loginFeatures._loginMethod, "probe");
     await fs.rm(tmpDir, { recursive: true, force: true });
   });
 
@@ -2344,6 +2439,40 @@ describe("advance response fields", () => {
     await fs.rm(tmpDir, { recursive: true, force: true });
   });
 
+  it("android command ignores stale non-Probe validator reports when Probe is ready", async () => {
+    const tmpDir = await makeTmpDir();
+    const runDir = await initRun(tmpDir, {
+      env: { ...process.env, BSG_TEST_ADB_DEVICES_OUTPUT: "List of devices attached\nemulator-5554\tdevice\n" },
+    });
+    await advanceToGenerate(tmpDir, runDir);
+    await writeValidSource(tmpDir);
+    await runBsg(["advance", "--run", runDir]);
+    await writeGeneratedValidatorReport(runDir, {
+      status: "passed",
+      mode: "http",
+      phases: { search: "success", detail: "success", toc: "success", content: "success" },
+      steps: [
+        { phase: "search", status: "success", mode: "http", androidBackend: "pc_http", androidProbeUsed: false },
+        { phase: "detail", status: "success", mode: "http", androidBackend: "pc_http", androidProbeUsed: false },
+        { phase: "toc", status: "success", mode: "http", androidBackend: "pc_http", androidProbeUsed: false },
+        { phase: "content", status: "success", mode: "http", androidBackend: "pc_http", androidProbeUsed: false },
+      ],
+    });
+
+    const result = await runBsg(["android", "--run", runDir], {
+      env: {
+        ...process.env,
+        VALIDATOR_URL: "http://127.0.0.1:1",
+        BSG_TEST_ADB_DEVICES_OUTPUT: "List of devices attached\nemulator-5554\tdevice\n",
+        BSG_TEST_PROBE_INFO: JSON.stringify({ ok: true, api: [] }),
+      },
+    });
+
+    assert.equal(result.via, "validate");
+    assert.equal(result.status, "skipped");
+    await fs.rm(tmpDir, { recursive: true, force: true });
+  });
+
   it("run stops at assessment authoring instead of asking the agent to advance", async () => {
     const tmpDir = await makeTmpDir();
     const result = await runBsg(["init", "https://example.com", "--cwd", tmpDir]);
@@ -2425,6 +2554,9 @@ describe("advance response fields", () => {
     assert.ok(result.nextCommand.includes("validator-start"), "skipped validation should tell the agent to start validator");
     assert.ok(!result.nextCommand.includes("--status skipped"), "nextCommand must not suggest an unsupported record-validation status");
     assert.ok(!/验证完成/.test(result.message), "skipped validator should not be described as completed validation");
+    assert.equal(result.keyword, "example-com");
+    const report = JSON.parse(await fs.readFile(path.join(runDir, "validator-report.json"), "utf8"));
+    assert.doesNotMatch(report.reason, /\bnode scripts\/bsg\.mjs\b/);
     await fs.rm(tmpDir, { recursive: true, force: true });
   });
 

@@ -1,4 +1,4 @@
-// 用法: node scripts/bsg.mjs debug-bundle [--cwd <工作目录>] [--run <run目录>] [--claude-session <sessionId>]
+// 用法: node "<skill-dir>/scripts/bsg.mjs" debug-bundle [--cwd <工作目录>] [--run <run目录>] [--claude-session <sessionId>]
 // 说明: 打包当前 run 目录的工件 + claude-code-log 导出的对话 Markdown
 //   --cwd           指定项目根目录（默认当前目录）。脚本会去 runs/ 找最新 run
 //   --run           直接指定 run 目录，跳过自动查找
@@ -246,7 +246,7 @@ export function cmdDebugBundle(args) {
   const runArg = parseArg(args, "--run");
   const runDir = runArg ? path.resolve(runArg) : findLatestRunDir(cwd);
   if (!runDir) {
-    return fail(`未找到 run 目录。用法: node scripts/bsg.mjs debug-bundle [--cwd <work-dir>] 或 --run <run-dir>。当前 cwd: ${cwd}`);
+    return fail(`未找到 run 目录。用法: node "<skill-dir>/scripts/bsg.mjs" debug-bundle [--cwd <work-dir>] 或 --run <run-dir>。当前 cwd: ${cwd}`);
   }
 
   const { state, error } = loadAndVerify(runDir);

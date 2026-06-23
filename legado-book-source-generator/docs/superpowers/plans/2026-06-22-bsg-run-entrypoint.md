@@ -119,7 +119,7 @@ Add to `scripts/lib/workflow-commands.mjs`:
 ```js
 export function cmdRun(args) {
   const runDir = parseArg(args, "--run");
-  if (!runDir) return fail("用法: node scripts/bsg.mjs run --run <run-dir>");
+  if (!runDir) return fail("用法: node \"<skill-dir>/scripts/bsg.mjs\" run --run <run-dir>");
 
   const { state, error } = loadAndVerify(runDir);
   if (error) return fail(error);
@@ -225,7 +225,7 @@ case "run":
 Add usage line:
 
 ```text
-node scripts/bsg.mjs run --run {dir}
+node "<skill-dir>/scripts/bsg.mjs" run --run {dir}
 ```
 
 - [ ] **Step 6: Run targeted tests**
@@ -398,4 +398,3 @@ git commit -m "feat: add bsg run entrypoint"
 - Placeholder scan: no TODO/TBD placeholders.
 - Scope check: focused on one small outer wrapper, not a state-machine rewrite.
 - Ambiguity check: expert commands remain available but are no longer the default agent path.
-

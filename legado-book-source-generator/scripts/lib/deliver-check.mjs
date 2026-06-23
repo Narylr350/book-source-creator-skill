@@ -128,7 +128,7 @@ export function cmdDeliverCheck(state, runDir) {
   let cleanupReminder = null;
   if (fileExists(pidFile)) {
     const vPid = fs.readFileSync(pidFile, "utf-8").trim();
-    cleanupReminder = `⚠ 别忘了关 validator: node scripts/bsg.mjs validator-stop (PID: ${vPid})`;
+    cleanupReminder = `⚠ 别忘了关 validator: node "<skill-dir>/scripts/bsg.mjs" validator-stop (PID: ${vPid})`;
   }
 
   return {

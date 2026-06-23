@@ -42,9 +42,21 @@ export function resolveValidateCookieFile(runDir, state, mode) {
   };
 }
 
+function isGenericAnalysisTitle(title) {
+  const normalized = String(title || "").trim().replace(/[：:]\s*$/, "").toLowerCase();
+  return [
+    "分析",
+    "网站分析",
+    "站点分析",
+    "site analysis",
+    "website analysis",
+    "analysis",
+  ].includes(normalized);
+}
+
 export function cmdValidate(args) {
   const runDir = parseArg(args, "--run");
-  if (!runDir) return fail("用法: node scripts/bsg.mjs validate --run <dir> [--keyword <kw>] [--mode http|browser|android]");
+  if (!runDir) return fail("用法: node \"<skill-dir>/scripts/bsg.mjs\" validate --run <dir> [--keyword <kw>] [--mode http|browser|android]");
 
   const keywordArg = parseArg(args, "--keyword");
   const modeArg = parseArg(args, "--mode");
@@ -58,14 +70,14 @@ export function cmdValidate(args) {
   const bookSourcePath = path.join(state.workingDir, "outputs", state.siteSlug, "book-source.json");
   if (!fileExists(bookSourcePath)) return fail(`book-source.json 不存在: ${bookSourcePath}。请先完成 generate 阶段。`);
 
-  // Determine keyword: override → analysis.md title → siteSlug
+  // Determine keyword: override → specific analysis.md title → siteSlug
   let keyword = keywordArg;
   if (!keyword) {
     const analysisPath = path.join(runDir, "analysis.md");
     if (fileExists(analysisPath)) {
       const firstLine = fs.readFileSync(analysisPath, "utf-8").split("\n")[0];
       const m = firstLine.match(/#\s*(.+)/);
-      if (m) keyword = m[1].trim();
+      if (m && !isGenericAnalysisTitle(m[1])) keyword = m[1].trim();
     }
     if (!keyword) keyword = state.siteSlug;
   }

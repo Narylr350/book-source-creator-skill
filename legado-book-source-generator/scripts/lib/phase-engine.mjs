@@ -95,7 +95,7 @@ export function completePhase(phase, state, runDir) {
       const nextCommand = `node "<skill-dir>/scripts/bsg.mjs" record-assessment --run ${runDir}`;
       printHint(correctiveAction, nextCommand);
       return {
-        ...fail("assessment.md 尚未通过 record-assessment 记录。先运行: node scripts/bsg.mjs record-assessment --run <run-dir>。通过前不要展示评估摘要。"),
+        ...fail("assessment.md 尚未通过 record-assessment 记录。先运行: node \"<skill-dir>/scripts/bsg.mjs\" record-assessment --run <run-dir>。通过前不要展示评估摘要。"),
         correctiveAction,
         nextCommand,
       };
@@ -144,8 +144,8 @@ export function completePhase(phase, state, runDir) {
         "必须先确认是否用 Android 真机或模拟器复核入口链路，不能直接用排行榜/书库替代搜索并继续。",
         "",
         android.state === "device_ready"
-          ? "已检测到 Android 真机或模拟器：运行 node scripts/bsg.mjs android --run <dir>，让 Android 单入口复核入口链路。"
-          : "未检测到可用 Android 真机或模拟器：先问用户是否有真机或模拟器；有则连接/启动后运行 node scripts/bsg.mjs android --run <dir>。",
+          ? "已检测到 Android 真机或模拟器：运行 node \"<skill-dir>/scripts/bsg.mjs\" android --run <dir>，让 Android 单入口复核入口链路。"
+          : "未检测到可用 Android 真机或模拟器：先问用户是否有真机或模拟器；有则连接/启动后运行 node \"<skill-dir>/scripts/bsg.mjs\" android --run <dir>。",
         "只有用户明确接受入口不完整并跳过 Android 复核时，才记录 continue_after_entry_risk。",
       ].join("\n");
       const pending = setPendingUserAction(state, "android_entry_review_needed", "entry_antibot_requires_android_decision", message, {
@@ -176,8 +176,8 @@ export function completePhase(phase, state, runDir) {
           `当前 Android/adb 状态: ${android.state}。${android.message}`,
           "",
           "为尽量还原阅读 App 行为，必须先确认是否有 Android 真机或模拟器可用于 Probe 登录和 App/WebView 验证。",
-          "  • 如果有，请连接真机或启动模拟器并完成 adb 授权后，再运行 node scripts/bsg.mjs android --run <dir>。",
-          "  • 如果没有可用 Android 真机或模拟器，让用户明确确认后运行 node scripts/bsg.mjs android --run <dir> --no-device；之后才允许降级为 Browser Cookie 登录路径。",
+          "  • 如果有，请连接真机或启动模拟器并完成 adb 授权后，再运行 node \"<skill-dir>/scripts/bsg.mjs\" android --run <dir>。",
+          "  • 如果没有可用 Android 真机或模拟器，让用户明确确认后运行 node \"<skill-dir>/scripts/bsg.mjs\" android --run <dir> --no-device；之后才允许降级为 Browser Cookie 登录路径。",
         ].join("\n");
         const pending = setPendingUserAction(state, "android_device_needed", "login_requires_android_decision", message, {
           blockingPhase: "assess",
@@ -229,13 +229,13 @@ export function completePhase(phase, state, runDir) {
             ? "步骤："
             : "",
           adbOk
-            ? "1. 运行 node scripts/bsg.mjs android --run <dir>——由 Android 单入口启动 Probe 并打开登录页"
+            ? "1. 运行 node \"<skill-dir>/scripts/bsg.mjs\" android --run <dir>——由 Android 单入口启动 Probe 并打开登录页"
             : "",
           adbOk
             ? "2. 用户在手机/模拟器里输入账号密码并完成验证码/短信/扫码"
             : "",
           adbOk
-            ? "3. 看到已登录状态后运行 node scripts/bsg.mjs android --run <dir> --login-completed"
+            ? "3. 看到已登录状态后运行 node \"<skill-dir>/scripts/bsg.mjs\" android --run <dir> --login-completed"
             : "",
           adbOk
             ? "不要手工拼 adb、curl、login、validate 或 record-validation。"
@@ -276,10 +276,10 @@ export function completePhase(phase, state, runDir) {
         "请确认：你是否有满足以下条件的 Android 真机或模拟器？",
         "  • Android 真机（已开启 USB 调试）或 Android 模拟器",
         "  • 真机通过 USB 数据线连接电脑；模拟器已启动并能被 adb 看到",
-        "  • 电脑可运行 node scripts/bsg.mjs android --run <dir>（脚本会通过单入口处理 adb、Probe 和验证）",
+        "  • 电脑可运行 node \"<skill-dir>/scripts/bsg.mjs\" android --run <dir>（脚本会通过单入口处理 adb、Probe 和验证）",
         "",
-        "如果有，请连接真机或启动模拟器并完成授权后，再运行 node scripts/bsg.mjs android --run <dir>。",
-        "如果没有可用 Android 真机或模拟器，让用户明确确认后运行 node scripts/bsg.mjs android --run <dir> --no-device；后续正文验证由 record-validation 降级收敛，不能标 passed。",
+        "如果有，请连接真机或启动模拟器并完成授权后，再运行 node \"<skill-dir>/scripts/bsg.mjs\" android --run <dir>。",
+        "如果没有可用 Android 真机或模拟器，让用户明确确认后运行 node \"<skill-dir>/scripts/bsg.mjs\" android --run <dir> --no-device；后续正文验证由 record-validation 降级收敛，不能标 passed。",
       ].join("\n");
       const pending = setPendingUserAction(state, "android_device_needed", "webview_requires_android", message, {
         blockingPhase: "assess",
@@ -469,7 +469,7 @@ export function moveToNext(fromPhase, state, runDir) {
         .filter(([k, v]) => v && !state.loginFeatures[k])
         .map(([k]) => k);
       if (missing.length > 0) {
-        authReminder = `⚠️ analysis.md 提到 auth/登录特征但 loginFeatures 未设: ${missing.join(", ")}。请在生成书源前运行: node scripts/bsg.mjs set-login-features --run {dir}`;
+        authReminder = `⚠️ analysis.md 提到 auth/登录特征但 loginFeatures 未设: ${missing.join(", ")}。请在生成书源前运行: node "<skill-dir>/scripts/bsg.mjs" set-login-features --run {dir}`;
       }
     }
   }
@@ -483,7 +483,7 @@ export function moveToNext(fromPhase, state, runDir) {
       "⚠️  WebView/CSR 正文 — 必须用 Android Probe",
       "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
       "1. validator-start（窗口必须可见）",
-      "2. node scripts/bsg.mjs android --run <dir>",
+      "2. node \"<skill-dir>/scripts/bsg.mjs\" android --run <dir>",
       "3. 按 android 命令返回的 requiredUserAction 或 nextCommand 继续",
       "4. Android 不可用时: 先让用户确认 --no-device，再由 record-validation 降级收敛",
       "",
@@ -514,7 +514,7 @@ export function moveToNext(fromPhase, state, runDir) {
         : "Android/Probe 不可用时，必须先让用户完成 Browser 登录并提取 Cookie 注入 validator，否则正文鉴权失败。",
       "",
       loggedInViaProbe
-        ? "1. 运行 node scripts/bsg.mjs android --run <dir>"
+        ? "1. 运行 node \"<skill-dir>/scripts/bsg.mjs\" android --run <dir>"
         : "1. browser_network_requests 找到 API 请求头的 Cookie 或 Authorization",
       loggedInViaProbe
         ? "2. 按 android 命令返回的 requiredUserAction 或 nextCommand 继续"

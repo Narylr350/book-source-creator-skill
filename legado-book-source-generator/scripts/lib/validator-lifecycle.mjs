@@ -108,7 +108,7 @@ export async function cmdValidatorStart(_args) {
       message: up
         ? `Validator 已启动 (PID: ${pid}, ${VALIDATOR_URL})。窗口可见，用完后运行 validator-stop 关闭。`
         : `Validator 进程已创建 (PID: ${pid}) 但尚未就绪，请等待几秒后重试。`,
-      stopReminder: "完成后运行: node scripts/bsg.mjs validator-stop",
+      stopReminder: "完成后运行: node \"<skill-dir>/scripts/bsg.mjs\" validator-stop",
     };
   } catch (e) {
     return fail(`启动 validator 失败: ${e.message}`);

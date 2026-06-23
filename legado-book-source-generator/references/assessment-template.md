@@ -66,7 +66,7 @@
 填写或更新后运行：
 
 ```bash
-node scripts/bsg.mjs record-assessment --run <run-dir>
+node "<skill-dir>/scripts/bsg.mjs" record-assessment --run <run-dir>
 ```
 
 如果 AUTO 区块 hash 不匹配，说明有人手改了结论区；不要继续编辑结论，重新运行 `record-assessment`。如果证据说明没有有效 `evidence:<id>`，先补 `site-facts.json` 证据或改成分析备注。

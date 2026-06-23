@@ -44,7 +44,7 @@ npm run validate -- .\outputs\example-com\book-source.json
 npm run audit -- .\outputs\example-com\book-source.json --keyword 凡人修仙 --page 1
 
 # 真实链路验证（需 validator 运行中）
-node scripts/bsg.mjs validate --run .\runs\example-com --mode http
+node "<skill-dir>/scripts/bsg.mjs" validate --run .\runs\example-com --mode http
 ```
 
 `audit-source.mjs` 只做静态审计、占位检测、嵌入式 JS 语法检查和搜索 URL 预览，不能据此判断最终运行可用性。

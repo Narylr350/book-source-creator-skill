@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { createHash } from "node:crypto";
 import {
   fail, parseArg, fileExists, loadAndVerify, saveRunState,
   getPendingUserAction, setPendingUserAction, pendingUserActionResponse,
@@ -14,14 +15,22 @@ function androidCommand(runDir, extra = "") {
   return `node "<skill-dir>/scripts/bsg.mjs" android --run "${runDir}"${extra}`;
 }
 
-function reportForRun(runDir) {
+function currentSourceHash(state) {
+  const sourcePath = path.join(state.workingDir, "outputs", state.siteSlug, "book-source.json");
+  if (!fileExists(sourcePath)) return null;
+  return createHash("sha256").update(fs.readFileSync(sourcePath)).digest("hex");
+}
+
+function reportForRun(runDir, state) {
   const reportPath = path.join(runDir, "validator-report.json");
   if (!fileExists(reportPath)) return null;
   try {
     const report = JSON.parse(fs.readFileSync(reportPath, "utf-8"));
-    return report?._generatedBy === "validate-with-validator.mjs" && report.status !== "skipped"
-      ? report
-      : null;
+    if (report?._generatedBy !== "validate-with-validator.mjs" || report.status === "skipped") return null;
+    if (report.mode !== "android") return null;
+    const sourceHash = currentSourceHash(state);
+    if (sourceHash && report._sourceHash && report._sourceHash !== sourceHash) return null;
+    return report;
   } catch {
     return null;
   }
@@ -46,7 +55,7 @@ function recordAndroidReady(state, pending) {
 
 export function cmdAndroid(args) {
   const runDir = parseArg(args, "--run");
-  if (!runDir) return fail("用法: node scripts/bsg.mjs android --run <run-dir> [--setup]");
+  if (!runDir) return fail("用法: node \"<skill-dir>/scripts/bsg.mjs\" android --run <run-dir> [--setup]");
 
   if (args.includes("--no-device")) {
     const resolved = cmdResolveUserAction(["--run", runDir, "--action", "android_device_unavailable"]);
@@ -139,10 +148,19 @@ export function cmdAndroid(args) {
         nextCommand: androidCommand(runDir),
       };
     }
+    const pending = setPendingUserAction(
+      state,
+      "login_required",
+      "android_probe_login",
+      "Android Probe 已打开登录页。请在手机或模拟器内完成账号登录和验证码；完成后运行 android --login-completed，由 Probe Cookie 证明登录态。",
+      { android, adbAvailable: true, via: "android:setup" },
+    );
+    saveRunState(runDir, state);
     return {
       ...result,
       via: "android:setup",
       requiredUserAction: "login_required",
+      pendingUserAction: pending,
       nextCommand: androidCommand(runDir, " --login-completed"),
     };
   }
@@ -159,7 +177,7 @@ export function cmdAndroid(args) {
     };
   }
 
-  const report = reportForRun(runDir);
+  const report = reportForRun(runDir, state);
   if (report) {
     const recorded = cmdRecordValidation(["--run", runDir, "--status", report.status]);
     return {

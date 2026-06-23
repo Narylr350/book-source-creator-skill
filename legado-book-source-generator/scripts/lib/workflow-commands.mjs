@@ -15,7 +15,7 @@ import { cmdRecordValidation } from "./validation-commands.mjs";
 
 export function cmdInit(args) {
   if (args.length < 1) {
-    return fail("用法: node scripts/bsg.mjs init <site-url> [--fast] [--cwd {dir}]");
+    return fail("用法: node \"<skill-dir>/scripts/bsg.mjs\" init <site-url> [--fast] [--cwd {dir}]");
   }
 
   const siteUrl = args[0];
@@ -76,7 +76,7 @@ export function cmdInit(args) {
 
 export function cmdStatus(args) {
   const runDir = parseArg(args, "--run");
-  if (!runDir) return fail("用法: node scripts/bsg.mjs status --run <run-dir>");
+  if (!runDir) return fail("用法: node \"<skill-dir>/scripts/bsg.mjs\" status --run <run-dir>");
 
   const { state, error } = loadAndVerify(runDir);
   if (error) return fail(error);
@@ -312,7 +312,7 @@ function instructionForPhase(current, state, runDir) {
 
 export function cmdRun(args) {
   const runDir = parseArg(args, "--run");
-  if (!runDir) return fail("用法: node scripts/bsg.mjs run --run <run-dir>");
+  if (!runDir) return fail("用法: node \"<skill-dir>/scripts/bsg.mjs\" run --run <run-dir>");
 
   const { state, error } = loadAndVerify(runDir);
   if (error) return fail(error);
@@ -365,7 +365,7 @@ export function cmdRun(args) {
 
 export function cmdAdvance(args) {
   const runDir = parseArg(args, "--run");
-  if (!runDir) return fail("用法: node scripts/bsg.mjs advance --run <run-dir>");
+  if (!runDir) return fail("用法: node \"<skill-dir>/scripts/bsg.mjs\" advance --run <run-dir>");
 
   const { state, error } = loadAndVerify(runDir);
   if (error) return fail(error);

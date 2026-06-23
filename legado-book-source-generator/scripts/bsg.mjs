@@ -5,22 +5,22 @@
  * bsg.mjs ― Legado 书源生成工具箱 CLI
  *
  * 用法:
- *   node scripts/bsg.mjs init <url> [--fast]
- *   node scripts/bsg.mjs toolbox
- *   node scripts/bsg.mjs run --run <dir>
- *   node scripts/bsg.mjs status --run <dir>
- *   node scripts/bsg.mjs advance --run <dir>
- *   node scripts/bsg.mjs check --run <dir>
- *   node scripts/bsg.mjs record-assessment --run <dir>
- *   node scripts/bsg.mjs set-login-features --run <dir> [--flags <json>]
- *   node scripts/bsg.mjs record-validation --run <dir> --status <status>
- *   node scripts/bsg.mjs deliver --run <dir>
- *   node scripts/bsg.mjs android --run <dir>
- *   node scripts/bsg.mjs debug-bundle [--run <dir>] [--cwd <work-dir>] [--transcript <file>] [--claude-session <id>]
- *   node scripts/bsg.mjs source inspect|set --run <dir>
- *   node scripts/bsg.mjs login [--run <dir> | --url <login-url>] [--keep-cookies]
- *   node scripts/bsg.mjs validator-start [--background]
- *   node scripts/bsg.mjs validator-stop
+ *   node "<skill-dir>/scripts/bsg.mjs" init <url> [--fast]
+ *   node "<skill-dir>/scripts/bsg.mjs" toolbox
+ *   node "<skill-dir>/scripts/bsg.mjs" run --run <dir>
+ *   node "<skill-dir>/scripts/bsg.mjs" status --run <dir>
+ *   node "<skill-dir>/scripts/bsg.mjs" advance --run <dir>
+ *   node "<skill-dir>/scripts/bsg.mjs" check --run <dir>
+ *   node "<skill-dir>/scripts/bsg.mjs" record-assessment --run <dir>
+ *   node "<skill-dir>/scripts/bsg.mjs" set-login-features --run <dir> [--flags <json>]
+ *   node "<skill-dir>/scripts/bsg.mjs" record-validation --run <dir> --status <status>
+ *   node "<skill-dir>/scripts/bsg.mjs" deliver --run <dir>
+ *   node "<skill-dir>/scripts/bsg.mjs" android --run <dir>
+ *   node "<skill-dir>/scripts/bsg.mjs" debug-bundle [--run <dir>] [--cwd <work-dir>] [--transcript <file>] [--claude-session <id>]
+ *   node "<skill-dir>/scripts/bsg.mjs" source inspect|set --run <dir>
+ *   node "<skill-dir>/scripts/bsg.mjs" login [--run <dir> | --url <login-url>] [--keep-cookies]
+ *   node "<skill-dir>/scripts/bsg.mjs" validator-start [--background]
+ *   node "<skill-dir>/scripts/bsg.mjs" validator-stop
  */
 
 import {
@@ -50,25 +50,25 @@ function printUsage() {
   console.error(
     [
       "用法:",
-      "  node scripts/bsg.mjs init <site-url> [--fast]",
-      "  node scripts/bsg.mjs toolbox",
-      "  node scripts/bsg.mjs run --run {dir}",
-      "  node scripts/bsg.mjs status --run {dir}",
-      "  node scripts/bsg.mjs advance --run {dir}",
-      "  node scripts/bsg.mjs check --run {dir}",
-      "  node scripts/bsg.mjs record-assessment --run {dir}",
-      "  node scripts/bsg.mjs set-login-features --run {dir} [--flags <json>]",
-      "  node scripts/bsg.mjs resolve-user-action --run {dir} --action <action>",
-      "  node scripts/bsg.mjs android --run {dir}",
-      "  node scripts/bsg.mjs record-validation --run {dir} --status <status>",
-      "  node scripts/bsg.mjs deliver --run {dir}",
-      "  node scripts/bsg.mjs debug-bundle [--run {dir}] [--cwd {work-dir}] [--transcript {file}] [--claude-session {id}]",
-      "  node scripts/bsg.mjs source inspect|set --run {dir}",
-      "  node scripts/bsg.mjs android-status",
-      "  node scripts/bsg.mjs login [--run <dir> | --url <login-url>] [--keep-cookies]",
-      "  node scripts/bsg.mjs validate --run {dir} [--keyword <kw>] [--mode http|browser|android]",
-      "  node scripts/bsg.mjs validator-start [--background]",
-      "  node scripts/bsg.mjs validator-stop",
+      "  node \"<skill-dir>/scripts/bsg.mjs\" init <site-url> [--fast]",
+      "  node \"<skill-dir>/scripts/bsg.mjs\" toolbox",
+      "  node \"<skill-dir>/scripts/bsg.mjs\" run --run {dir}",
+      "  node \"<skill-dir>/scripts/bsg.mjs\" status --run {dir}",
+      "  node \"<skill-dir>/scripts/bsg.mjs\" advance --run {dir}",
+      "  node \"<skill-dir>/scripts/bsg.mjs\" check --run {dir}",
+      "  node \"<skill-dir>/scripts/bsg.mjs\" record-assessment --run {dir}",
+      "  node \"<skill-dir>/scripts/bsg.mjs\" set-login-features --run {dir} [--flags <json>]",
+      "  node \"<skill-dir>/scripts/bsg.mjs\" resolve-user-action --run {dir} --action <action>",
+      "  node \"<skill-dir>/scripts/bsg.mjs\" android --run {dir}",
+      "  node \"<skill-dir>/scripts/bsg.mjs\" record-validation --run {dir} --status <status>",
+      "  node \"<skill-dir>/scripts/bsg.mjs\" deliver --run {dir}",
+      "  node \"<skill-dir>/scripts/bsg.mjs\" debug-bundle [--run {dir}] [--cwd {work-dir}] [--transcript {file}] [--claude-session {id}]",
+      "  node \"<skill-dir>/scripts/bsg.mjs\" source inspect|set --run {dir}",
+      "  node \"<skill-dir>/scripts/bsg.mjs\" android-status",
+      "  node \"<skill-dir>/scripts/bsg.mjs\" login [--run <dir> | --url <login-url>] [--keep-cookies]",
+      "  node \"<skill-dir>/scripts/bsg.mjs\" validate --run {dir} [--keyword <kw>] [--mode http|browser|android]",
+      "  node \"<skill-dir>/scripts/bsg.mjs\" validator-start [--background]",
+      "  node \"<skill-dir>/scripts/bsg.mjs\" validator-stop",
     ].join("\n")
   );
 }

@@ -14,7 +14,7 @@ import {
 
 export function cmdRecordAssessment(args) {
   const runDir = parseArg(args, "--run");
-  if (!runDir) return fail("用法: node scripts/bsg.mjs record-assessment --run {dir}");
+  if (!runDir) return fail("用法: node \"<skill-dir>/scripts/bsg.mjs\" record-assessment --run {dir}");
 
   const { state, error } = loadAndVerify(runDir);
   if (error) return fail(error);
@@ -62,7 +62,7 @@ export function cmdRecordAssessment(args) {
 
 export function cmdCheck(args) {
   const runDir = parseArg(args, "--run");
-  if (!runDir) return fail("用法: node scripts/bsg.mjs check --run <run-dir>");
+  if (!runDir) return fail("用法: node \"<skill-dir>/scripts/bsg.mjs\" check --run <run-dir>");
 
   const { state, error } = loadAndVerify(runDir);
   if (error) return fail(error);
@@ -194,7 +194,7 @@ export function cmdCheck(args) {
 
 export function cmdSetLoginFeatures(args) {
   const runDir = parseArg(args, "--run");
-  if (!runDir) return fail("用法: node scripts/bsg.mjs set-login-features --run {dir} [--flags <json>]");
+  if (!runDir) return fail("用法: node \"<skill-dir>/scripts/bsg.mjs\" set-login-features --run {dir} [--flags <json>]");
 
   const { state, error } = loadAndVerify(runDir);
   if (error) return fail(error);
@@ -247,7 +247,7 @@ export function cmdResolveUserAction(args) {
   const runDir = parseArg(args, "--run");
   const action = parseArg(args, "--action");
   if (!runDir || !action) {
-    return fail("用法: node scripts/bsg.mjs resolve-user-action --run {dir} --action <android_device_ready|android_device_unavailable|continue_after_entry_risk|login_completed|no_account|continue_after_rating_block|toc_chapter_count_confirmed>");
+    return fail("用法: node \"<skill-dir>/scripts/bsg.mjs\" resolve-user-action --run {dir} --action <android_device_ready|android_device_unavailable|continue_after_entry_risk|login_completed|no_account|continue_after_rating_block|toc_chapter_count_confirmed>");
   }
 
   const { state, error } = loadAndVerify(runDir);
@@ -293,7 +293,7 @@ export function cmdResolveUserAction(args) {
     if (adbOnline) {
       const probeCookies = checkProbeCookies(state.siteUrl);
       if (!probeCookies.ok) {
-        return fail("Android 真机或模拟器在线时，login_completed 必须先通过 Probe Cookie 检查。请运行 node scripts/bsg.mjs android --run <dir> 打开手机/模拟器登录页，登录完成后再运行 node scripts/bsg.mjs android --run <dir> --login-completed。");
+        return fail("Android 真机或模拟器在线时，login_completed 必须先通过 Probe Cookie 检查。请运行 node \"<skill-dir>/scripts/bsg.mjs\" android --run <dir> 打开手机/模拟器登录页，登录完成后再运行 node \"<skill-dir>/scripts/bsg.mjs\" android --run <dir> --login-completed。");
       }
       if (!hasProbeLoginEvidence(probeCookies.parsed)) {
         return fail("Probe /cookie-check 只证明目标域存在 Cookie，不能证明已登录账号态。login_completed 需要 Probe 返回 authenticated/loggedIn/isLoggedIn=true、非 anonymous sessionMode，或 user/account 证据；否则请选择 no_account 或继续在手机/模拟器完成登录后重试。");

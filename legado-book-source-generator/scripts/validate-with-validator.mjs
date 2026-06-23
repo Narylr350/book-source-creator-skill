@@ -264,7 +264,7 @@ async function main() {
       _runDir: outputDir || null,
       _sourceHash: null,
       status: 'skipped',
-      reason: 'Validator 未运行，请先启动: node scripts/bsg.mjs validator-start 或 java -jar legado-source-validator.jar',
+      reason: 'Validator 未运行，请先启动: node "<skill-dir>/scripts/bsg.mjs" validator-start 或 java -jar legado-source-validator.jar',
       timestamp: new Date().toISOString()
     };
     console.log(JSON.stringify(report, null, 2));
