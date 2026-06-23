@@ -99,7 +99,7 @@ export function cmdDeliverCheck(state, runDir) {
   }
   const matrixStatus = matrix.overall?.status || matrix.status;
   if (typeof matrixStatus === "string" && matrixStatus.startsWith("blocked")) {
-    return fail(`capability-matrix.json 仍为阻塞状态: ${matrixStatus}。不能把 blocked 验证结果作为后端限制通过或交付。`);
+    return fail(`capability-matrix.json 仍为阻塞状态: ${matrixStatus}。不能把 blocked 验证结果改写成可交付结论。`);
   }
 
   let finalStatus;
@@ -121,7 +121,7 @@ export function cmdDeliverCheck(state, runDir) {
     passed: "已生成 book-source.json，validator 验证通过（全链路成功）。",
     anonymous_candidate: "已生成 book-source.json，匿名验证通过但站点存在登录态/WebView/Cookie 依赖，不能标可用，需登录态/App 复核。",
     degraded: "已生成 book-source.json，技术链路通过但阅读体验降级。可导入，但建议 App 端确认章节体验。",
-    needs_app_review: "已生成 book-source.json，validator 检测到需 App 复核。",
+    needs_app_review: "已生成 book-source.json，record-validation 收敛为需人工/App 复核。",
     failed_unresolved: "已生成 book-source.json，同一错误连续 5 次未修复（收敛失败）。需人工检查。",
     validator_limitation: "已生成 book-source.json，validator 无法验证部分能力；预期需要 App/WebView 复核。当前不是 full pass，不能标可用。",
   };

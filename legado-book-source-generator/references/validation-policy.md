@@ -18,7 +18,7 @@
 
 ## 硬边界（停止自动修）
 
-以下情况必须停止自动回修，标记 `needs_app_review`：
+以下情况必须停止自动回修，并按 `record-validation` 返回的 `blockedBy` / `requiredUserAction` / `correctiveAction` 收敛；不要手工把不同边界统一改写成 `needs_app_review`：
 
 1. **Cloudflare/Turnstile** — error 或 bodyPreview 含 "Cloudflare" / "Turnstile" / "challenge"
 2. **登录/验证码** — 需要登录态或验证码
@@ -32,7 +32,7 @@
 10. **正文提取污染** — content success 但 preview 混入重复异常 token、脚本片段、导航/弹窗 chrome 时，必须回修正文规则或 WebView 提取，不能按 passed 交付
 11. **最终 passed 不是 Android mode** — PC HTTP/Browser 只辅助写规则；先确认 Android 真机或模拟器，有则运行 `android --run <run-dir>`，没有则由用户明确确认后降级，不能标 full pass
 
-以下情况标记 `validator_limitation`（不是 `needs_app_review`）：
+以下情况只有在 `record-validation` 归一化后才可成为 `validator_limitation`，不要由 AI 手工改写：
 
 12. **validator 工具限制** — @js 动态 URL、相对路径未拼接、validator 不支持的规则能力
 13. **Android 不可用导致 WebView 正文无法验证** — 没有 Android 真机或模拟器时不强制阻塞，但 HTTP/browser 通过只能记为 `validator_limitation`，正文可靠性未知，不能标 full pass 或可用

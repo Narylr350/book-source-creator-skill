@@ -103,7 +103,7 @@ PC HTTP / Browser 验证是开发辅助，不是最终交付事实。`record-val
 ## 6. 人工/App 复核（仅硬边界）
 
 只有以下情况才进入人工/App 复核：
-- validator 标记 `needs_app_review`
+- `record-validation` 收敛为 `needs_app_review`
 - validator 标记 `validator_limitation`
 - validator 标记 `failed_unresolved`（收敛失败）
 

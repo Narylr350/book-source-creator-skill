@@ -2,15 +2,15 @@
 
 ## 适用范围
 
-本文档用于 **人工/App 复核阶段**，即 validator 已标记 `needs_app_review`、`validator_limitation` 或 `failed_unresolved` 后，需要用户在 Legado App 中配合调试的场景。
+本文档用于 **人工/App 复核阶段**，即 `record-validation` 已收敛为 `needs_app_review`、`validator_limitation`、`failed_unresolved`，或返回登录/Android/App 复核类 `requiredUserAction` 后，需要用户在 Legado App 中配合调试的场景。
 
 **validator 失败的第一处理流程是 AI 自动回修**（见 `validation-policy.md`），不是本文档。只有当 AI 无法自动修复时，才进入本文档的调试流程。
 
 ## 使用约束
 
 - 仅在以下情况进入调试模式：
-  - validator 标记 `needs_app_review`（Cloudflare、验证码、登录、WebView、付费墙）
-  - validator 标记 `validator_limitation`（工具不支持的规则能力）
+  - `record-validation` 返回 `needs_app_review`、`validator_limitation` 或 `failed_unresolved`
+  - `record-validation` 返回登录、Android、WebView、付费、验证码相关 `requiredUserAction`
   - validator 标记 `failed_unresolved`（同一错误连续 5 次未修复）
   - 用户反馈"书源用不了了"
   - 导入失败

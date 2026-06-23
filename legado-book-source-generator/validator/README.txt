@@ -17,8 +17,8 @@ Legado 书源验证器 v1.0
 
 限制：
   - Android WebView / webJs 需 Android Probe 和已连接设备或模拟器
-  - 不支持登录态 / CookieJar
-  - 遇到 Cloudflare / 验证码 / 登录页时标记"需 App 复核"
+  - 登录态 / CookieJar 需通过 cookies.json 或 Android Probe 证据进入报告
+  - 遇到 Cloudflare / 验证码 / 登录页时记录 blocker；最终状态由 bsg.mjs record-validation 收敛
 
 Android Probe：
   1. 连接 Android 真机并打开 USB 调试，或启动 Android 模拟器

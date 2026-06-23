@@ -65,7 +65,7 @@ validator 返回失败后，按以下顺序检查：
 
 **原因**: searchUrl 含 `;post=` 但 validator 不支持 POST 浏览器模式
 
-**修复**: 确认是否需要 POST，如果是则标记 `needs_app_review`
+**修复**: 确认是否需要 POST；如果是 validator/Android 能力边界，记录到 `validator-report.json` 并交给 `record-validation` 收敛，不手工改写状态。
 
 ### Cloudflare 拦截
 
@@ -73,7 +73,7 @@ validator 返回失败后，按以下顺序检查：
 
 **原因**: 站点有 Cloudflare 反爬
 
-**修复**: 停止自动修，标记 `needs_app_review`
+**修复**: 停止自动修，记录 blocker；有 Android 真机或模拟器时优先复核，没有时等待用户确认降级。
 
 ### TOC chapterCount=1
 

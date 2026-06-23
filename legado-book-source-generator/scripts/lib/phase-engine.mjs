@@ -279,7 +279,7 @@ export function completePhase(phase, state, runDir) {
         "  • 电脑可运行 node scripts/bsg.mjs android --run <dir>（脚本会通过单入口处理 adb、Probe 和验证）",
         "",
         "如果有，请连接真机或启动模拟器并完成授权后，再运行 node scripts/bsg.mjs android --run <dir>。",
-        "如果没有可用 Android 真机或模拟器，让用户明确确认后运行 node scripts/bsg.mjs android --run <dir> --no-device；后续正文验证只能标 needs_app_review / validator_limitation，不能标 passed。",
+        "如果没有可用 Android 真机或模拟器，让用户明确确认后运行 node scripts/bsg.mjs android --run <dir> --no-device；后续正文验证由 record-validation 降级收敛，不能标 passed。",
       ].join("\n");
       const pending = setPendingUserAction(state, "android_device_needed", "webview_requires_android", message, {
         blockingPhase: "assess",
@@ -485,7 +485,7 @@ export function moveToNext(fromPhase, state, runDir) {
       "1. validator-start（窗口必须可见）",
       "2. node scripts/bsg.mjs android --run <dir>",
       "3. 按 android 命令返回的 requiredUserAction 或 nextCommand 继续",
-      "4. Android 不可用时: --mode http + 正文失败标 validator_limitation",
+      "4. Android 不可用时: 先让用户确认 --no-device，再由 record-validation 降级收敛",
       "",
       "禁止跳过 Android Probe 直接用 mode=http 标 passed！",
       "",
@@ -495,7 +495,7 @@ export function moveToNext(fromPhase, state, runDir) {
       "  c. 空内容 → webJs 选择器不对，用 Browser MCP snapshot 重新确认 DOM 结构",
       "  d. 401/403 → 需要 Cookie，提取并注入（见下方 Cookie 注入流程）",
       "  e. JS 报错 → 页面可能依赖特定 WebView API，检查兼容性",
-      "  f. 以上都试过仍失败 → 才标记 needs_app_review",
+      "  f. 以上都试过仍失败 → 保留真实报告，交给 record-validation 收敛",
       "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
     ].join("\n");
     validateMessage = "🔴 WebView/CSR 正文 — 必须先尝试 Android Probe。\n" + validateWebViewInstruction;

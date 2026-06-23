@@ -126,6 +126,6 @@ node scripts/bsg.mjs validate --run runs/<site-slug>/
 ## 正文额外检查
 
 - 若阅读页原始 HTML 没有正文，必须补一条 Browser MCP 侧的渲染证据，确认正文是否在页面完成加载后稳定出现。
-- **Browser MCP ≠ Android WebView。** 只能写"桌面浏览器渲染后 article 内有正文"，不得写"Legado App WebView 可渲染"。Android Legado WebView 仍需 App 复核。
+- **Browser MCP ≠ Android WebView。** 只能写"桌面浏览器渲染后 article 内有正文"，不得写"Legado App WebView 可渲染"。Android Legado WebView 仍需通过 Android/record-validation 收敛。
 - 若浏览器里已经能看到稳定正文，优先评估 WebView 方案，再决定是否需要更重的 JS 或解密方案。参考 `examples/pattern-api-webview-auth/` 的 WebView + webJs 写法。
 - 若准备给出 `不建议生成`，分析里必须明确写出：为什么 `WebView` 不适用，为什么更简单的直接提取也不适用。

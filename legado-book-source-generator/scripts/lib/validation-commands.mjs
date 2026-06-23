@@ -123,7 +123,7 @@ function enterGenerateRepair(state, repairContext) {
 
 function androidProbeNotUsedBlock(runDir, state, message) {
   const nextCommand = `node "<skill-dir>/scripts/bsg.mjs" android --run "${runDir}"`;
-  const nextStep = `下一步只能执行: ${nextCommand}，按它返回的 requiredUserAction 或 nextCommand 继续。`;
+  const nextStep = `下一步默认运行: ${nextCommand}，按它返回的 requiredUserAction 或 nextCommand 继续；底层诊断只用于定位环境问题，最终仍要回到 android / record-validation 收敛。`;
   const correctiveAction = [
     "禁止 deliver，禁止改记 needs_app_review，禁止退回 HTTP 验证。",
     "当前书源含 webView:true 或 webJs，且检测到 Android 真机或模拟器；必须使用 Android Probe 产生验证证据。",
@@ -292,7 +292,7 @@ export function cmdRecordValidation(args) {
         acceptanceError.message,
         acceptanceError.blockedBy === "toc_chapter_count_too_low"
           ? "如果这是新书、短篇或样本书导致的短目录，请让用户确认样本语义后运行 resolve-user-action --action toc_chapter_count_confirmed；否则修 ruleToc 后重跑 validator。"
-          : "这类问题不能按后端限制通过，也不能靠经验修完直接交付；必须修规则并重新运行 validator。",
+          : "这类问题不能改写成可交付结论，也不能靠经验修完直接交付；必须修规则并重新运行 validator。",
         "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
       ].join("\n");
       let pending = null;
@@ -320,7 +320,7 @@ export function cmdRecordValidation(args) {
       writeValidatorSummary(runDir, status, finalBlocked, reportPathForMode);
       const correctiveAction = acceptanceError.blockedBy === "toc_chapter_count_too_low"
         ? "validator 报告的目录样本过短。先确认这是目标书本身章节少，还是 ruleToc 只提取到部分章节；确认短目录合理后用 resolve-user-action 记录，否则修 ruleToc 并重跑。"
-        : "validator 报告包含成功状态但缺少阅读语义证据。已回到 generate / 规则审计语义；修正对应规则后运行 advance 重新做 rule-check，再重跑 validator。不要标成后端限制。";
+        : "validator 报告包含成功状态但缺少阅读语义证据。已回到 generate / 规则审计语义；修正对应规则后运行 advance 重新做 rule-check，再重跑 validator。不要改写成可交付结论。";
       const nextCommand = acceptanceError.blockedBy === "toc_chapter_count_too_low"
         ? `node "<skill-dir>/scripts/bsg.mjs" resolve-user-action --run ${runDir} --action toc_chapter_count_confirmed`
         : `node "<skill-dir>/scripts/bsg.mjs" advance --run ${runDir}`;
@@ -521,7 +521,7 @@ export function cmdRecordValidation(args) {
             "⚠️  WebView 正文 — Android Probe 不可用",
             "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
             "无可用 Android 真机或模拟器，WebView 正文无法在本机验证。",
-            "书源状态将标为 needs_app_review——需在 Legado App 内实测正文。",
+            "书源状态会由 record-validation 降级收敛；需在 Legado App 内实测正文，不能标 full pass。",
             "如果用户后续连接真机或启动模拟器，可用 node scripts/bsg.mjs android --run <dir> 重新验证。",
             "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
           ].join("\n");
