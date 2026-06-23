@@ -235,6 +235,8 @@ export function cmdRecordValidation(args) {
   let webViewAndroidUnavailable = false;
   let convergenceBlock = null;
   let hardRuleBlock = null;
+  let warningBy = null;
+  let validationWarning = null;
 
   if (["passed", "needs_app_review", "validator_limitation", "degraded"].includes(status)) {
     const hardRuleError = reportHardRuleError(reportPathForMode);
@@ -733,57 +735,41 @@ export function cmdRecordValidation(args) {
     finalStatus = "degraded";
     v.status = "completed";
   } else if (status === "failed") {
-    if (isVipLockFailure(report) && state.userDecisions?.login !== "no_account") {
-      const message = [
+    if (isVipLockFailure(report)) {
+      warningBy = "content_vip_lock";
+      finalStatus = "needs_app_review";
+      v.lastStatus = finalStatus;
+      v.status = "completed";
+      v.consecutiveSame = 0;
+      validationWarning = [
         "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
-        "⛔ 正文命中登录/付费边界",
+        "⚠️  正文命中登录/付费边界",
         "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
-        "validator-report.json 显示正文页是 VIP/付费/需登录页面。这不是 selector 或书源规则错误，不能回到 generate 碰运气修。",
-        "请让用户确认是否有可登录且具备订阅/付费权限的账号，并通过 Android 单入口完成登录后重新验证。",
-        "如果用户没有账号或没有付费权限，只能降级/放弃，不要宣称免费书源 full pass。",
+        "validator-report.json 显示正文页是 VIP/付费/需登录边界。这可能只是账号没有订阅/付费权限，不应强制阻塞交付。",
+        "已收敛为 needs_app_review：可以继续 deliver，但 capability-matrix 会保留 content:vip 警告，不能宣称 full pass 或 VIP 已支持。",
+        "如果用户提供具备权限的账号，可通过 Android 单入口重新验证以提高覆盖；否则按免费/非 VIP 能力交付。",
         "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
       ].join("\n");
-      const pending = setPendingUserAction(state, "login_required", "content_vip_lock", message, {
-        blockingPhase: "validate",
-        validatorStatus: status,
-        requestUrl: firstFailedStep(report)?.request?.url || null,
-      });
-      v.attempts -= 1;
-      saveRunState(runDir, state);
-      writeCapabilityMatrix(runDir, reportPathForMode, "blocked:content:vip");
-      writeValidatorSummary(runDir, status, "blocked:content:vip", reportPathForMode);
-      return {
-        ok: true,
-        status: "blocked",
-        blockedBy: "content_vip_lock",
-        shouldRetry: true,
-        nextAction: "resolve_user_action",
-        requiredUserAction: "login_required",
-        pendingUserAction: pending,
-        message,
-        correctiveAction: "正文是登录/付费边界。不要修改 book-source.json；先通过 Android 单入口登录并重跑验证，或由用户确认没有可用账号后降级。",
-        nextCommand: `node "<skill-dir>/scripts/bsg.mjs" android --run "${runDir}"`,
-      };
-    }
-
-    const errorSig = validationErrorSignature(report, status);
-
-    if (errorSig === v.lastError) {
-      v.consecutiveSame = (v.consecutiveSame || 0) + 1;
     } else {
-      v.consecutiveSame = 1;
-    }
-    v.lastError = errorSig;
+      const errorSig = validationErrorSignature(report, status);
 
-    if (v.consecutiveSame >= 5) {
-      finalStatus = "failed_unresolved";
-      v.status = "completed";
-      convergenceBlock = `同一错误连续 ${v.consecutiveSame} 次未修复 (${errorSig.slice(0, 120)})，判定为死循环。停止自动回修，需人工介入。`;
-    } else {
-      shouldRetry = true;
-      finalStatus = "failed";
-      nextAction = "repair_in_generate";
-      enterGenerateRepair(state, buildRepairContext(report, status, "validator_failed", fileSha256(loadedSource.bookSourcePath)));
+      if (errorSig === v.lastError) {
+        v.consecutiveSame = (v.consecutiveSame || 0) + 1;
+      } else {
+        v.consecutiveSame = 1;
+      }
+      v.lastError = errorSig;
+
+      if (v.consecutiveSame >= 5) {
+        finalStatus = "failed_unresolved";
+        v.status = "completed";
+        convergenceBlock = `同一错误连续 ${v.consecutiveSame} 次未修复 (${errorSig.slice(0, 120)})，判定为死循环。停止自动回修，需人工介入。`;
+      } else {
+        shouldRetry = true;
+        finalStatus = "failed";
+        nextAction = "repair_in_generate";
+        enterGenerateRepair(state, buildRepairContext(report, status, "validator_failed", fileSha256(loadedSource.bookSourcePath)));
+      }
     }
   } else if (status === "needs_app_review") {
     finalStatus = "needs_app_review";
@@ -803,6 +789,8 @@ export function cmdRecordValidation(args) {
     baseMessage = `验证失败 (第 ${v.attempts} 次${v.consecutiveSame > 1 ? `，同一错误第 ${v.consecutiveSame} 次` : ""})。已回到 generate / 规则审计语义；请根据 validator-report.json / repairContext 回修 book-source.json，修完重新通过 rule-check，再重跑 validator。${v.consecutiveSame >= 2 ? "⚠️ 已连续 " + v.consecutiveSame + " 次相同错误，再失败将停止自动修。" : ""}`;
   } else if (convergenceBlock) {
     baseMessage = convergenceBlock;
+  } else if (validationWarning) {
+    baseMessage = `${validationWarning}\n验证完成。状态: ${finalStatus}。可直接运行 deliver 做最终审计。`;
   } else {
     baseMessage = `验证完成。状态: ${finalStatus}。可直接运行 deliver 做最终审计。`;
   }
@@ -819,6 +807,8 @@ export function cmdRecordValidation(args) {
       ? { nextCommand: `node "<skill-dir>/scripts/bsg.mjs" run --run ${runDir}` }
       : { nextCommand: `node "<skill-dir>/scripts/bsg.mjs" deliver --run ${runDir}` }),
     message: baseMessage + (state._androidWarning ? "\n" + state._androidWarning : ""),
+    ...(warningBy ? { warningBy } : {}),
+    ...(validationWarning ? { warning: validationWarning } : {}),
     ...(state._androidWarning ? { androidWarning: state._androidWarning } : {}),
     ...(convergenceBlock ? { convergenceBlock } : {}),
   };

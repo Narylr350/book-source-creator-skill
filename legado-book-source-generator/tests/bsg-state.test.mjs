@@ -1905,7 +1905,7 @@ describe("bsg workflow user-action gates", () => {
     assert.equal(matrix.links.content.blocker, "android_webview_content_not_verified");
   });
 
-  it("stops on VIP-lock Android content instead of sending the agent back to generate", async () => {
+  it("records VIP-lock Android content as app-review warning instead of blocking delivery", async () => {
     const adbEnv = {
       ...process.env,
       BSG_TEST_ADB_DEVICES_OUTPUT: "List of devices attached\nABC123\tdevice\n",
@@ -1925,6 +1925,9 @@ describe("bsg workflow user-action gates", () => {
         contentPreview: preview,
       },
       steps: [
+        { phase: "search", status: "success", mode: "android", extracted: { resultCount: 1 } },
+        { phase: "detail", status: "success", mode: "android", extracted: { name: "Example" } },
+        { phase: "toc", status: "success", mode: "android", extracted: { chapterCount: 20 } },
         {
           phase: "content",
           status: "error",
@@ -1956,17 +1959,22 @@ describe("bsg workflow user-action gates", () => {
       _loginMethod: "probe",
     })]);
 
-    const result = await runBsgBlocked(["record-validation", "--run", runDir, "--status", "failed"], { env: adbEnv });
+    const result = await runBsg(["record-validation", "--run", runDir, "--status", "failed"], { env: adbEnv });
     const matrix = JSON.parse(await fs.readFile(path.join(runDir, "capability-matrix.json"), "utf8"));
+    const state = JSON.parse(await fs.readFile(path.join(runDir, "run-state.json"), "utf8"));
 
-    assert.equal(result.status, "blocked");
-    assert.equal(result.blockedBy, "content_vip_lock");
-    assert.equal(result.requiredUserAction, "login_required");
-    assert.equal(result.nextAction, "resolve_user_action");
-    assert.match(result.nextCommand, /android --run/);
-    assert.notEqual(result.blockedBy, "android_webview_content_not_verified");
+    assert.equal(result.status, "needs_app_review");
+    assert.equal(result.warningBy, "content_vip_lock");
+    assert.equal(result.requiredUserAction, undefined);
+    assert.equal(state.pendingUserAction, null);
+    assert.equal(state.phases.validate.status, "completed");
     assert.notEqual(matrix.links.content.blocker, "android_webview_content_not_verified");
-    assert.ok(["login", "vip"].includes(matrix.links.content.blocker));
+    assert.equal(matrix.links.content.blocker, "vip");
+    assert.equal(matrix.overall.status, "partial_candidate");
+    assert.deepEqual(matrix.overall.blockers, ["content:vip"]);
+
+    const delivered = await runBsg(["deliver", "--run", runDir], { env: adbEnv });
+    assert.equal(delivered.finalStatus, "needs_app_review");
   });
 
   it("asks for Android availability before accepting non-Android passed validation", async () => {

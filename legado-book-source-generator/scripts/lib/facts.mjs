@@ -756,8 +756,8 @@ export function detectStepBlocker(step) {
   ].join("\n");
   if (/captcha|验证码|极验|geetest/i.test(text)) return "captcha";
   if (/cloudflare|turnstile|challenge/i.test(text)) return "cloudflare";
+  if (/CONTENT_IS_VIP_LOCK_PAGE|vip|付费|订阅|paid|subscribe/i.test(text)) return "vip";
   if (/login|登录|401|403|unauthorized|COOKIE_REQUIRED/i.test(text)) return "login";
-  if (/vip|付费|订阅|paid|subscribe/i.test(text)) return "vip";
   if (/CONTENT_IS_CSR_SHELL|__nuxt|__next|webpack|vite/i.test(text)) return "csr";
   if (/WEBJS_RETURN_EMPTY|WEBJS_EXEC_ERROR|CONTENT_SELECTOR_EMPTY|CONTENT_TOO_SHORT/i.test(text)) return "content_extraction";
   if (/ANDROID_PROBE_UNAVAILABLE/i.test(text)) return "android_unavailable";

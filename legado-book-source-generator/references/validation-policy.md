@@ -53,6 +53,8 @@
 
 验证结果必须通过 `bsg.mjs record-validation` 记录。不能用手工创建的 report/summary 代替。`record-validation` 会生成 `capability-matrix.json`，后续只能从 matrix 判断 search/detail/toc/content 的状态、blocker、render 和 full pass。返回 `blockedBy=android_final_authority_not_used`、`android_probe_not_used`、`android_probe_cookie_not_used`、`android_webview_not_used`、`android_webview_content_not_verified`、`android_device_disconnected`、`hard_rule_error`、`cookie_not_injected`、`content_repeated_noise`、`content_page_chrome` 时按提示补用户动作、凭据或规则后重跑 validator。返回 `requiredUserAction=toc_sample_review` 时，只能在确认短目录是目标书真实状态后运行 `resolve-user-action --action toc_chapter_count_confirmed`。
 
+`CONTENT_IS_VIP_LOCK_PAGE` / VIP / 付费 / 订阅边界不是 selector 错误，也不再作为硬阻塞。`record-validation` 会收敛为 `needs_app_review` 并在 matrix 保留 `content:vip` 警告；可以继续交付免费/非 VIP 能力，但不得写成 full pass、正常阅读全部章节或 VIP 支持。
+
 ## 质量门槛
 
 **validator passed ≠ 质量 pass。** validator 只验证技术链路，不验证书源质量。
