@@ -22,7 +22,6 @@ internal fun containsAppReviewChallenge(text: String): Boolean {
         || text.contains("turnstile.render", ignoreCase = true)
         || text.contains("Just a moment", ignoreCase = true)
         || containsCaptchaChallenge(text)
-        || text.contains("验证码", ignoreCase = true)
 }
 
 internal fun selectSearchEmptyErrorCode(res: StrResponse?): ErrorCode {
@@ -67,9 +66,11 @@ internal fun detectAndroidContentWebViewDeclarationError(source: BookSource, cha
 }
 
 internal fun containsCaptchaChallenge(text: String): Boolean {
+    // 只匹配验证码引擎特征词与表单结构，不靠裸词"验证码"——
+    // 后者会误命中正文里"输入验证码/验证码错误"等文案，把正常正文页判成 captcha_page。
     val patterns = listOf(
         "recaptcha", "hcaptcha", "geetest", "verify you are a human", "are you a robot",
-        "人机验证", "安全验证", "滑块验证", "验证码"
+        "人机验证", "安全验证", "滑块验证"
     )
     if (patterns.any { text.contains(it, ignoreCase = true) }) return true
     val captchaRegexes = listOf(
@@ -79,7 +80,7 @@ internal fun containsCaptchaChallenge(text: String): Boolean {
     return captchaRegexes.any { it.containsMatchIn(text) }
 }
 
-internal fun classifyHtmlKind(html: String?): String {
+internal fun classifyHtmlKindExt(html: String?, content: String?): String {
     if (html.isNullOrBlank()) return "empty"
     val lower = html.lowercase()
 
@@ -113,14 +114,22 @@ internal fun classifyHtmlKind(html: String?): String {
     if (containsCaptchaChallenge(html)) return "captcha_page"
 
     // VIP/付费锁章检测
-    val vipPatterns = listOf(
-        "vip", "订阅", "付费", "解锁", "订阅本章",
-        "余额不足", "充值", "购买", "本章为 vip", "本章为付费"
-    )
-    if (vipPatterns.any { lower.contains(it) }) return "vip_lock_page"
+    // 裸词 vip/付费/订阅 会误命中正常页面的 VIP 频道入口/等级标记/侧栏广告，制造假阴性。
+    // 改用只在"付费提示"语境出现的动作短语（不会是导航链接文本），并叠加正文证据：
+    // 若调用方已抽到一段足够长的正文，说明规则命中的是真正文，即便页面含付费词也不判锁。
+    val hasRealContent = !content.isNullOrBlank() && content.length >= 50
+    if (!hasRealContent) {
+        val vipActionPatterns = listOf(
+            "订阅本章", "本章为 vip", "本章为付费", "余额不足", "充值", "购买本章",
+            "解锁本章", "付费解锁", "vip章节", "付费章节", "请订阅"
+        )
+        if (vipActionPatterns.any { lower.contains(it) }) return "vip_lock_page"
+    }
 
     return "normal_reader_html"
 }
+
+internal fun classifyHtmlKind(html: String?): String = classifyHtmlKindExt(html, null)
 
 class DebugService {
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
@@ -619,7 +628,7 @@ class DebugService {
                 val content = WebBook.getContentAwait(source, book, chapter)
                 val res = WebBook.lastResponse
                 val body = res?.body ?: ""
-                val htmlKind = classifyHtml(body)
+                val htmlKind = classifyHtml(body, content)
 
                 // ── 调试产物 ──
                 val artifacts = mutableMapOf<String, String>()
@@ -942,7 +951,6 @@ class DebugService {
                     )
                 }
                 val probeHtml = probeRes.html ?: ""
-                val htmlKind = classifyHtml(probeHtml)
 
                 // ── 调试产物 ──
                 val artifacts = mutableMapOf<String, String>()
@@ -961,6 +969,8 @@ class DebugService {
                 val content = analyzeRule.setFieldName("content").getString(contentRule.content)
                 writeDebugArtifact("content", cIdx, "rule-hits.json", Gson().toJson(toRuleHits(analyzeRule.ruleHits)))?.let { artifacts["rule-hits.json"] = it }
                 writeDebugArtifact("content", cIdx, "extracted.txt", content)?.let { artifacts["extracted.txt"] = it }
+
+                val htmlKind = classifyHtml(probeHtml, content)
 
                 val jsErrMsg = probeRes.jsError
                 val contentBlank = content.isBlank()
@@ -1125,8 +1135,8 @@ class DebugService {
     // ── HTML 分类 ──────────────────────────────────────────────────────────────
 
     /** 对原始/渲染后的 HTML 做页面分类，用于归因安全 */
-    private fun classifyHtml(html: String?): String {
-        return classifyHtmlKind(html)
+    private fun classifyHtml(html: String?, content: String? = null): String {
+        return classifyHtmlKindExt(html, content)
     }
 
     // ── 构建 evidence ──────────────────────────────────────────────────────────

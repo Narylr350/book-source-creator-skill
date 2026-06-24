@@ -7,6 +7,7 @@ import io.legado.validator.debug.DebugStep
 import io.legado.validator.debug.ErrorCode
 import io.legado.validator.debug.ErrorCodeRegistry
 import io.legado.validator.debug.classifyHtmlKind
+import io.legado.validator.debug.classifyHtmlKindExt
 import io.legado.validator.debug.containsAppReviewChallenge
 import io.legado.validator.debug.determineFinalStatus
 import io.legado.validator.debug.detectAndroidContentWebViewDeclarationError
@@ -320,5 +321,86 @@ class P8RegressionTest {
             assertNotNull(content, "Content should not timeout")
             assertTrue(content!!.length >= 100, "Content should be 100+ chars, got ${content.length}")
         }
+    }
+
+    // ── VIP 锁判定：裸词 vip 不再误判正常页面 ──────────────────────────────────
+    // ciweimao 黑盒实测：正文抽不到 + 页面含 "vip" 字样被整页判 vip_lock_page，
+    // 制造"阅读能用但 validator 判败"的假阴性。现要求 付费动作词 + 正文为空/极短 组合证据。
+
+    @Test
+    fun `bare vip keyword in normal page is not vip lock`() {
+        val html = """
+            <html><head><title>刺猬猫官网</title></head>
+            <body>
+              <nav><a href="/vip">VIP频道</a> <a href="/rank">排行</a></nav>
+              <div id="J_BookRead">
+                <p class="chapter">第一章 这是正常的正文内容，足够长足够长足够长足够长足够长。</p>
+              </div>
+            </body></html>
+        """.trimIndent()
+        // 抽到了正文 → 不应判付费墙
+        val realContent = "第一章 这是正常的正文内容，" + "足够长的真正文内容。".repeat(8)
+        assertEquals("normal_reader_html", classifyHtmlKindExt(html, realContent))
+    }
+
+    @Test
+    fun `bare vip keyword with blank content but no pay-action word is not vip lock`() {
+        val html = """
+            <html><head><title>站点首页</title></head>
+            <body><a href="/vip">VIP</a></body></html>
+        """.trimIndent()
+        // 抽不到正文，但只有裸词 vip、无付费动作词 → 不判付费墙（可能是未登录，留给 content_empty）
+        assertNotEquals("vip_lock_page", classifyHtmlKindExt(html, ""))
+    }
+
+    @Test
+    fun `real paywall with pay-action word and empty content is vip lock`() {
+        val html = """
+            <html><body>
+              <div class="lock">本章为VIP章节，请订阅本章后阅读</div>
+            </body></html>
+        """.trimIndent()
+        assertEquals("vip_lock_page", classifyHtmlKindExt(html, ""))
+    }
+
+    @Test
+    fun `real paywall with pay-action word and short content is vip lock`() {
+        val html = "<html><body>余额不足，请充值</body></html>"
+        // 正文极短(补救不了) + 付费动作词 → 付费墙
+        assertEquals("vip_lock_page", classifyHtmlKindExt(html, "余额不足"))
+    }
+
+    @Test
+    fun `long real content with stray pay word is not vip lock`() {
+        val html = "<html><body>正文中提到订阅本章四个字但其实是正常长正文</body></html>"
+        // 正文足够长 → 即使命中付费动作词也不判锁
+        val content = "正文中提到订阅本章四个字但其实是正常长正文，" + "这里继续是真正的小说正文内容。".repeat(8)
+        assertNotEquals("vip_lock_page", classifyHtmlKindExt(html, content))
+    }
+
+    // ── 验证码裸词不再误判正文/搜索结果 ──────────────────────────────────────────
+    // 正文里出现"验证码"三字(如"输入验证码"帮助文案)不应整页判成 captcha_page。
+
+    @Test
+    fun `bare captcha word in reader content is not captcha page`() {
+        val html = """
+            <html><body>
+              <div class="chapter">正文提到如需输入验证码请联系客服，这是正常的长正文内容。</div>
+            </body></html>
+        """.trimIndent()
+        assertNotEquals("captcha_page", classifyHtmlKind(html))
+    }
+
+    @Test
+    fun `real captcha engine signature is captcha page`() {
+        val html = "<html><body><script src='https://www.google.com/recaptcha/api.js'></script></body></html>"
+        assertEquals("captcha_page", classifyHtmlKind(html))
+    }
+
+    @Test
+    fun `search result body with stray captcha word is selector empty not app review`() {
+        // 搜索返回 200 且正文里恰好含"验证码"三字 → 应判 selector 问题(提示修规则)，而非放弃复核
+        val res = StrResponse(url = "https://www.ciweimao.com/get-search", body = "<html><body>结果列表 验证码错误请重试</body></html>", headers = okhttp3.Headers.headersOf(), code = 200)
+        assertEquals(ErrorCode.SEARCH_SELECTOR_EMPTY, selectSearchEmptyErrorCode(res))
     }
 }
