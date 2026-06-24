@@ -1445,7 +1445,7 @@ describe("bsg workflow user-action gates", () => {
         mode: "android",
         androidProbeUsed: false,
         androidBackend: "pc_http",
-        errorCode: "APP_REVIEW_REQUIRED",
+        errorCode: "SEARCH_SELECTOR_EMPTY",
         error: "搜索结果为空",
         request: { url: "https://example.com/search?q=abc", headers: { Cookie: "session=probe" } },
       }],

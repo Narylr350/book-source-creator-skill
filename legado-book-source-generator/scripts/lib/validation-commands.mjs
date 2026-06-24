@@ -85,6 +85,32 @@ function isAntiBotTriggered(report) {
   return false;
 }
 
+// 按卡点指路：不同 blocker 该读不同文档段，不是永远指 validation-policy + validator-integration 这两篇。
+// 弱模型只会读 readNext 列表的前 1-2 项，所以这里把最相关的放最前。
+const READ_NEXT_FOR_BLOCKER = {
+  anti_bot_triggered: ["references/failure-diagnosis.md", "references/policies.md"],
+  content_vip_lock: ["references/validation-policy.md", "references/android-probe-guide.md"],
+  hard_rule_error: ["references/official-rule-pack.json", "references/legado-json-structure.md"],
+  csr_shell_detected: ["references/webview-behavior-matrix.md", "references/android-probe-guide.md"],
+  android_probe_not_used: ["references/android-probe-guide.md", "references/validator-integration.md"],
+  android_probe_cookie_not_used: ["references/android-probe-guide.md"],
+  android_webview_not_used: ["references/android-probe-guide.md", "references/webview-behavior-matrix.md"],
+  android_webview_content_not_verified: ["references/android-probe-guide.md", "references/failure-diagnosis.md"],
+  android_device_disconnected: ["references/android-probe-guide.md"],
+  android_device_needed: ["references/android-probe-guide.md", "references/policies.md"],
+  android_final_authority_not_used: ["references/android-probe-guide.md", "references/validation-policy.md"],
+  cookie_not_injected: ["references/android-probe-guide.md", "references/policies.md"],
+  search_result_empty: ["references/analysis-workflow.md", "references/failure-diagnosis.md"],
+  search_book_name_empty: ["references/legado-json-structure.md", "references/failure-diagnosis.md"],
+  toc_chapter_count_too_low: ["references/analysis-workflow.md"],
+  content_length_too_short: ["references/failure-diagnosis.md"],
+  content_repeated_noise: ["references/failure-diagnosis.md"],
+  content_page_chrome: ["references/failure-diagnosis.md"],
+};
+function readNextForBlocker(blockedBy) {
+  return READ_NEXT_FOR_BLOCKER[blockedBy] || ["references/validation-policy.md", "references/validator-integration.md"];
+}
+
 function validationErrorSignature(report, status) {
   const failedStep = firstFailedStep(report);
   if (!failedStep) return status;
@@ -151,6 +177,7 @@ function androidProbeNotUsedBlock(runDir, state, message) {
     ok: true,
     status: "blocked",
     blockedBy: "android_probe_not_used",
+    readNext: readNextForBlocker("android_probe_not_used"),
     shouldRetry: true,
     nextAction: "setup_android_probe_and_retry",
     message: `${message}\n${correctiveAction}`,
@@ -284,6 +311,7 @@ export function cmdRecordValidation(args) {
       ok: true,
       status: "blocked",
       blockedBy: "hard_rule_error",
+      readNext: readNextForBlocker("hard_rule_error"),
       shouldRetry: true,
       nextAction: "repair_in_generate",
       repairContext: state.repairContext,
@@ -405,6 +433,7 @@ export function cmdRecordValidation(args) {
                 ok: true,
                 status: "blocked",
                 blockedBy: "csr_shell_detected",
+                readNext: readNextForBlocker("csr_shell_detected"),
                 shouldRetry: true,
                 nextAction: "fix_csr_shell_and_retry",
                 message: csrWarning,
@@ -460,6 +489,7 @@ export function cmdRecordValidation(args) {
       ok: true,
       status: "blocked",
       blockedBy: "android_probe_cookie_not_used",
+      readNext: readNextForBlocker("android_probe_cookie_not_used"),
       shouldRetry: true,
       nextAction: "rerun_android_validation_with_probe_cookie",
       message: [
@@ -581,6 +611,7 @@ export function cmdRecordValidation(args) {
       warning: validationWarning,
       message: validationWarning,
       nextCommand: `node "<skill-dir>/scripts/bsg.mjs" deliver --run ${runDir}`,
+      readNext: readNextForBlocker("anti_bot_triggered"),
       forbiddenActions: ["rerun_validator", "switch_mode_retry", "switch_keyword_retry", "android_single_entry_retry"],
     };
   }
@@ -612,6 +643,7 @@ export function cmdRecordValidation(args) {
           ok: true,
           status: "blocked",
           blockedBy: "android_probe_not_used",
+          readNext: readNextForBlocker("android_probe_not_used"),
           shouldRetry: true,
           nextAction: "rerun_android_validation_with_probe",
           message: androidWarning,
@@ -631,6 +663,7 @@ export function cmdRecordValidation(args) {
         ok: true,
         status: "blocked",
         blockedBy: "android_webview_not_used",
+        readNext: readNextForBlocker("android_webview_not_used"),
         shouldRetry: true,
         nextAction: "rerun_android_webview_validation",
         message: androidWarning,
@@ -649,6 +682,7 @@ export function cmdRecordValidation(args) {
         ok: true,
         status: "blocked",
         blockedBy: "android_webview_content_not_verified",
+        readNext: readNextForBlocker("android_webview_content_not_verified"),
         shouldRetry: true,
         nextAction: "fix_android_webview_content_extraction",
         message: androidWarning,
@@ -693,6 +727,7 @@ export function cmdRecordValidation(args) {
       ok: true,
       status: "blocked",
       blockedBy: "cookie_not_injected",
+      readNext: readNextForBlocker("cookie_not_injected"),
       shouldRetry: true,
       nextAction: "inject_cookies_and_retry",
       message: cookieWarning,
@@ -727,6 +762,7 @@ export function cmdRecordValidation(args) {
       ok: true,
       status: "blocked",
       blockedBy: "android_device_needed",
+      readNext: readNextForBlocker("android_device_needed"),
       shouldRetry: true,
       nextAction: "confirm_android_device_availability",
       requiredUserAction: "android_device_needed",
@@ -764,6 +800,7 @@ export function cmdRecordValidation(args) {
       ok: true,
       status: "blocked",
       blockedBy: "android_final_authority_not_used",
+      readNext: readNextForBlocker("android_final_authority_not_used"),
       shouldRetry: true,
       nextAction: "confirm_android_device_availability",
       requiredUserAction: "android_device_needed",
