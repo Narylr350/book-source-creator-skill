@@ -31,8 +31,14 @@ export function resolveValidateCookieFile(runDir, state, mode) {
     };
   }
 
+  // 注入到 base 域(validator 请求的目标域)，并保留 cookie 来源域作兜底。
+  // 站点常把登录态设在子域(wap./m.)，而书源请求 base 域(www.)；
+  // validator CookieStore 按域精确匹配，只写到子域会导致 base 域请求不带 cookie。
+  const inject = { [domain]: cookie };
+  if (cookieDomain && cookieDomain !== domain) inject[cookieDomain] = cookie;
+
   const tempFile = path.join(os.tmpdir(), `bsg-probe-cookies-${process.pid}-${Date.now()}.json`);
-  fs.writeFileSync(tempFile, JSON.stringify({ [cookieDomain || domain]: cookie }, null, 2), "utf-8");
+  fs.writeFileSync(tempFile, JSON.stringify(inject, null, 2), "utf-8");
   return {
     ok: true,
     cookieFile: tempFile,

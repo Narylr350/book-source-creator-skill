@@ -1977,6 +1977,62 @@ describe("bsg workflow user-action gates", () => {
     assert.equal(delivered.finalStatus, "needs_app_review");
   });
 
+  it("treats VIP-lock Android content with no extracted text as vip, not webview-content-not-verified", async () => {
+    // ciweimao 黑盒场景：Probe WebView 渲染了 VIP 锁页(有 webViewHtmlPreview)，
+    // 但 content 规则在付费墙页上抽不到正文(contentPreview 空)。
+    // 修复前：被 android_webview_content_not_verified 短路，当成"WebView 坏"要修规则；
+    // 修复后：识别为 VIP 锁页，收敛为 needs_app_review(content:vip)。
+    const adbEnv = {
+      ...process.env,
+      BSG_TEST_ADB_DEVICES_OUTPUT: "List of devices attached\nABC123\tdevice\n",
+    };
+    const runDir = await initRun(tmpDir, { env: adbEnv });
+    await advanceToValidateWithWebViewSource(tmpDir, runDir);
+    await writeGeneratedValidatorReport(runDir, {
+      status: "failed",
+      mode: "android",
+      phases: { search: "success", detail: "success", toc: "success", content: "error" },
+      summary: {
+        resultCount: 1,
+        firstBook: "Example",
+        chapterCount: 20,
+        contentLength: 0,
+        contentPreview: "",
+      },
+      steps: [
+        { phase: "search", status: "success", mode: "android", extracted: { resultCount: 1 } },
+        { phase: "detail", status: "success", mode: "android", extracted: { name: "Example" } },
+        { phase: "toc", status: "success", mode: "android", extracted: { chapterCount: 20 } },
+        {
+          phase: "content",
+          status: "error",
+          mode: "android",
+          errorCode: "CONTENT_IS_VIP_LOCK_PAGE",
+          error: "正文页提示 VIP/付费，需要登录且有付费权限的账号。",
+          request: { headers: { Cookie: "a=b" }, url: "https://example.com/chapter/1" },
+          androidBackend: "probe_webview",
+          webViewHtmlPreview: "<html><body><div>本章为VIP章节，请订阅本章后阅读</div></body></html>",
+          evidence: { contentLength: 0, contentPreview: "" },
+          preview: "",
+          extracted: { contentLength: 0 },
+        },
+      ],
+    });
+    await runBsg(["set-login-features", "--run", runDir, "--flags", JSON.stringify({
+      hasEnabledCookieJar: true,
+      _loginMethod: "probe",
+    })]);
+
+    const result = await runBsg(["record-validation", "--run", runDir, "--status", "failed"], { env: adbEnv });
+    const matrix = JSON.parse(await fs.readFile(path.join(runDir, "capability-matrix.json"), "utf8"));
+
+    assert.equal(result.status, "needs_app_review");
+    assert.equal(result.warningBy, "content_vip_lock");
+    assert.notEqual(matrix.links.content.blocker, "android_webview_content_not_verified");
+    assert.equal(matrix.links.content.blocker, "vip");
+    assert.deepEqual(matrix.overall.blockers, ["content:vip"]);
+  });
+
   it("asks for Android availability before accepting non-Android passed validation", async () => {
     const runDir = await initRun(tmpDir, { env: noDeviceEnv });
     await advanceToGenerate(tmpDir, runDir);

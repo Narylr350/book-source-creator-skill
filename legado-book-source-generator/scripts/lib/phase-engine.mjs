@@ -381,7 +381,7 @@ export function completePhase(phase, state, runDir) {
       const cu = source.ruleToc.chapterUrl;
       if (!cu.includes("webView") && !cu.includes("webview")) {
         structuralErrors.push(
-          "ruleToc.chapterUrl 缺少 webView:true。CSR 站点必须把 webView 写在 chapterUrl 上（如 /book/{{$.id}},{\"webView\":true}），Legado 只在 chapterUrl 检查 webView 选项。"
+          "ruleToc.chapterUrl 缺少 webView:true。CSR 站点必须把 webView 写在 chapterUrl 上，Legado 只在 chapterUrl 检查 webView 选项。注意 webView 选项必须用 ##$## 链操作符接在 URL 规则后，否则 Legado 会把整串当 CSS 选择器解析而失效：CSS 选择器写 `a@href##$##,{\"webView\":true}`；纯 URL 模板写 `/book/{{$.id}},{\"webView\":true}`。"
         );
       }
     }

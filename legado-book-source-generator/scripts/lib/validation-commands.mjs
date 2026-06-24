@@ -581,7 +581,7 @@ export function cmdRecordValidation(args) {
         correctiveAction,
         nextCommand,
       };
-    } else if (!reportHasAndroidWebViewContentEvidence(reportPathForMode) && (state.loginFeatures.hasWebView || state.loginFeatures.hasWebJs)) {
+    } else if (!reportHasAndroidWebViewContentEvidence(reportPathForMode) && !isVipLockFailure(report) && (state.loginFeatures.hasWebView || state.loginFeatures.hasWebJs)) {
       v.attempts -= 1;
       saveRunState(runDir, state);
       writeCapabilityMatrix(runDir, reportPathForMode, "blocked:android_webview_content_not_verified");
