@@ -67,6 +67,24 @@ function isVipLockFailure(report) {
   return /CONTENT_IS_VIP_LOCK_PAGE|VIP|付费|订阅|会员|需要登录|需登录|paid|subscribe/i.test(text);
 }
 
+// 反爬触发检测：search 类端点被弹到人机验证 / Cloudflare / 验证码页。
+// 这是 server-side 站点行为；任何客户端(curl/validator/Probe/浏览器)请求同一 IP 都计入累积。
+// 自动重跑 validator / 换 mode / 换 keyword 都不能绕过，反而会累积成 IP 风控。
+function isAntiBotTriggered(report) {
+  if (!report) return false;
+  const steps = report.steps || [];
+  for (const step of steps) {
+    if (step?.errorCode === "APP_REVIEW_REQUIRED") return true;
+    const finalUrl = String(step?.response?.url || step?.request?.url || "");
+    if (/\/man_machine_verify|challenges\.cloudflare\.com|turnstile/i.test(finalUrl)) return true;
+    if (step?.needsAppReview === true) {
+      const reason = String(step?.reviewReason || step?.error || step?.message || "");
+      if (/man_machine|人机验证|安全验证|滑块验证|cloudflare|turnstile|just a moment/i.test(reason)) return true;
+    }
+  }
+  return false;
+}
+
 function validationErrorSignature(report, status) {
   const failedStep = firstFailedStep(report);
   if (!failedStep) return status;
@@ -527,6 +545,44 @@ export function cmdRecordValidation(args) {
         saveRunState(runDir, state);
       }
     } catch { /* ignore */ }
+  }
+
+  // 反爬熔断：必须放在 Android 拦截前。Android 同样会触发 server-side verify，跑 Android 不能"绕过"。
+  // 让 agent 反复换 mode/keyword 重试 = 累积同一 IP 访问 → IP 级风控倒计时。
+  if (isAntiBotTriggered(report) && (status === "failed" || status === "needs_app_review")) {
+    warningBy = "anti_bot_triggered";
+    finalStatus = "needs_app_review";
+    v.lastStatus = finalStatus;
+    v.status = "completed";
+    v.consecutiveSame = 0;
+    v.lastError = "";
+    v.recordedAt = new Date().toISOString();
+    validationWarning = [
+      "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+      "⚠️  站点反爬触发 — 停止自动重试",
+      "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+      "validator 报告显示链路被站点弹到人机验证 / Cloudflare / 验证码页。这是 server-side 站点行为，不是规则错误。",
+      "**任何客户端(curl / validator / Probe / 浏览器)请求都计入同一 IP 累积，反复重试会触发 IP 级风控。**",
+      "已收敛为 needs_app_review。正路：",
+      "1. 让用户在浏览器或 Probe 里手动访问主页并过一次人机验证，让 session 持续有效。",
+      "2. 然后让用户从主页正常导航到目标链路，让 cookie 落到 CookieStore。",
+      "3. session 桥接好后再用 validator 一次性走完链路。",
+      "",
+      "禁止：自动重跑 validator、换 mode 重试(http/browser/android)、换 keyword 重试、跑 android single-entry 期望\"绕过\"——Android 端同样会被 server-side verify。",
+      "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+    ].join("\n");
+    saveRunState(runDir, state);
+    writeCapabilityMatrix(runDir, reportPathForMode, "needs_app_review");
+    writeValidatorSummary(runDir, status, finalStatus, reportPathForMode);
+    return {
+      ok: true,
+      status: finalStatus,
+      warningBy,
+      warning: validationWarning,
+      message: validationWarning,
+      nextCommand: `node "<skill-dir>/scripts/bsg.mjs" deliver --run ${runDir}`,
+      forbiddenActions: ["rerun_validator", "switch_mode_retry", "switch_keyword_retry", "android_single_entry_retry"],
+    };
   }
 
   if (androidWarning) {

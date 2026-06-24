@@ -1408,7 +1408,7 @@ describe("bsg workflow user-action gates", () => {
         mode: "android",
         androidProbeUsed: true,
         androidBackend: "probe_webview",
-        errorCode: "APP_REVIEW_REQUIRED",
+        errorCode: "SEARCH_SELECTOR_EMPTY",
         error: "搜索结果为空",
         request: { url: "https://example.com/search?q=abc", headers: { Cookie: "session=probe" } },
       }],
@@ -2031,6 +2031,56 @@ describe("bsg workflow user-action gates", () => {
     assert.notEqual(matrix.links.content.blocker, "android_webview_content_not_verified");
     assert.equal(matrix.links.content.blocker, "vip");
     assert.deepEqual(matrix.overall.blockers, ["content:vip"]);
+  });
+
+  it("halts on anti-bot trigger (APP_REVIEW_REQUIRED) instead of looping repair", async () => {
+    // ciweimao 类反爬站场景：search 端点被弹到 man_machine_verify。
+    // server-side 反爬，任何客户端重试都计入同一 IP 累积 → IP 风控。
+    // 修复前：agent 会被 Android 拦截路径要求"跑 Android 重新验证"，Android 同样触发 verify，循环踩雷。
+    // 修复后：检测到反爬触发立即收敛 needs_app_review，明确告诉 agent 不要重试，指向 session 桥接路径。
+    const adbEnv = {
+      ...process.env,
+      BSG_TEST_ADB_DEVICES_OUTPUT: "List of devices attached\nABC123\tdevice\n",
+    };
+    const runDir = await initRun(tmpDir, { env: adbEnv });
+    await advanceToValidateWithWebViewSource(tmpDir, runDir);
+    await writeGeneratedValidatorReport(runDir, {
+      status: "needs_app_review",
+      mode: "http",
+      phases: { search: "error" },
+      summary: { resultCount: 0, firstBook: "", chapterCount: 0, contentLength: 0, contentPreview: "" },
+      steps: [
+        {
+          phase: "search",
+          status: "error",
+          mode: "http",
+          errorCode: "APP_REVIEW_REQUIRED",
+          error: "需要验证码，需浏览器/App 复核",
+          needsAppReview: true,
+          reviewReason: "命中 man_machine_verify",
+          request: { url: "https://www.ciweimao.com/get-search-book-list/0-0-0-0-0-0/%E5%85%A8%E9%83%A8/test/1" },
+          response: { url: "https://www.ciweimao.com/signup/man_machine_verify?redirect=..." },
+        },
+      ],
+    });
+
+    const result = await runBsg(["record-validation", "--run", runDir, "--status", "needs_app_review"], { env: adbEnv });
+    const state = JSON.parse(await fs.readFile(path.join(runDir, "run-state.json"), "utf8"));
+
+    assert.equal(result.status, "needs_app_review");
+    assert.equal(result.warningBy, "anti_bot_triggered");
+    // 必须明确禁止重试，引导 agent 不踩 IP 累积
+    assert.ok(Array.isArray(result.forbiddenActions));
+    assert.ok(result.forbiddenActions.includes("rerun_validator"));
+    assert.ok(result.forbiddenActions.includes("switch_mode_retry"));
+    assert.ok(result.forbiddenActions.includes("android_single_entry_retry"));
+    // 不能要求跑 Android (Android 也触发同样 verify)
+    assert.equal(state.pendingUserAction, null);
+    assert.ok(!/android.*--run|android single-entry/.test(String(result.nextCommand || "").toLowerCase()) || /deliver/.test(String(result.nextCommand || "").toLowerCase()),
+      `nextCommand 应指向 deliver / 用户手动操作，不应指向 android --run; got: ${result.nextCommand}`);
+    // validate 阶段应完成（不再进 repair）
+    assert.equal(state.phases.validate.status, "completed");
+    assert.equal(state.phases.validate.consecutiveSame, 0);
   });
 
   it("asks for Android availability before accepting non-Android passed validation", async () => {
