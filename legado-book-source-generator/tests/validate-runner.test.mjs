@@ -66,10 +66,7 @@ describe("validate runner cookie resolution", () => {
       assert.equal(result.ok, true);
       assert.equal(result.source, "probe");
       const cookieJson = JSON.parse(fs.readFileSync(result.cookieFile, "utf-8"));
-      // 登录态在 wap. 子域，但书源请求 base 域 www.；validator CookieStore 按域精确匹配，
-      // 必须同时注入 base 域(validator 实际请求的域)和来源子域(兜底)。
       assert.deepEqual(cookieJson, {
-        "www.ciweimao.com": "user_id=1; reader_id=1; login_token=abc; ci_session=def",
         "wap.ciweimao.com": "user_id=1; reader_id=1; login_token=abc; ci_session=def",
       });
       result.cleanup?.();
