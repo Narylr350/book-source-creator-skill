@@ -134,11 +134,28 @@ export function cmdLogin(args) {
     return fail(`Probe APK 不存在: ${apkPath}`);
   }
 
+  // Windows + 中文路径下 adb install 静默 failed to stat（实测 SKILL_ROOT 含"阅读书源生成技能"时复现）。
+  // 先复制到 OS tmp（纯 ASCII 路径），保证 adb 能读到。
+  let installApk = apkPath;
+  let cleanupApk = null;
+  if (/[^\x00-\x7f]/.test(apkPath)) {
+    const tmpApk = path.join(os.tmpdir(), `bsg-probe-${process.pid}-${Date.now()}.apk`);
+    try {
+      fs.copyFileSync(apkPath, tmpApk);
+      installApk = tmpApk;
+      cleanupApk = () => { try { fs.unlinkSync(tmpApk); } catch { /* ignore */ } };
+    } catch (e) {
+      return fail(`复制 Probe APK 到临时路径失败 (中文路径回避): ${e.message}`);
+    }
+  }
+
   try {
-    execSync(`"${adb}" -s ${serial} install -r "${apkPath}"`, { encoding: "utf-8", timeout: 30000 });
+    execSync(`"${adb}" -s ${serial} install -r "${installApk}"`, { encoding: "utf-8", timeout: 30000 });
   } catch (e) {
+    cleanupApk?.();
     return fail(`安装 Probe APK 失败: ${e.stderr || e.message}`);
   }
+  cleanupApk?.();
 
   try {
     execSync(`"${adb}" -s ${serial} forward --remove tcp:18888`, { stdio: "ignore", timeout: 3000 });
