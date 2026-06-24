@@ -20,26 +20,28 @@
 
 以下情况必须停止自动回修，并按 `record-validation` 返回的 `blockedBy` / `requiredUserAction` / `correctiveAction` 收敛；不要手工把不同边界统一改写成 `needs_app_review`：
 
-1. **Cloudflare/Turnstile** — error 或 bodyPreview 含 "Cloudflare" / "Turnstile" / "challenge"
-2. **登录/验证码** — 需要登录态或验证码
-3. **WebView/App-only 验证失败** — Android 真机或模拟器可用但未用 Android Probe、Probe 断开、WebView 未渲染、或 WebView 后没有正文提取证据
-4. **付费墙** — 内容需要付费
-5. **生成源含 WebView/WebJs 但未用 Android 验证** — 设备可用时必须用 `mode=android`；HTTP passed 不能作为可用结论
-6. **Probe 登录态未进入验证请求** — Probe 登录后报告仍是 anonymous 且无 Cookie/Authorization，必须重新注入登录态验证
-7. **只有 Android mode 但没有正文 WebView 渲染证据** — content 阶段必须有 rendered HTML、截图或 WebView preview；否则按未验证处理
-8. **只有 WebView 渲染证据但没有整条正文提取证据** — content 阶段必须没有失败 step，并且有 `preview`、`evidence.contentPreview`、`evidence.contentLength` 或 `extracted.contentLength`；否则按正文未验证处理
-9. **报告已证明是规则错误** — 例如 toc 请求缺 book id、详情字段为空，必须回修规则，不能标 `needs_app_review` / `validator_limitation`
-10. **正文提取污染** — content success 但 preview 混入重复异常 token、脚本片段、导航/弹窗 chrome 时，必须回修正文规则或 WebView 提取，不能按 passed 交付
-11. **最终 passed 不是 Android mode** — PC HTTP/Browser 只辅助写规则；先确认 Android 真机或模拟器，有则运行 `android --run <run-dir>`，没有则由用户明确确认后降级，不能标 full pass
+> 分级标签说明：`[source]` 来自 validator/阅读源码或代码强约束；`[blackbox]` 实测站点/链路观察；`[heuristic]` 启发式判断（有出口、可被用户确认放行）；`[action]` 操作命令。弱模型读到 `[heuristic]` 时不应当作铁律。
+
+1. `[blackbox] [action]` **Cloudflare/Turnstile** — error 或 bodyPreview 含 "Cloudflare" / "Turnstile" / "challenge"。**任何客户端重试都计入同一 IP 累积，会触发 IP 风控。**见 `failure-diagnosis.md` 反爬段。
+2. `[blackbox] [action]` **登录/验证码** — 需要登录态或验证码。同上，不要换 mode/keyword 反复尝试。
+3. `[source] [action]` **WebView/App-only 验证失败** — Android 真机或模拟器可用但未用 Android Probe、Probe 断开、WebView 未渲染、或 WebView 后没有正文提取证据
+4. `[heuristic]` ~~**付费墙**~~ — **已降级为软警告**（不再硬阻塞）。`CONTENT_IS_VIP_LOCK_PAGE` 收敛为 `needs_app_review` + `content:vip` 警告，免费/非 VIP 能力可交付。详见下方"VIP 边界"段。
+5. `[source]` **生成源含 WebView/WebJs 但未用 Android 验证** — 设备可用时必须用 `mode=android`；HTTP passed 不能作为可用结论
+6. `[source]` **Probe 登录态未进入验证请求** — Probe 登录后报告仍是 anonymous 且无 Cookie/Authorization，必须重新注入登录态验证
+7. `[source]` **只有 Android mode 但没有正文 WebView 渲染证据** — content 阶段必须有 rendered HTML、截图或 WebView preview；否则按未验证处理
+8. `[source]` **只有 WebView 渲染证据但没有整条正文提取证据** — content 阶段必须没有失败 step，并且有 `preview`、`evidence.contentPreview`、`evidence.contentLength` 或 `extracted.contentLength`；否则按正文未验证处理
+9. `[source]` **报告已证明是规则错误** — 例如 toc 请求缺 book id、详情字段为空，必须回修规则，不能标 `needs_app_review` / `validator_limitation`
+10. `[heuristic]` **正文提取污染** — content success 但 preview 混入重复异常 token、脚本片段、导航/弹窗 chrome 时，必须回修正文规则或 WebView 提取，不能按 passed 交付。基于词表匹配，有误判可能；不确定时由用户确认。
+11. `[source] [action]` **最终 passed 不是 Android mode** — PC HTTP/Browser 只辅助写规则；先确认 Android 真机或模拟器，有则运行 `android --run <run-dir>`，没有则由用户明确确认后降级，不能标 full pass
 
 以下情况只有在 `record-validation` 归一化后才可成为 `validator_limitation`，不要由 AI 手工改写：
 
-12. **validator 工具限制** — @js 动态 URL、相对路径未拼接、validator 不支持的规则能力
-13. **Android 不可用导致 WebView 正文无法验证** — 没有 Android 真机或模拟器时不强制阻塞，但 HTTP/browser 通过只能记为 `validator_limitation`，正文可靠性未知，不能标 full pass 或可用
+12. `[source]` **validator 工具限制** — @js 动态 URL、相对路径未拼接、validator 不支持的规则能力
+13. `[action]` **Android 不可用导致 WebView 正文无法验证** — 没有 Android 真机或模拟器时不强制阻塞，但 HTTP/browser 通过只能记为 `validator_limitation`，正文可靠性未知，不能标 full pass 或可用
 
 以下情况标记 `failed_unresolved`：
 
-14. **收敛失败** — 同一错误连续 5 次未修复（相同 error + 相同失败字段），判定为死循环，停止自动回修
+14. `[heuristic]` **收敛失败** — 同一错误连续 5 次未修复（相同 error + 相同失败字段），判定为死循环，停止自动回修。阈值 5 是经验值，反爬触发（`anti_bot_triggered`）会更早熔断（首次即停）。
 
 ## 验收标准
 

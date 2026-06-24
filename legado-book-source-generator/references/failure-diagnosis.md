@@ -67,13 +67,30 @@ validator 返回失败后，按以下顺序检查：
 
 **修复**: 确认是否需要 POST；如果是 validator/Android 能力边界，记录到 `validator-report.json` 并交给 `record-validation` 收敛，不手工改写状态。
 
-### Cloudflare 拦截
+### 反爬触发与 IP 风控
 
-**症状**: bodyPreview 含 "Cloudflare" / "Turnstile" / "challenge"
+`[blackbox]` 站点把搜索/登录类端点放在反爬墙后是普遍现象（ciweimao 实测：`/get-search-book-list/...` 单次访问必 303 → `/signup/man_machine_verify`；同类还有 Cloudflare turnstile、各站自研 captcha）。
 
-**原因**: 站点有 Cloudflare 反爬
+`[source]` validator 把这类响应识别为 `APP_REVIEW_REQUIRED`（见 `containsAppReviewChallenge`，匹配 `cloudflare turnstile` / `Just a moment` / 验证页 finalUrl）。`record-validation` 命中此 errorCode 会熔断收敛为 `needs_app_review` + `warningBy: anti_bot_triggered`，并在响应里返回 `forbiddenActions`。
 
-**修复**: 停止自动修，记录 blocker；有 Android 真机或模拟器时优先复核，没有时等待用户确认降级。
+`[source]` server-side 检测对客户端无差别——curl / validator OkHttp / Probe Android WebView / 浏览器 MCP **都会被弹同一个 verify 页**（已实测）。换 mode、换关键词、换 UA 都不绕过。
+
+`[blackbox]` 反复访问反爬端点累积到阈值会触发**站点 IP 级风控**——之后连"已经在用的浏览器"也开始弹验证。一旦到这一步，本次会话基本无解，要等冷却或换 IP。
+
+`[action]` 命中 anti_bot_triggered 时：
+
+1. **禁止** 自动重跑 validator、换 mode 重试、换 keyword 重试、跑 `android --run` 期望"绕过"。
+2. 让用户在浏览器或 Probe 里手动访问主页并过一次人机验证，让 session cookie 持续。
+3. 让用户从主页正常导航到目标链路（例如点击搜索框输入关键词，而非直接访问 `/get-search-book-list/...`），让 cookie 落到 CookieStore。
+4. session 桥接好后再用 validator 一次性走完链路；如果 deliver 时仍未过验证，由用户确认是否按 `needs_app_review` 交付。
+
+`[heuristic]` 一些站点把人机验证放在 session cookie 缺失时（如刺猬猫），过一次后 session 持续；另一些站点（如 Cloudflare 完整模式）每次新 IP 都要过。前者用 1 一步 session 桥接即可，后者只能告诉用户"此站点不适合本机自动化验证"。
+
+### 之前文档误判：浏览器 MCP `evaluate` 触发反爬
+
+实测推翻：浏览器 MCP 用 Playwright，已做 `navigator.webdriver=false` 反检测；`evaluate` 提取 DOM、跑大量选择器都不会触发 verify。**真正的触发源是 `navigate` 反爬端点本身**——浏览器和 curl/Probe 表现完全一致（已实测 ciweimao）。
+
+`[action]` probe 阶段拿站点信息时，先 `navigate` 主页、不要把搜索/登录类反爬端点作为首个 navigate 目标。需要看搜索响应时用 `mcp__fetch__fetch` 取原始 HTML 离线解析，或在浏览器内**用户手动**操作搜索流程（用户过验证）。
 
 ### TOC chapterCount=1
 
