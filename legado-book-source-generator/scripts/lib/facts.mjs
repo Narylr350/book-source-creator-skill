@@ -253,6 +253,19 @@ export function reportAcceptanceGateError(reportPath) {
     if ((phases.toc === "success" || successfulStep(report, "toc")) && hasAnyKey(summary, ["chapterCount"])) {
       const chapterCount = numberFrom(summary.chapterCount, rawSummary.chapterCount, successfulStep(report, "toc")?.extracted?.chapterCount);
       if (chapterCount > 0 && chapterCount < 10) {
+        // 区分"真短目录"vs"匿名试读限制"：站点常把未登录的章节链接替换为 signup/login?redirect=。
+        // 实测 ciweimao：chapter-list 50KB HTML 含整章导航，但匿名只暴露前 2 章 url，其余替换登录引导。
+        // 走 toc_trial_chapters_only 而非 toc_chapter_count_too_low——修法不是"确认是否短篇"，是"让用户登录后重测"。
+        const tocStep = successfulStep(report, "toc");
+        const tocBody = tocStep?.response?.bodyPreview || "";
+        const trialMarkers = /signup\/login\?redirect=|signin\?redirect=|\/login\?next=|\/login\?return=/i;
+        if (trialMarkers.test(tocBody)) {
+          return {
+            phase: "toc",
+            blockedBy: "toc_trial_chapters_only",
+            message: "validator 报告 toc success 但 chapterCount < 10，且响应里有 signup/login?redirect= 引导链接——这是站点匿名试读策略：未登录时只暴露前几章 URL，其余替换为登录引导。不是 ruleToc 抓得少，是站点策略本身屏蔽了。让用户登录后重测目录，不要走 toc_chapter_count_confirmed 把短目录当真。",
+          };
+        }
         return {
           phase: "toc",
           blockedBy: "toc_chapter_count_too_low",

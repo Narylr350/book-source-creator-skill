@@ -1862,6 +1862,39 @@ describe("bsg workflow user-action gates", () => {
     assert.equal(result.nextAction, "deliver");
   });
 
+  it("flags short toc with signup-login redirects as trial mode, not generic short sample", async () => {
+    // ciweimao 实测：chapter-list 匿名只暴露前 2 章 URL，其余替换为 signup/login?redirect=。
+    // 是站点匿名试读策略，不是 ruleToc 抓得少。修法应是登录后重测，不是确认"是否新书"。
+    const runDir = await initRun(tmpDir);
+    await writeRequiredDeliverFiles(tmpDir, runDir);
+    await writeGeneratedValidatorReport(runDir, {
+      status: "passed",
+      mode: "android",
+      summary: { resultCount: 1, firstBook: "测试书", chapterCount: 2, contentLength: 180, contentPreview: "正文".repeat(60) },
+      phases: { search: "success", detail: "success", toc: "success", content: "success" },
+      steps: [
+        { phase: "search", status: "success", mode: "android", response: { bodyPreview: "search" }, extracted: { name: "测试书" } },
+        { phase: "detail", status: "success", mode: "android", response: { bodyPreview: "detail" } },
+        {
+          phase: "toc",
+          status: "success",
+          mode: "android",
+          // bodyPreview 模拟 ciweimao 匿名 chapter-list：前 2 章是真 URL，其余替换为登录引导
+          response: { bodyPreview: '<a href="https://example.com/chapter/1001">第一章</a><a href="https://example.com/chapter/1002">第二章</a><a href="https://example.com/signup/login?redirect=https://example.com/chapter/1003">第三章 [登录可读]</a><a href="https://example.com/signup/login?redirect=https://example.com/chapter/1004">第四章 [登录可读]</a>' },
+          extracted: { chapterCount: 2 },
+        },
+        { phase: "content", status: "success", mode: "android", response: { bodyPreview: "content" }, preview: "正文".repeat(60) },
+      ],
+    });
+
+    const blocked = await runBsgBlocked(["record-validation", "--run", runDir, "--status", "passed"]);
+    assert.equal(blocked.blockedBy, "toc_trial_chapters_only");
+    assert.equal(blocked.requiredUserAction, "toc_sample_review");
+    assert.match(blocked.message, /试读|signup\/login/);
+    // 关键：走"登录后重测/按试读交付"，不是"修 ruleToc"
+    assert.match(blocked.correctiveAction || "", /试读|登录/);
+  });
+
   it("does not accept Android WebView content evidence when another content step failed", async () => {
     const adbEnv = {
       ...process.env,

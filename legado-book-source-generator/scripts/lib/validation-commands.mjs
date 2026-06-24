@@ -103,6 +103,7 @@ const READ_NEXT_FOR_BLOCKER = {
   search_result_empty: ["references/analysis-workflow.md", "references/failure-diagnosis.md"],
   search_book_name_empty: ["references/legado-json-structure.md", "references/failure-diagnosis.md"],
   toc_chapter_count_too_low: ["references/analysis-workflow.md"],
+  toc_trial_chapters_only: ["references/policies.md", "references/android-probe-guide.md"],
   content_length_too_short: ["references/failure-diagnosis.md"],
   content_repeated_noise: ["references/failure-diagnosis.md"],
   content_page_chrome: ["references/failure-diagnosis.md"],
@@ -323,25 +324,30 @@ export function cmdRecordValidation(args) {
 
   if (["passed", "needs_app_review", "validator_limitation", "degraded"].includes(status)) {
     const acceptanceError = reportAcceptanceGateError(reportPathForMode);
-    const confirmedSmallToc = acceptanceError?.blockedBy === "toc_chapter_count_too_low"
+    const confirmedSmallToc = (acceptanceError?.blockedBy === "toc_chapter_count_too_low" || acceptanceError?.blockedBy === "toc_trial_chapters_only")
       && state.userDecisions?.tocChapterCount === "confirmed_small_sample";
     if (acceptanceError && !confirmedSmallToc) {
       v.attempts -= 1;
       v.lastStatus = "failed";
       const finalBlocked = `blocked:${acceptanceError.phase}:${acceptanceError.blockedBy}`;
+      const isShortTocFamily = acceptanceError.blockedBy === "toc_chapter_count_too_low"
+        || acceptanceError.blockedBy === "toc_trial_chapters_only";
+      const guidance = acceptanceError.blockedBy === "toc_chapter_count_too_low"
+        ? "如果这是新书、短篇或样本书导致的短目录，请让用户确认样本语义后运行 resolve-user-action --action toc_chapter_count_confirmed；否则修 ruleToc 后重跑 validator。"
+        : acceptanceError.blockedBy === "toc_trial_chapters_only"
+        ? "这是站点匿名试读策略（目录里有 signup/login?redirect=），不是 ruleToc 抓得少。让用户在浏览器/Probe 登录后从主页正常导航到目录页，让 cookie 落到 CookieStore 后重跑 validator；如果用户接受按试读交付（仅前几章可读），运行 resolve-user-action --action toc_chapter_count_confirmed。"
+        : "这类问题不能改写成可交付结论，也不能靠经验修完直接交付；必须修规则并重新运行 validator。";
       const message = [
         "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
         "⛔ validator 成功结论缺少阅读语义证据",
         "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
         acceptanceError.message,
-        acceptanceError.blockedBy === "toc_chapter_count_too_low"
-          ? "如果这是新书、短篇或样本书导致的短目录，请让用户确认样本语义后运行 resolve-user-action --action toc_chapter_count_confirmed；否则修 ruleToc 后重跑 validator。"
-          : "这类问题不能改写成可交付结论，也不能靠经验修完直接交付；必须修规则并重新运行 validator。",
+        guidance,
         "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
       ].join("\n");
       let pending = null;
-      if (acceptanceError.blockedBy === "toc_chapter_count_too_low") {
-        pending = setPendingUserAction(state, "toc_sample_review", "toc_chapter_count_too_low", message, {
+      if (isShortTocFamily) {
+        pending = setPendingUserAction(state, "toc_sample_review", acceptanceError.blockedBy, message, {
           blockingPhase: "validate",
           blockedBy: acceptanceError.blockedBy,
         });
@@ -364,8 +370,10 @@ export function cmdRecordValidation(args) {
       writeValidatorSummary(runDir, status, finalBlocked, reportPathForMode);
       const correctiveAction = acceptanceError.blockedBy === "toc_chapter_count_too_low"
         ? "validator 报告的目录样本过短。先确认这是目标书本身章节少，还是 ruleToc 只提取到部分章节；确认短目录合理后用 resolve-user-action 记录，否则修 ruleToc 并重跑。"
+        : acceptanceError.blockedBy === "toc_trial_chapters_only"
+        ? "目录响应里有 signup/login?redirect= 引导链接，是站点匿名试读策略。不要修 ruleToc，让用户登录后重测，或由用户确认按试读交付。"
         : "validator 报告包含成功状态但缺少阅读语义证据。已回到 generate / 规则审计语义；修正对应规则后重新通过 rule-check，再重跑 validator。不要改写成可交付结论。";
-      const nextCommand = acceptanceError.blockedBy === "toc_chapter_count_too_low"
+      const nextCommand = isShortTocFamily
         ? `node "<skill-dir>/scripts/bsg.mjs" resolve-user-action --run ${runDir} --action toc_chapter_count_confirmed`
         : `node "<skill-dir>/scripts/bsg.mjs" run --run ${runDir}`;
       printHint(correctiveAction, nextCommand);
