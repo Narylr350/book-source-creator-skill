@@ -853,6 +853,22 @@ describe("bsg workflow user-action gates", () => {
     );
   });
 
+  it("deliver failure warns that bypassing = guaranteed rework", async () => {
+    // deliver 没通过时必须明确告诉 agent：绕过交付门 = 用户拿到用不了 = 必然返工。
+    // 这是 skill 价值锚点（validator≈阅读App），不能让 agent 觉得"写个总结就算完成"。
+    const runDir = await initRun(tmpDir);
+    await writeRequiredDeliverFiles(tmpDir, runDir);
+
+    await assert.rejects(
+      () => execFileAsync("node", [BSG, "deliver", "--run", runDir], { encoding: "utf8" }),
+      (err) => {
+        const result = JSON.parse(err.stdout);
+        assert.match(result.error, /必然返工|validator 等价于阅读|不要写总结表格替代交付/);
+        return true;
+      },
+    );
+  });
+
   it("delivers directly after record-validation without requiring advance", async () => {
     const runDir = await initRun(tmpDir);
     await writeRequiredDeliverFiles(tmpDir, runDir);

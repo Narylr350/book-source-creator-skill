@@ -10,12 +10,20 @@ import {
   ensureRuleCheckSourceFresh,
 } from "./facts.mjs";
 
+// deliver 失败的统一尾注：本 skill validator 等价于阅读 App，
+// deliver 没通过 = 用户拿到此书源大概率用不了 = 必然返工。
+// 不能用"写总结/写表格"绕过交付门，必须修到 deliver 通过或停在 needs_app_review。
+const DELIVER_FAIL_TAIL = '\n\n⚠️ deliver 没通过 = 用户拿到此书源大概率用不了 = 必然返工。本 skill 的 validator 等价于阅读 App，不存在“validator 过不了但阅读能用”的中间地带。修到 deliver 通过，或停在 needs_app_review/validator_limitation 让用户知道限制。不要写总结表格替代交付。';
+function deliverFail(message) {
+  return fail(message + DELIVER_FAIL_TAIL);
+}
+
 // ── deliver check ──────────────────────────────────────────────────────────
 
 export function cmdDeliverCheck(state, runDir) {
   const pending = getPendingUserAction(state);
   if (pending) {
-    return fail(`仍有待用户确认动作: ${pending.type}。请先运行 resolve-user-action。`);
+    return deliverFail(`仍有待用户确认动作: ${pending.type}。请先运行 resolve-user-action。`);
   }
 
   const requiredFiles = [
@@ -35,18 +43,18 @@ export function cmdDeliverCheck(state, runDir) {
     const summaryHint = missing.includes("validator-summary.md")
       ? "validator-summary.md 必须由 record-validation 生成；不要手写补文件。"
       : "";
-    return fail(`交付前文件不完整。缺少: ${missing.join(", ")}${summaryHint ? " " + summaryHint : ""}`);
+    return deliverFail(`交付前文件不完整。缺少: ${missing.join(", ")}${summaryHint ? " " + summaryHint : ""}`);
   }
 
   const summaryText = fs.readFileSync(path.join(runDir, "validator-summary.md"), "utf-8");
   if (!summaryText.includes("此文件由 record-validation 生成")) {
-    return fail("validator-summary.md 不是 record-validation 生成的摘要。请重新运行 record-validation，不要手写 summary。");
+    return deliverFail("validator-summary.md 不是 record-validation 生成的摘要。请重新运行 record-validation，不要手写 summary。");
   }
 
   const loadedSource = loadBookSource(runDir, state);
-  if (!loadedSource.ok) return fail(loadedSource.error);
+  if (!loadedSource.ok) return deliverFail(loadedSource.error);
   const sourceStructureError = validateBookSourceStructure(loadedSource.sources);
-  if (sourceStructureError) return fail(sourceStructureError);
+  if (sourceStructureError) return deliverFail(sourceStructureError);
   const factsFreshError = ensureAssessmentFactsFresh(state, runDir);
   if (factsFreshError) {
     resetPhasesFrom(state, "assess");
@@ -77,24 +85,24 @@ export function cmdDeliverCheck(state, runDir) {
   const v = state.phases.validate;
   const hasLoginFeatures = Object.values(state.loginFeatures).some((b) => b === true);
   if (!v.lastStatus) {
-    return fail("缺少验证状态。必须先运行 record-validation 记录真实 validator 结果，不能仅创建 validator-report.json。");
+    return deliverFail("缺少验证状态。必须先运行 record-validation 记录真实 validator 结果，不能仅创建 validator-report.json。");
   }
   if (v.status !== "completed") {
-    return fail("验证未完成。上次 record-validation 返回 blocked/重试动作时不能交付，请按 blockedBy 修复后重新记录验证。");
+    return deliverFail("验证未完成。上次 record-validation 返回 blocked/重试动作时不能交付，请按 blockedBy 修复后重新记录验证。");
   }
 
   const ruleCheck = readJsonFile(path.join(runDir, "rule-check.json"));
   if (!ruleCheck || ruleCheck.status !== "passed") {
-    return fail("rule-check.json 未通过。必须先完成 official-rule-pack 校验，不能跳过规则审计。");
+    return deliverFail("rule-check.json 未通过。必须先完成 official-rule-pack 校验，不能跳过规则审计。");
   }
 
   const matrix = readJsonFile(path.join(runDir, "capability-matrix.json"));
   if (!matrix || !matrix.overall || matrix.status === "pending") {
-    return fail("capability-matrix.json 未由 record-validation 生成有效能力矩阵。请重新运行 record-validation。");
+    return deliverFail("capability-matrix.json 未由 record-validation 生成有效能力矩阵。请重新运行 record-validation。");
   }
   const matrixStatus = matrix.overall?.status || matrix.status;
   if (typeof matrixStatus === "string" && matrixStatus.startsWith("blocked")) {
-    return fail(`capability-matrix.json 仍为阻塞状态: ${matrixStatus}。不能把 blocked 验证结果改写成可交付结论。`);
+    return deliverFail(`capability-matrix.json 仍为阻塞状态: ${matrixStatus}。不能把 blocked 验证结果改写成可交付结论。`);
   }
 
   let finalStatus;
