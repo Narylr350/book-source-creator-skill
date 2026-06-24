@@ -30,6 +30,10 @@ export const PHASE_READ_NEXT = {
     "references/official-rule-pack.json",
     "references/legado-json-structure.md",
     "references/legado-source-behavior.md",
+    // 现成模式范例 — 弱模型直接照抄结构比凭空理解规则更可靠。
+    // pattern-api-webview-auth: 含 ##$## 链操作符 / webView:true / enabledCookieJar / loginUrl 的完整写法
+    "examples/pattern-api-webview-auth/NOTES.md",
+    "examples/pattern-api-webview-auth/book-source.json",
   ],
   validate: ["references/validator-integration.md", "references/validation-policy.md"],
   deliver: ["references/outputs.md"],
