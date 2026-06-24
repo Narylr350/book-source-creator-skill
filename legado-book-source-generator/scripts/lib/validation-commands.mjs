@@ -73,10 +73,17 @@ function isVipLockFailure(report) {
 function isAntiBotTriggered(report) {
   if (!report) return false;
   const steps = report.steps || [];
+  // 反爬类 errorCode：验证器把它们和 needsAppReview: true 一起标在 step 上。
+  // search/toc/detail 命中任意一个都说明该链路被 server-side 反爬墙住，任何客户端重试都计入 IP 累积。
+  const antiBotCodes = new Set(["APP_REVIEW_REQUIRED", "HTTP_BLOCKED", "SEARCH_EMPTY"]);
   for (const step of steps) {
-    if (step?.errorCode === "APP_REVIEW_REQUIRED") return true;
+    const code = step?.errorCode;
     const finalUrl = String(step?.response?.url || step?.request?.url || "");
-    if (/\/man_machine_verify|challenges\.cloudflare\.com|turnstile/i.test(finalUrl)) return true;
+    const hasVerifyUrl = /\/man_machine_verify|\/signup\/(login|man_machine)|challenges\.cloudflare\.com|turnstile/i.test(finalUrl);
+    if (code === "APP_REVIEW_REQUIRED") return true;
+    if (hasVerifyUrl) return true;
+    // HTTP_BLOCKED + needsAppReview 通常是被反爬弹到 verify 页 (303/非200 跟随到验证页)
+    if (code === "HTTP_BLOCKED" && step?.needsAppReview === true) return true;
     if (step?.needsAppReview === true) {
       const reason = String(step?.reviewReason || step?.error || step?.message || "");
       if (/man_machine|人机验证|安全验证|滑块验证|cloudflare|turnstile|just a moment/i.test(reason)) return true;

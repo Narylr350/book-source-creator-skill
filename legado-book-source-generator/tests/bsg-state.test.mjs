@@ -2116,6 +2116,46 @@ describe("bsg workflow user-action gates", () => {
     assert.equal(state.phases.validate.consecutiveSame, 0);
   });
 
+  it("halts on anti-bot HTTP_BLOCKED+needsAppReview instead of demanding Android", async () => {
+    // 黑盒实测 ciweimao 第二轮：search 命中反爬被弹到 man_machine_verify，
+    // validator 给 errorCode=HTTP_BLOCKED + needsAppReview:true (不是 APP_REVIEW_REQUIRED)。
+    // 修复前：record-validation 走 android_probe_not_used 路径要求"跑 Android"，Android 同样被墙，循环。
+    // 修复后：HTTP_BLOCKED+needsAppReview 也触发熔断，直接收敛 needs_app_review。
+    const adbEnv = {
+      ...process.env,
+      BSG_TEST_ADB_DEVICES_OUTPUT: "List of devices attached\nABC123\tdevice\n",
+    };
+    const runDir = await initRun(tmpDir, { env: adbEnv });
+    await advanceToValidateWithWebViewSource(tmpDir, runDir);
+    await writeGeneratedValidatorReport(runDir, {
+      status: "failed",
+      mode: "android",
+      phases: { search: "error" },
+      summary: { resultCount: 0, firstBook: "", chapterCount: 0, contentLength: 0, contentPreview: "" },
+      steps: [
+        {
+          phase: "search",
+          status: "error",
+          mode: "android",
+          errorCode: "HTTP_BLOCKED",
+          error: "搜索结果为空",
+          needsAppReview: true,
+          request: { url: "https://www.ciweimao.com/get-search-book-list/0-0-0-0-0-0/%E5%85%A8%E9%83%A8/test/1" },
+          response: { code: 303, url: "https://www.ciweimao.com/signup/man_machine_verify?redirect=..." },
+        },
+      ],
+    });
+
+    const result = await runBsg(["record-validation", "--run", runDir, "--status", "failed"], { env: adbEnv });
+    const state = JSON.parse(await fs.readFile(path.join(runDir, "run-state.json"), "utf8"));
+
+    assert.equal(result.status, "needs_app_review");
+    assert.equal(result.warningBy, "anti_bot_triggered");
+    assert.ok(result.forbiddenActions?.includes("rerun_validator"));
+    assert.ok(result.forbiddenActions?.includes("android_single_entry_retry"));
+    assert.equal(state.pendingUserAction, null);
+  });
+
   it("asks for Android availability before accepting non-Android passed validation", async () => {
     const runDir = await initRun(tmpDir, { env: noDeviceEnv });
     await advanceToGenerate(tmpDir, runDir);
