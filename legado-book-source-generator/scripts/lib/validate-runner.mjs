@@ -80,7 +80,22 @@ export function cmdValidate(args) {
       const m = firstLine.match(/#\s*(.+)/);
       if (m && !isGenericAnalysisTitle(m[1])) keyword = m[1].trim();
     }
-    if (!keyword) keyword = state.siteSlug;
+  }
+  if (!keyword) {
+    const factsPath = path.join(runDir, "site-facts.json");
+    if (fileExists(factsPath)) {
+      try {
+        const facts = JSON.parse(fs.readFileSync(factsPath, "utf-8"));
+        const searchEvidence = facts.evidence?.find((e) => e.phase === "search");
+        if (searchEvidence?.note) {
+          const m = searchEvidence.note.match(/关键词[：:]\s*(\S+)/);
+          if (m) keyword = m[1];
+        }
+      } catch {}
+    }
+  }
+  if (!keyword) {
+    return fail("validator 需要搜索关键词。请传 --keyword <中文关键词>，或在 analysis.md 标题写书名，或在 site-facts evidence note 写'关键词：xxx'。不能用站点 slug 当搜索词。");
   }
 
   // Determine mode: override → adb available → probe login → http

@@ -55,6 +55,17 @@ export function cmdDeliverCheck(state, runDir) {
   if (!loadedSource.ok) return deliverFail(loadedSource.error);
   const sourceStructureError = validateBookSourceStructure(loadedSource.sources);
   if (sourceStructureError) return deliverFail(sourceStructureError);
+
+  const bsSource = loadedSource.sources[0];
+  if (bsSource) {
+    const jsonStr = JSON.stringify(bsSource);
+    if (bsSource.loginUrl) state.loginFeatures.hasLoginUrl = true;
+    if (bsSource.enabledCookieJar === true) state.loginFeatures.hasEnabledCookieJar = true;
+    if (bsSource.header && String(bsSource.header).includes("Authorization")) state.loginFeatures.hasAuthorization = true;
+    if (jsonStr.includes('"webView":true') || jsonStr.includes("'webView':true")) state.loginFeatures.hasWebView = true;
+    if (bsSource.ruleContent?.webJs) state.loginFeatures.hasWebJs = true;
+    saveRunState(runDir, state);
+  }
   const factsFreshError = ensureAssessmentFactsFresh(state, runDir);
   if (factsFreshError) {
     resetPhasesFrom(state, "assess");

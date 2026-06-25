@@ -55,6 +55,7 @@ function runCommand(command, args, options = {}) {
         cwd: options.cwd,
         windowsHide: true,
         timeout: 120000,
+        maxBuffer: 16 * 1024 * 1024,
       });
     }
     return execFileSync(resolved, args, {
@@ -62,12 +63,14 @@ function runCommand(command, args, options = {}) {
       cwd: options.cwd,
       windowsHide: true,
       timeout: 120000,
+      maxBuffer: 16 * 1024 * 1024,
     });
   }
   return execFileSync(command, args, {
     encoding: "utf8",
     cwd: options.cwd,
     timeout: 120000,
+    maxBuffer: 16 * 1024 * 1024,
   });
 }
 
@@ -90,12 +93,16 @@ function normalizeDir(value) {
 }
 
 function parseJsonOutput(output, label) {
+  const trimmed = String(output || "").trim();
   try {
-    return JSON.parse(output);
+    return JSON.parse(trimmed);
   } catch (error) {
-    const start = output.indexOf("[");
-    const end = output.lastIndexOf("]");
-    if (start >= 0 && end > start) return JSON.parse(output.slice(start, end + 1));
+    const start = trimmed.search(/[\[{]/);
+    if (start < 0) throw new Error(`${label} 输出不是合法 JSON: ${error.message}`);
+    const open = trimmed[start];
+    const close = open === "[" ? "]" : "}";
+    const end = trimmed.lastIndexOf(close);
+    if (end > start) return JSON.parse(trimmed.slice(start, end + 1));
     throw new Error(`${label} 输出不是合法 JSON: ${error.message}`);
   }
 }
@@ -265,7 +272,7 @@ function renderCleanMarkdown(data, sourcePath) {
 
 function writeCleanExport(jsonPath) {
   const raw = fs.readFileSync(jsonPath, "utf8");
-  const data = JSON.parse(raw);
+  const data = parseJsonOutput(raw, "opencode export");
   const cleanPath = cleanOutPath(jsonPath);
   fs.writeFileSync(cleanPath, renderCleanMarkdown(data, jsonPath), "utf8");
   return cleanPath;

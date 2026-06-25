@@ -24,6 +24,7 @@ class WebServer(port: Int) : NanoWSD("127.0.0.1", port) {
             return serveStatic(uri)
         }
         return when {
+            uri == "/api/validate-rules" && session.method == Method.POST -> handleValidateRules(session)
             uri == "/api/source/import" && session.method == Method.POST -> handleImportSource(session)
             uri == "/api/sources" && session.method == Method.GET -> handleListSources()
             uri == "/api/debug/start" && session.method == Method.POST -> handleStartDebug(session)
@@ -74,6 +75,23 @@ class WebServer(port: Int) : NanoWSD("127.0.0.1", port) {
             val list = BookSource.fromJson(json)
             list.forEach { sources[it.bookSourceUrl] = it }
             newFixedLengthResponse(Response.Status.OK, "application/json", """{"ok":true,"count":${list.size}}""")
+        } catch (e: Exception) {
+            newFixedLengthResponse(Response.Status.BAD_REQUEST, "application/json",
+                """{"ok":false,"error":"${e.message?.replace("\"", "\\\"")}"}""")
+        }
+    }
+
+    private fun handleValidateRules(session: IHTTPSession): Response {
+        val contentLength = session.headers["content-length"]?.toIntOrNull() ?: 0
+        val rawBytes = readBody(session.inputStream, contentLength)
+        val json = String(rawBytes, Charsets.UTF_8)
+        return try {
+            val req = com.google.gson.JsonParser.parseString(json).asJsonObject
+            val sourceJson = if (req.has("sourceJson")) req.get("sourceJson").toString() else json
+            val list = BookSource.fromJson(sourceJson)
+            val allIssues = list.flatMap { source -> RuleValidator.validate(source) }
+            val resultJson = Gson().toJson(mapOf("ok" to true, "issues" to allIssues))
+            newFixedLengthResponse(Response.Status.OK, "application/json", resultJson)
         } catch (e: Exception) {
             newFixedLengthResponse(Response.Status.BAD_REQUEST, "application/json",
                 """{"ok":false,"error":"${e.message?.replace("\"", "\\\"")}"}""")

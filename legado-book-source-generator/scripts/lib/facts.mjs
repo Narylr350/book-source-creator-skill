@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
+import { execFileSync } from "node:child_process";
 import {
   fileExists, readJsonFile, writeJsonFile, fileSha256, emptyLinks,
   normalizeLinkStatus, getEvidenceIds, LINK_PHASES, OFFICIAL_RULE_PACK_PATH,
@@ -467,6 +468,19 @@ export function deriveAssessmentFromFacts(facts) {
     return status;
   });
 
+  const features = facts.features || {};
+  if (features.hasLogin) risks.add("需登录态");
+  if (features.hasVip) risks.add("需登录态");
+  if (features.hasCaptcha) {
+    risks.add("有反爬风险");
+    hasEntryAntiBotRisk = true;
+  }
+  if (features.hasCloudflare) {
+    risks.add("有反爬风险");
+    hasEntryAntiBotRisk = true;
+  }
+  if (features.isAppRequired) risks.add("WebView 依赖");
+
   const successCount = statuses.filter((s) => s === "success").length;
   const progressCount = statuses.filter((s) => s === "success" || s === "partial").length;
   const allSuccess = successCount === LINK_PHASES.length;
@@ -735,7 +749,24 @@ export function runOfficialRuleCheck(sources, state, runDir) {
     errors,
     warnings,
     checkedRuleIds,
+    dryRunIssues: runDryRunValidation(sources),
   };
+}
+
+function runDryRunValidation(sources) {
+  try {
+    const result = execFileSync("curl.exe", [
+      "-s", "--max-time", "5",
+      "-X", "POST", "http://127.0.0.1:1111/api/validate-rules",
+      "-H", "Content-Type: application/json",
+      "-d", JSON.stringify(sources),
+    ], { encoding: "utf8", windowsHide: true, timeout: 8000 });
+    const parsed = JSON.parse(result);
+    if (parsed.ok && Array.isArray(parsed.issues) && parsed.issues.length > 0) {
+      return parsed.issues;
+    }
+  } catch {}
+  return [];
 }
 
 export function writeRuleCheck(runDir, ruleCheck) {
