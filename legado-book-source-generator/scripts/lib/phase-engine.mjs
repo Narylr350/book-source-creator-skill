@@ -341,7 +341,7 @@ export function completePhase(phase, state, runDir) {
       return fail("book-source.json 是空数组，至少需要一个书源。");
     }
 
-    const officialRuleCheck = runOfficialRuleCheck(parsed, state);
+    const officialRuleCheck = runOfficialRuleCheck(parsed, state, runDir);
     officialRuleCheck.sourceHash = sha256Text(sourceJson);
     writeRuleCheck(runDir, officialRuleCheck);
     if (officialRuleCheck.errors.length > 0) {

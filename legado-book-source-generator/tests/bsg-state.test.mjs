@@ -2346,6 +2346,32 @@ describe("bsg workflow user-action gates", () => {
     assert.ok(ruleCheck.errors.some((issue) => issue.ruleId === "book-info-intro-field"));
   });
 
+  it("requires loginUrl when hasEnabledCookieJar is set but loginUrl missing", async () => {
+    const runDir = await initRun(tmpDir);
+    await advanceToGenerate(tmpDir, runDir);
+    // 模拟 AI 标了登录特征但书源漏写 loginUrl + enabledCookieJar
+    await runBsg(["set-login-features", "--run", runDir, "--flags", JSON.stringify({ hasEnabledCookieJar: true })]);
+    await fs.writeFile(path.join(tmpDir, "outputs", "example-com", "book-source.json"), JSON.stringify([{
+      bookSourceUrl: "https://example.com",
+      bookSourceName: "Example",
+      searchUrl: "https://example.com/search?q={{key}}",
+      ruleSearch: { bookList: "li", name: "a@text", bookUrl: "a@href" },
+      ruleBookInfo: { name: "h1@text" },
+      ruleToc: { chapterList: "li", chapterName: "a@text", chapterUrl: "a@href" },
+      ruleContent: { content: "div@text" },
+    }]), "utf8");
+
+    await assert.rejects(
+      () => execFileAsync("node", [BSG, "advance", "--run", runDir], { encoding: "utf8" }),
+      (err) => {
+        const result = JSON.parse(err.stdout);
+        assert.match(result.error, /loginUrl/);
+        assert.match(result.error, /enabledCookieJar/);
+        return true;
+      },
+    );
+  });
+
   it("rejects empty searchUrl and ruleSearch before validate", async () => {
     const runDir = await initRun(tmpDir);
     await advanceToGenerate(tmpDir, runDir);

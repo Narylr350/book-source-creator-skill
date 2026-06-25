@@ -633,11 +633,17 @@ export function isJsonOrJsRule(value) {
   );
 }
 
-export function runOfficialRuleCheck(sources, state) {
+export function runOfficialRuleCheck(sources, state, runDir) {
   const rules = loadOfficialRulePack();
   const errors = [];
   const warnings = [];
   const checkedRuleIds = [];
+  // load site-facts 判断站点是否有登录/反爬 blocker——有则要求书源配 loginUrl +
+  // enabledCookieJar，否则 AI 会漏写登录配置，登录时打开主页而非登录页。
+  const facts = runDir ? readJsonFile(path.join(runDir, "site-facts.json")) : null;
+  const hasLoginRiskInFacts = (facts?.links && Object.values(facts.links).some(
+    (link) => link?.blocker && /login|captcha|auth|验证码|登录|cloudflare|blocked|vip|付费/i.test(link.blocker)
+  )) || false;
   const addIssue = (rule, detail) => {
     const issue = {
       ruleId: rule.id,
@@ -667,9 +673,9 @@ export function runOfficialRuleCheck(sources, state) {
         const token = rule.tokens.find((item) => jsonStr.includes(item));
         if (token) addIssue(rule, `${rule.message} 检测到: ${token}`);
       } else if (rule.checkKind === "cookieLoginShape") {
-        if (state.loginFeatures.hasEnabledCookieJar || state.loginFeatures.hasAuthorization || source.enabledCookieJar) {
-          if (!source.enabledCookieJar) addIssue(rule, "需要登录态的站点必须设置 enabledCookieJar: true。");
-          if (!source.loginUrl) addIssue(rule, "enabledCookieJar 已启用但缺少 loginUrl。");
+        if (state.loginFeatures.hasEnabledCookieJar || state.loginFeatures.hasAuthorization || source.enabledCookieJar || hasLoginRiskInFacts) {
+          if (!source.enabledCookieJar) addIssue(rule, "站点有登录/反爬风险，必须设置 enabledCookieJar: true，否则登录 cookie 不会进入 validator 请求。");
+          if (!source.loginUrl) addIssue(rule, "站点有登录风险，必须提供 loginUrl（登录页 URL），否则登录时只能打开主页让用户自己找入口。");
           if (!source.header || !String(source.header).includes("java.getCookie")) {
             addIssue(rule, "enabledCookieJar 已启用但 header 未使用 java.getCookie 注入 Cookie。");
           }
