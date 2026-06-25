@@ -1151,7 +1151,7 @@ class DebugService {
     // ── 构建 evidence ──────────────────────────────────────────────────────────
 
     private fun buildContentEvidence(html: String?, content: String, artifacts: MutableMap<String, String>): Map<String, Any?> {
-        val htmlKind = classifyHtml(html)
+        val htmlKind = classifyHtml(html, content)
         return mapOf(
             "htmlLength" to (html?.length ?: 0),
             "contentLength" to content.length,
