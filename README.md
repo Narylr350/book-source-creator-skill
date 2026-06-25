@@ -4,23 +4,9 @@
 
 下载和使用前请先阅读免责声明。本项目不是书源分享包，不提供内容资源，只是 AI 生成和本地验证 Legado/阅读书源规则的开发辅助工具。
 
-## 这个项目的核心是什么
+## 这个项目是什么
 
-人类做书源的闭环是：凭规则和经验写 → 在阅读 App 的调试模式里跑 → 看 debug 模式显示的每一阶段抓取到的网页源码，对照着判断规则哪里没匹配上 → 修。这套对人类有效，但对 AI 很低效：人机共同 debug 慢、AI 拿到的信息不全、不知道为什么失败就只能瞎猜。
-
-本项目把这个闭环搬到 AI 能独立完成的环境里，核心是一个**验证器（validator）**：
-
-> **validator 是阅读 App 书源引擎（webBook / analyzeRule / rhino）的 JVM 移植，不是另写一套半成品。** 书源能通过 validator，几乎等价于在阅读 App 里可用。
-
-这是整个项目的价值锚点。配套的 `android-probe`（真机 WebView 验证）和 `bsg.mjs`（工具箱 CLI）都服务于同一个目标：**模拟阅读的真实执行，并把人类靠 debug 模式才能看到的每阶段抓取信息（网页源码、规则命中、失败原因），结构化地喂给 AI，让它能自己修。**
-
-只要书源能通过 validator 并走完 `deliver`，导入阅读 App 即可用。
-
-## 设计取向
-
-- **价值锚点是真实执行，不是流程约束。** `bsg.mjs` 是工具箱——先初始化，再按当前问题选工具，不是必须机械走完的长状态机。判定对错的最终依据是 validator 跑出来的客观结果。
-- **判定建立在客观证据上，不是关键词猜测。** 页面分类、失败归因尽量来自 validator 的结构化 `errorCode`（对应阅读引擎真实会发生的提取失败），而不是扫描 HTML 文本里的 `vip` / `验证码` 等裸词——后者换个站就失效，还会误判正常页。
-- **给弱模型的脚手架，但脚手架要可靠。** 强模型能自主探索、自己判断怎么修；弱模型不会，需要被"推着走"去读对应文档、被门禁挡住偷工。这些脚手架（`nextCommand`、按卡点指路的 `readNext`、`deliver` 门禁）都保留，但都建立在 validator 客观信号上。
+一个让 AI 自主生成和验证书源的 skill。核心是 validator——阅读 App 书源引擎的 JVM 移植。书源通过 validator + deliver，导入即用，不会返工。
 
 ## 免责声明
 
@@ -98,18 +84,6 @@ runs/<site-slug>/           # 过程记录，用于 AI 接力和故障回溯
 6. [`references/validator-integration.md`](./legado-book-source-generator/references/validator-integration.md) — validator API 与 errorCode 详解
 
 验证失败回修读 `references/failure-diagnosis.md`；Android / WebView / 登录态读 `references/android-probe-guide.md`。
-
-## bsg.mjs 自动负责的判断
-
-把可机器判断的部分交给脚本，AI 不必记忆规则：
-
-- **结构完整性**：generate→validate 前检查 chapterUrl webView 声明、webJs 轮询、enabledCookieJar / loginUrl 配套、@text/@href、jQuery 选择器、POST 语法等硬错误。
-- **客观失败归因**：validator 真实执行后，按结构化 `errorCode`（选择器空、内容过短、HTTP 阻断、CSR 空壳、VIP 锁页等）定位失败链路和可改字段，而非裸词猜测。
-- **反爬熔断 + 登录求助**：链路被弹到人机验证 / Cloudflare / 验证码页时**首次即停**（任何客户端重试都累积触发站点 IP 风控）；未登录先求助用户登录（登录可能解除），已登录仍被拦才收敛 `needs_app_review`。
-- **Cookie 跨子域归一**：validator 的 CookieStore 按 eTLD+1 归一（复刻阅读 `getSubDomain`），一次登录的 Cookie 在 `www`/`wap`/`m` 子域间共享。
-- **Android Probe 强制**：书源含 webView 且真机/模拟器在线时，最终交付证据必须来自 Android mode，不能用 PC HTTP 的 passed 冒充。
-- **收敛与防偷工**：同一错误连续 5 次才停（反爬首次即停）；`deliver` 是唯一成功标志；`run-state.json` 有 SHA256 签名防手动篡改。
-- **按卡点指路**：`record-validation` 的 `readNext` 随 blocker 变，把弱模型推到最相关的文档前。
 
 ## 环境要求
 
