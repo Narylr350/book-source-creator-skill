@@ -84,13 +84,23 @@ internal fun classifyHtmlKindExt(html: String?, content: String?): String {
     if (html.isNullOrBlank()) return "empty"
     val lower = html.lowercase()
 
+    // 调用方若已抽到一段足够长的正文，说明规则命中的是真正文：
+    // 即便页面引用了 CSR 框架资源 / 含登录入口 / 含付费词，也不应判成空壳/锁页。
+    // CSR 空壳的客观特征是"几乎没有正文、主要是 JS 脚手架"，不是"引用了 Next/Nuxt"。
+    val hasRealContent = !content.isNullOrBlank() && content.length >= 50
+
     // CSR 空壳检测
-    val csrShells = listOf(
-        "import.meta.url", "__nuxt", "__vite", "vite_is_modern",
-        "window.__nuxt__", """<div id="__nuxt">""", """<div id="app"></div>""",
-        """id="__next"""", "_next/static", "webpackJsonp"
-    )
-    if (csrShells.any { lower.contains(it, ignoreCase = true) }) return "csr_shell"
+    // 注意：__next/_next/static/<div id="app"></div> 等是通用前端模板，SSR 水合页也会引用，
+    // 仅凭这些词命中会把"正文已渲染、只是选择器写错"的页面误判成空壳，误导 AI 去加 webView
+    // 而不是修选择器。因此叠加正文护栏：已抽到正文就不判空壳，让它落到 CONTENT_SELECTOR_EMPTY。
+    if (!hasRealContent) {
+        val csrShells = listOf(
+            "import.meta.url", "__nuxt", "__vite", "vite_is_modern",
+            "window.__nuxt__", """<div id="__nuxt">""", """<div id="app"></div>""",
+            """id="__next"""", "_next/static", "webpackJsonp"
+        )
+        if (csrShells.any { lower.contains(it, ignoreCase = true) }) return "csr_shell"
+    }
 
     // 登录页检测
     // 大型页面（>25KB）即使含登录表单也优先判定为 reader_page——登录表单常出现在页头/页脚模板中
@@ -104,7 +114,7 @@ internal fun classifyHtmlKindExt(html: String?, content: String?): String {
     val hasLoginForm = loginFormPatterns.any {
         Regex(it, RegexOption.IGNORE_CASE).containsMatchIn(html)
     }
-    if (hasLoginKeyword && hasLoginForm) {
+    if (!hasRealContent && hasLoginKeyword && hasLoginForm) {
         if (html.length < 25000) return "login_page"
         val stripped = html.replace(Regex("""<(script|style|noscript)[^>]*>.*?</\1>""", RegexOption.IGNORE_CASE), "")
             .replace(Regex("<[^>]+>"), " ").replace(Regex("\\s+"), " ").trim()
@@ -117,7 +127,6 @@ internal fun classifyHtmlKindExt(html: String?, content: String?): String {
     // 裸词 vip/付费/订阅 会误命中正常页面的 VIP 频道入口/等级标记/侧栏广告，制造假阴性。
     // 改用只在"付费提示"语境出现的动作短语（不会是导航链接文本），并叠加正文证据：
     // 若调用方已抽到一段足够长的正文，说明规则命中的是真正文，即便页面含付费词也不判锁。
-    val hasRealContent = !content.isNullOrBlank() && content.length >= 50
     if (!hasRealContent) {
         val vipActionPatterns = listOf(
             "订阅本章", "本章为 vip", "本章为付费", "余额不足", "充值", "购买本章",

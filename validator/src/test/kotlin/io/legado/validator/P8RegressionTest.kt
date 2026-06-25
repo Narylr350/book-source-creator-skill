@@ -378,6 +378,28 @@ class P8RegressionTest {
         assertNotEquals("vip_lock_page", classifyHtmlKindExt(html, content))
     }
 
+    // ── CSR 空壳判定：框架词命中但已抽到正文，不再误判空壳 ──────────────────────
+    // SSR 水合页常引用 __next/_next/static/<div id="app"> 等前端模板词；若正文已抽到，
+    // 把它判成 csr_shell 会误导 AI 去加 webView 而非修选择器。要求 框架词 + 正文为空 组合证据。
+
+    @Test
+    fun `framework markers with real content is not csr shell`() {
+        val html = """
+            <html><head><script src="/_next/static/chunks/main.js"></script></head>
+            <body><div id="__next"><article>第一章 正文内容</article></div></body></html>
+        """.trimIndent()
+        // 正文已抽到 → 不应判空壳（应交给 normal_reader_html / 选择器调试）
+        val realContent = "第一章 正文内容，" + "这是服务端已渲染好的真正文。".repeat(8)
+        assertEquals("normal_reader_html", classifyHtmlKindExt(html, realContent))
+    }
+
+    @Test
+    fun `framework shell with empty content is csr shell`() {
+        val html = """<html><body><div id="app"></div><script src="/webpackJsonp.js"></script></body></html>"""
+        // 框架空壳 + 抽不到正文 → 判 csr_shell
+        assertEquals("csr_shell", classifyHtmlKindExt(html, ""))
+    }
+
     // ── 验证码裸词不再误判正文/搜索结果 ──────────────────────────────────────────
     // 正文里出现"验证码"三字(如"输入验证码"帮助文案)不应整页判成 captcha_page。
 
