@@ -49,7 +49,7 @@
 ## 判断原则
 
 - 先匿名初探：只判断站点结构、接口路径、是否有反爬、是否需要 WebView。
-- **不要把浏览器 JS 探测作为默认初探方式**。搜索页、登录页、人机验证页和入口页优先用 HTTP 原始响应、curl 或 validator 证据；`browser_evaluate`、自动 DOM 扫描和页面内 `fetch` 可能触发反爬，只能作为高风险补充证据。
+- **不要把浏览器 JS 探测作为默认初探方式**。搜索页、登录页、人机验证页和入口页优先用 HTTP 原始响应、curl 或 validator 证据。实测：单次 `browser_evaluate`/DOM 扫描本身不触发反爬（Playwright 已做 `navigator.webdriver=false`），真正触发是 `navigate` 到反爬端点（搜索/登录页）本身，以及短时间反复请求累积出的站点 IP 风控；所以反爬站避免反复交互，把 evaluate 当高风险补充证据。
 - **SPA/CSR 页面每次交互后等 2-3 秒再取快照**。Vue/React/Nuxt 页面需要 JS 执行后才能看到内容。页面跳转后立即 snapshot 拿到的是加载态/空白页，不是目标内容。
 - 如果 snapshot 显示登录页/空白页/骨架屏，等待后重新 snapshot。不要直接判断"站点不可访问"。
 - 模型负责解释页面结构、接口字段语义和 Legado 规则映射。
@@ -84,11 +84,11 @@
 "header": "<js>\nvar cookie = java.getCookie('https://example.com');\nvar token = '';\nif (cookie) {\n  var match = cookie.match(/token=([^;]+)/);\n  if (match) token = match[1];\n}\nJSON.stringify({\n  'Authorization': token ? 'Bearer ' + token : ''\n});\n</js>"
 ```
 
-**关键依赖**：`java.getCookie()` 从 CookieStore 读取。validator v0.4.1+ 支持 CookieStore 持久化（JSON 文件）。验证前按设备状态注入 cookie：
+**关键依赖**：`java.getCookie()` 从 CookieStore 读取。validator 的 CookieStore 持久化到 JSON 文件，并按 eTLD+1 归一（复刻阅读 `NetworkUtils.getSubDomain`），登录 Cookie 在 `www`/`wap`/`m` 子域间共享。验证前按设备状态注入 cookie：
 
 1. **Android/Probe 可用**：运行 `android --run <run-dir>` → 用户在手机/模拟器 WebView 登录 → `android --login-completed` → Android mode 验证
 2. **Android/Probe 不可用**：用户在桌面浏览器登录 → AI 通过 `browser_network_requests` 提取 Cookie/Authorization header → 注入 validator（`--cookie=` 参数或 API `/api/cookie/set`）
-3. **App 登录后同步**：用户在 Legado App 内通过 `loginUrl` 登录 → Legado 将 cookie 存入 Room DB → （未来）validator 可从 App 导出导入
+3. **App 登录后同步**：用户在 Legado App 内通过 `loginUrl` 登录 → Legado 将 cookie 存入 Room DB（按 eTLD+1 归一，全站子域共享）。validator 读不到 App 的 DB，需用户从能登录的环境（带代理的桌面浏览器 / 真机）导出 cookie 后注入。注意 ciweimao 这类站 web 登录页可能 503，真正登录通道是原生 App 的 hbooker API（设备指纹 + GEETEST），WebView 登录不一定可达。
 
 **注意**：
 - Cookie 是 HttpOnly 时，`document.cookie` 在 WebView 中不可读，但 `java.getCookie()` 通过 CookieStore 仍能获取
@@ -110,7 +110,7 @@ node "<skill-dir>/scripts/bsg.mjs" validate --run runs/<site-slug>/
 - [ ] `book-source.json` 顶层为 JSON 数组 `[{...}]`（就算只有一个书源）
 - [ ] 无空字符串 `""` 的可选字段
 - [ ] `ruleToc.chapterUrl` 不为空
-- [ ] `ruleContent.webJs` 有内容（CSR 站点）
+- [ ] CSR 站点正文：`chapterUrl` 标 `webView:true`，正文用直 CSS（如 `#J_BookRead .chapter@textNodes`）或 `webJs` 二选一——直 CSS 更简单、优先；**不是必须 webJs**（ciweimao 实测、社区可用源都用直 CSS）
 - [ ] `enabledCookieJar: true`（需要登录态的站点）
 - [ ] audit 脚本通过（无占位字段、JS 语法无错）
 
