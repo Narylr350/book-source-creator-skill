@@ -42,7 +42,7 @@
 
 ## 快速开始
 
-作为 AI Skill 安装（推荐）——把 [`legado-book-source-generator`](./legado-book-source-generator) 复制或 junction 到 AI 工具的 skills 目录：
+作为 AI Skill 安装（**唯一推荐用法**）——这个项目是给 AI 用的，不是给人手动操作的工具。把 [`legado-book-source-generator`](./legado-book-source-generator) 放到 AI 工具的 skills 目录即可（可以让 AI 帮你下载安装）：
 
 | 工具 | 安装路径 |
 |------|---------|
@@ -65,16 +65,14 @@ node "<skill-dir>/scripts/bsg.mjs" deliver --run <run-dir>           # 唯一最
 
 `deliver` 返回 ok 是任务完成的唯一标志。绕过它交一个 JSON 文件，不算完成。
 
-## 也可以脱离 AI 手动用
+## 不通过 AI 时的两种入口
 
-下载 Release 包给人类调试 / 手动验证：
+正常使用都由 AI 驱动，以下两种只是补充：
 
-1. 到 GitHub Releases 下载发布包并解压
-2. 进入 `legado-book-source-generator\validator\`，双击 `run.bat`
-3. 浏览器打开 `http://localhost:1111`，导入书源 JSON、输入关键词、选模式运行
-4. `Ctrl+C` 或双击 `stop.bat` 停止
+- **想手动验证书源的人** → 下载 Release 包，进入 `validator\` 双击 `run.bat`，浏览器打开 `http://localhost:1111` 导入书源、输入关键词、选模式运行；`stop.bat` 停止。包里的几个 `.bat` 只为这种手动场景做兼容，不是主推用法。
+- **开发 validator / Android Probe 的人** → clone 本仓库，改 Kotlin 源码后 `cd validator && .\gradlew.bat jar` 重建，并把产物部署回 skill 内置目录（见下文仓库结构）。
 
-普通使用者不需要本地编译 Gradle 项目；只有开发 validator 或 Android Probe 时才需要 clone 仓库并构建。
+普通使用者不需要 clone，也不需要本地编译 Gradle。
 
 ## 输出结构
 
