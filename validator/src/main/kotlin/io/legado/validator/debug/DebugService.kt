@@ -662,14 +662,16 @@ class DebugService {
 
                 // ── 正文质量检查 ──
                 var qualityCode: String? = null
-                var qualitySeverity = false
                 var isLikelyNoticeOrLock = false
                 var titleFoundInContent: Boolean? = null
                 if (!content.isBlank() && content.length < 100) {
                     qualityCode = ErrorCode.CONTENT_TOO_SHORT.name
+                    // 裸词 公告/VIP/付费/订阅 仅作为诊断提示写进 evidence，帮助 AI 判断这段短内容
+                    // 是否是公告/锁页；不据此改 status——是否可交付由"内容长度"这个客观事实决定
+                    // （JS 层 reportAcceptanceGateError 已用 contentLength<100 客观门禁拦截）。
+                    // 裸词改 status 会误判含这些字的正常短正文，且与 classifyHtmlKindExt 避裸词设计矛盾。
                     val noticeKeywords = listOf("公告", "通知", "请假", "停更", "VIP", "付费", "订阅")
                     isLikelyNoticeOrLock = noticeKeywords.any { content.contains(it, ignoreCase = true) }
-                    if (isLikelyNoticeOrLock) qualitySeverity = true
                 }
                 var mismatchCode: String? = null
                 if (!content.isBlank() && chapter.title.isNotBlank()) {
@@ -693,7 +695,6 @@ class DebugService {
                 val status = when {
                     content.isBlank() -> "error"
                     htmlKind in listOf("csr_shell", "login_page", "captcha_page", "vip_lock_page") -> "error"
-                    qualitySeverity -> "error"  // CONTENT_TOO_SHORT with isLikelyNoticeOrLock
                     else -> "success"
                 }
                 val finalErrorCode = when {
@@ -1002,14 +1003,13 @@ class DebugService {
 
                 // ── 正文质量检查（先收集标志，后合并到 evidence） ──
                 var qualityCode: String? = null
-                var qualitySeverity = false  // true = change status to error
                 var isLikelyNoticeOrLock = false
                 var titleFoundInContent: Boolean? = null
                 if (!content.isBlank() && content.length < 100) {
                     qualityCode = ErrorCode.CONTENT_TOO_SHORT.name
+                    // 裸词仅作诊断提示写进 evidence，不据此改 status（理由同 HTTP 分支）。
                     val noticeKeywords = listOf("公告", "通知", "请假", "停更", "VIP", "付费", "订阅")
                     isLikelyNoticeOrLock = noticeKeywords.any { content.contains(it, ignoreCase = true) }
-                    if (isLikelyNoticeOrLock) qualitySeverity = true
                 }
                 var mismatchCode: String? = null
                 if (!content.isBlank() && chapter.title.isNotBlank()) {
@@ -1025,7 +1025,6 @@ class DebugService {
                 val status = when {
                     contentBlank -> "error"
                     htmlKind in listOf("csr_shell", "login_page", "captcha_page", "vip_lock_page") -> "error"
-                    qualitySeverity -> "error"
                     else -> "success"
                 }
                 val finalErrorCode = when {
