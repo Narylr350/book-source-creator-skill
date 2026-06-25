@@ -2270,27 +2270,25 @@ describe("bsg workflow user-action gates", () => {
     assert.equal(matrix.links.content.blocker, "content_repeated_noise");
   });
 
-  it("capability matrix keeps search CAPTCHA as partial candidate, not full pass", async () => {
+  it("capability matrix keeps a blocked search as partial candidate, not full pass", async () => {
     const runDir = await initRun(tmpDir);
     await writeRequiredDeliverFiles(tmpDir, runDir);
     await writeGeneratedValidatorReport(runDir, {
       mode: "http",
       phases: { search: "error", detail: "success", toc: "success", content: "success" },
       steps: [
-        { phase: "search", status: "error", error: "CAPTCHA required", response: { title: "验证码" } },
+        { phase: "search", status: "error", errorCode: "SEARCH_SELECTOR_EMPTY", error: "ruleSearch.bookList 未匹配", response: { bodyPreview: "<html>list</html>" } },
         { phase: "detail", status: "success", response: { bodyPreview: "<h1>book</h1>" } },
         { phase: "toc", status: "success", response: { bodyPreview: "<a>chapter</a>" } },
         { phase: "content", status: "success", response: { bodyPreview: "<p>content</p>" } },
       ],
     });
 
-    await runBsgBlocked(["record-validation", "--run", runDir, "--status", "needs_app_review"]);
-    await runBsg(["resolve-user-action", "--run", runDir, "--action", "android_device_unavailable"], { env: noDeviceEnv });
-    await runBsg(["record-validation", "--run", runDir, "--status", "needs_app_review"]);
+    await runBsg(["record-validation", "--run", runDir, "--status", "failed"]);
     const matrix = JSON.parse(await fs.readFile(path.join(runDir, "capability-matrix.json"), "utf8"));
 
     assert.equal(matrix.links.search.status, "blocked");
-    assert.equal(matrix.links.search.blocker, "captcha");
+    assert.equal(matrix.links.search.blocker, "rule_or_network_error");
     assert.equal(matrix.overall.status, "partial_candidate");
     assert.equal(matrix.overall.fullPass, false);
   });

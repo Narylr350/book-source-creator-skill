@@ -58,13 +58,10 @@ function reportUsedAndroidMode(report) {
 function isVipLockFailure(report) {
   const failedStep = firstFailedStep(report);
   if (!failedStep) return false;
-  const text = [
-    failedStep.errorCode,
-    failedStep.error,
-    failedStep.message,
-    report?.reason,
-  ].filter(Boolean).join(" ");
-  return /CONTENT_IS_VIP_LOCK_PAGE|VIP|付费|订阅|会员|需要登录|需登录|paid|subscribe/i.test(text);
+  // validator 已用 DebugService.classifyHtmlKindExt 把"正文是 VIP/付费锁页"判定成结构化
+  // errorCode，这里只认这个权威信号，不再用词表二次扫描 error/reason 文本（裸词
+  // VIP/付费/会员/需登录 会误命中正常正文或普通登录提示）。
+  return failedStep.errorCode === "CONTENT_IS_VIP_LOCK_PAGE";
 }
 
 // 反爬触发检测：search 类端点被弹到人机验证 / Cloudflare / 验证码页。
@@ -73,9 +70,6 @@ function isVipLockFailure(report) {
 function isAntiBotTriggered(report) {
   if (!report) return false;
   const steps = report.steps || [];
-  // 反爬类 errorCode：验证器把它们和 needsAppReview: true 一起标在 step 上。
-  // search/toc/detail 命中任意一个都说明该链路被 server-side 反爬墙住，任何客户端重试都计入 IP 累积。
-  const antiBotCodes = new Set(["APP_REVIEW_REQUIRED", "HTTP_BLOCKED", "SEARCH_EMPTY"]);
   for (const step of steps) {
     const code = step?.errorCode;
     const finalUrl = String(step?.response?.url || step?.request?.url || "");
