@@ -114,12 +114,29 @@ runs/<site-slug>/           # 过程记录，用于 AI 接力和故障回溯
 ## 环境要求
 
 - Node.js 18+（运行 bsg.mjs 和脚本）
-- Java 17+（运行 validator，`init` 自动检测）
-- adb + Android 设备 / 模拟器（需要 WebView Probe 时；`init` 自动检测，Release 包内含 `setup-adb.bat` 一键安装）
+- Java 17+（运行 validator，`init` 自动检测，缺失时提示安装）
 - Browser MCP 或等价浏览器分析能力
 - 可访问目标网站的网络环境
 
-详细 validator 启动、adb 安装、Android Probe 配置见 **[SETUP.md](docs/SETUP.md)**。
+以上就够跑 HTTP / Browser 模式的 validator，覆盖大多数纯静态站和 API 站（搜索/详情/目录/正文都 SSR 直出）。
+
+### Android Probe（可选，CSR 站点需要）
+
+书源含 `webView:true` / `webJs` 时，正文靠客户端 JS 渲染，HTTP 模式抓到的是空壳 HTML。这时需要 **Android Probe**——一个轻量 APK，只跑一个 WebView 暴露 HTTP API，validator 通过 adb 连接手机自动渲染、执行 JS、提取正文，无需人工点来点去。
+
+**三者关系：**
+- **validator HTTP 模式**：快速验证非 CSR 的搜索/详情/目录/正文链路
+- **validator Android Probe**：接管手机 WebView 自动验证 CSR 正文（代替人工操作）
+- **阅读 App**：最终人工验收——书源导入后正常搜索、阅读，确认体验正常
+
+Probe 比桌面 Browser 模式更接近阅读 App 的 WebView 环境，但仍不等于 100% 通过，最终以阅读 App 实测为准。没有设备时 validator 返回 `validator_limitation`，不是书源失败。
+
+需要 Probe 时：
+- 一台打开 USB 调试的 Android 真机，或一个已启动的模拟器
+- `adb`（Release 包内含 `setup-adb.bat` 一键下载）
+- Release 包内置的 `validator\android-probe.apk`
+
+详细启动命令、手机端设置（各品牌开发者选项位置）、adb 自动查找顺序、端口转发配置见 **[SETUP.md](docs/SETUP.md)**。
 
 ## 常用脚本
 

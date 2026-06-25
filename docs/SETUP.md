@@ -1,13 +1,13 @@
 # Validator 与 Android Probe 环境配置
 
-## validator（HTTP / Browser / Auto 验证）
+## validator（HTTP / Browser 验证）
 
 必需：
 
 - Java 17+
 - 可访问目标网站的网络环境
 
-启动：
+启动（以下路径适用于 Release 包；clone 仓库开发的见 `validator/` 根目录下的同名 bat）：
 
 ```powershell
 cd .\legado-book-source-generator\validator
