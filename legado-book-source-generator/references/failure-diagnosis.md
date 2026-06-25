@@ -92,6 +92,21 @@ validator 返回失败后，按以下顺序检查：
 
 `[action]` probe 阶段拿站点信息时，先 `navigate` 主页、不要把搜索/登录类反爬端点作为首个 navigate 目标。需要看搜索响应时用 `mcp__fetch__fetch` 取原始 HTML 离线解析，或在浏览器内**用户手动**操作搜索流程（用户过验证）。
 
+### 登录态怎么解除反爬：跨子域 cookie 与 eTLD+1 归一
+
+`[source]` 阅读 App 的登录是 **WebView 登录**（`WebViewLoginFragment`）：用户在 App 内 WebView 里登录书源 → `CookieStore.setCookie(source.getKey(), cookie)`，而 `getKey()=bookSourceUrl`，`CookieStore` 内部按 `NetworkUtils.getSubDomain`（eTLD+1）归一存储。请求时 `AnalyzeUrl` 也按归一域取 cookie。**结果：一次登录的 cookie 按 `eTLD+1`（如 `ciweimao.com`）存，全站 www/wap/m 子域请求共享同一份。** 没有"原生 App 导出 cookie 注入"这种机制——就是 WebView 登录 + 归一。
+
+`[source]` validator 复刻了这个：`CookieStore` 按 eTLD+1 归一（`PublicSuffixDatabase.getEffectiveTldPlusOne`）。所以 Probe 登录拿到的 cookie（即使落在 wap 子域）注入 validator 后，www 链路也能取到。
+
+`[blackbox 案例:ciweimao]` 实测确认的登录链路差异（同一站不同工具结论相反，别只凭一种工具下结论）：
+
+- **桌面 UA 登录**（浏览器 / 真机阅读 App WebView）→ 登录态 cookie 落 `.ciweimao.com` apex（`user_id`/`login_token`），所有子域可见 → 带 cookie 的 validator search 直接通过（实测：10 条结果）。
+- **移动 UA 登录**（Probe Android WebView 裸 `/render`）→ 被 ciweimao 重定向到 `wap` 子域，登录态落 wap；裸 `/render` 的 WebView cookie 按完整域隔离、不走归一 → www search 仍验证码。
+- **关键**：能用的社区书源（如 GitHub ZWolken）配置是 `bookSourceUrl=www`、`loginUrl=www/signup/login`、`enabledCookieJar=false`、正文 `#J_BookRead .chapter@textNodes` 直 CSS（无 webView/webJs）。登录靠阅读 App 全局 CookieManager + 归一，不靠书源显式 cookieJar。
+- **ciweimao 还有更深一层**：web 登录页本身可能 503（Geo/IP 封锁），真正登录通道是原生 App 的 hbooker API（设备指纹 + GEETEST）。所以 Probe WebView 登录对它不一定可达；最可靠是用户在能开登录页的环境（带代理的桌面浏览器、或真机阅读 App）登录后，cookie 经归一注入 validator。
+
+`[action]` 反爬被登录墙挡住时：① 让用户登录（登录可能解除，值得一试，但不保证）；② 登录后 cookie 经 Probe 桥接（`resolveValidateCookieFile`）或 `cookies.json` 注入 validator，validator 归一后跨子域生效；③ 登录仍不解除 → 真站点限制，收敛 needs_app_review。**不要断言"登录一定有效/无效"——取决于登录通道、落点域、网络环境，必须实测。**
+
 ### TOC chapterCount=1
 
 **症状**: validator HTTP mode 下 search/detail 正常，toc success 但 `chapterCount` 为 1（站点实际有几百章）
