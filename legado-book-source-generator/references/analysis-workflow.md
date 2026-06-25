@@ -88,7 +88,7 @@
 
 1. **Android/Probe 可用**：运行 `android --run <run-dir>` → 用户在手机/模拟器 WebView 登录 → `android --login-completed` → Android mode 验证
 2. **Android/Probe 不可用**：用户在桌面浏览器登录 → AI 通过 `browser_network_requests` 提取 Cookie/Authorization header → 注入 validator（`--cookie=` 参数或 API `/api/cookie/set`）
-3. **App 登录后同步**：用户在 Legado App 内通过 `loginUrl` 登录 → Legado 将 cookie 存入 Room DB（按 eTLD+1 归一，全站子域共享）。validator 读不到 App 的 DB，需用户从能登录的环境（带代理的桌面浏览器 / 真机）导出 cookie 后注入。注意 ciweimao 这类站 web 登录页可能 503，真正登录通道是原生 App 的 hbooker API（设备指纹 + GEETEST），WebView 登录不一定可达。
+3. **App 登录后同步**：用户在 Legado App 内通过 `loginUrl` 登录 → Legado 将 cookie 存入 Room DB（按 eTLD+1 归一，全站子域共享）。validator 读不到 App 的 DB，需用户从能登录的环境（带代理的桌面浏览器 / 真机）导出 cookie 后注入。注意有的反爬站 web 登录页可能 503，真正登录通道是原生 App 私有 API（设备指纹 + 验证码），WebView 登录不一定可达。
 
 **注意**：
 - Cookie 是 HttpOnly 时，`document.cookie` 在 WebView 中不可读，但 `java.getCookie()` 通过 CookieStore 仍能获取
@@ -110,7 +110,7 @@ node "<skill-dir>/scripts/bsg.mjs" validate --run runs/<site-slug>/
 - [ ] `book-source.json` 顶层为 JSON 数组 `[{...}]`（就算只有一个书源）
 - [ ] 无空字符串 `""` 的可选字段
 - [ ] `ruleToc.chapterUrl` 不为空
-- [ ] CSR 站点正文：`chapterUrl` 标 `webView:true`，正文用直 CSS（如 `#J_BookRead .chapter@textNodes`）或 `webJs` 二选一——直 CSS 更简单、优先；**不是必须 webJs**（ciweimao 实测、社区可用源都用直 CSS）
+- [ ] CSR 站点正文：`chapterUrl` 标 `webView:true`，正文用直 CSS（如 `#正文容器 .chapter@textNodes`）或 `webJs` 二选一——直 CSS 更简单、优先；**不是必须 webJs**（实测、社区可用源多数用直 CSS）
 - [ ] `enabledCookieJar: true`（需要登录态的站点）
 - [ ] audit 脚本通过（无占位字段、JS 语法无错）
 

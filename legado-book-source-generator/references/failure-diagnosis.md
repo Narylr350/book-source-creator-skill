@@ -69,7 +69,7 @@ validator 返回失败后，按以下顺序检查：
 
 ### 反爬触发与 IP 风控
 
-`[blackbox]` 站点把搜索/登录类端点放在反爬墙后是普遍现象（ciweimao 实测：`/get-search-book-list/...` 单次访问必 303 → `/signup/man_machine_verify`；同类还有 Cloudflare turnstile、各站自研 captcha）。
+`[blackbox]` 站点把搜索/登录类端点放在反爬墙后是普遍现象（实测过的站：搜索 API 单次直接访问即 303 跳到人机验证页；同类还有 Cloudflare turnstile、各站自研 captcha）。
 
 `[source]` validator 把这类响应识别为 `APP_REVIEW_REQUIRED`（见 `containsAppReviewChallenge`，匹配 `cloudflare turnstile` / `Just a moment` / 验证页 finalUrl）。`record-validation` 命中此 errorCode 会熔断收敛为 `needs_app_review` + `warningBy: anti_bot_triggered`，并在响应里返回 `forbiddenActions`。
 
@@ -81,29 +81,29 @@ validator 返回失败后，按以下顺序检查：
 
 1. **禁止** 自动重跑 validator、换 mode 重试、换 keyword 重试、跑 `android --run` 期望"绕过"。
 2. 让用户在浏览器或 Probe 里手动访问主页并过一次人机验证，让 session cookie 持续。
-3. 让用户从主页正常导航到目标链路（例如点击搜索框输入关键词，而非直接访问 `/get-search-book-list/...`），让 cookie 落到 CookieStore。
+3. 让用户从主页正常导航到目标链路（例如点击搜索框输入关键词，而非直接访问搜索 API 端点），让 cookie 落到 CookieStore。
 4. session 桥接好后再用 validator 一次性走完链路；如果 deliver 时仍未过验证，由用户确认是否按 `needs_app_review` 交付。
 
-`[heuristic]` 一些站点把人机验证放在 session cookie 缺失时（如刺猬猫），过一次后 session 持续；另一些站点（如 Cloudflare 完整模式）每次新 IP 都要过。前者用 1 一步 session 桥接即可，后者只能告诉用户"此站点不适合本机自动化验证"。
+`[heuristic]` 一些站点把人机验证放在 session cookie 缺失时，过一次后 session 持续；另一些站点（如 Cloudflare 完整模式）每次新 IP 都要过。前者用 1 一步 session 桥接即可，后者只能告诉用户"此站点不适合本机自动化验证"。
 
 ### 之前文档误判：浏览器 MCP `evaluate` 触发反爬
 
-实测推翻：浏览器 MCP 用 Playwright，已做 `navigator.webdriver=false` 反检测；`evaluate` 提取 DOM、跑大量选择器都不会触发 verify。**真正的触发源是 `navigate` 反爬端点本身**——浏览器和 curl/Probe 表现完全一致（已实测 ciweimao）。
+实测推翻：浏览器 MCP 用 Playwright，已做 `navigator.webdriver=false` 反检测；`evaluate` 提取 DOM、跑大量选择器都不会触发 verify。**真正的触发源是 `navigate` 反爬端点本身**——浏览器和 curl/Probe 表现完全一致（已实测）。
 
 `[action]` probe 阶段拿站点信息时，先 `navigate` 主页、不要把搜索/登录类反爬端点作为首个 navigate 目标。需要看搜索响应时用 `mcp__fetch__fetch` 取原始 HTML 离线解析，或在浏览器内**用户手动**操作搜索流程（用户过验证）。
 
 ### 登录态怎么解除反爬：跨子域 cookie 与 eTLD+1 归一
 
-`[source]` 阅读 App 的登录是 **WebView 登录**（`WebViewLoginFragment`）：用户在 App 内 WebView 里登录书源 → `CookieStore.setCookie(source.getKey(), cookie)`，而 `getKey()=bookSourceUrl`，`CookieStore` 内部按 `NetworkUtils.getSubDomain`（eTLD+1）归一存储。请求时 `AnalyzeUrl` 也按归一域取 cookie。**结果：一次登录的 cookie 按 `eTLD+1`（如 `ciweimao.com`）存，全站 www/wap/m 子域请求共享同一份。** 没有"原生 App 导出 cookie 注入"这种机制——就是 WebView 登录 + 归一。
+`[source]` 阅读 App 的登录是 **WebView 登录**（`WebViewLoginFragment`）：用户在 App 内 WebView 里登录书源 → `CookieStore.setCookie(source.getKey(), cookie)`，而 `getKey()=bookSourceUrl`，`CookieStore` 内部按 `NetworkUtils.getSubDomain`（eTLD+1）归一存储。请求时 `AnalyzeUrl` 也按归一域取 cookie。**结果：一次登录的 cookie 按 `eTLD+1`（如 `example.com`）存，全站 www/wap/m 子域请求共享同一份。** 没有"原生 App 导出 cookie 注入"这种机制——就是 WebView 登录 + 归一。
 
 `[source]` validator 复刻了这个：`CookieStore` 按 eTLD+1 归一（`PublicSuffixDatabase.getEffectiveTldPlusOne`）。所以 Probe 登录拿到的 cookie（即使落在 wap 子域）注入 validator 后，www 链路也能取到。
 
-`[blackbox 案例:ciweimao]` 实测确认的登录链路差异（同一站不同工具结论相反，别只凭一种工具下结论）：
+`[blackbox 案例]` 实测确认过的登录链路差异（同一站不同工具/UA 结论相反，别只凭一种工具下结论）：
 
-- **桌面 UA 登录**（浏览器 / 真机阅读 App WebView）→ 登录态 cookie 落 `.ciweimao.com` apex（`user_id`/`login_token`），所有子域可见 → 带 cookie 的 validator search 直接通过（实测：10 条结果）。
-- **移动 UA 登录**（Probe Android WebView 裸 `/render`）→ 被 ciweimao 重定向到 `wap` 子域，登录态落 wap；裸 `/render` 的 WebView cookie 按完整域隔离、不走归一 → www search 仍验证码。
-- **关键**：能用的社区书源（如 GitHub ZWolken）配置是 `bookSourceUrl=www`、`loginUrl=www/signup/login`、`enabledCookieJar=false`、正文 `#J_BookRead .chapter@textNodes` 直 CSS（无 webView/webJs）。登录靠阅读 App 全局 CookieManager + 归一，不靠书源显式 cookieJar。
-- **ciweimao 还有更深一层**：web 登录页本身可能 503（Geo/IP 封锁），真正登录通道是原生 App 的 hbooker API（设备指纹 + GEETEST）。所以 Probe WebView 登录对它不一定可达；最可靠是用户在能开登录页的环境（带代理的桌面浏览器、或真机阅读 App）登录后，cookie 经归一注入 validator。
+- **桌面 UA 登录**（浏览器 / 真机阅读 App WebView）→ 登录态 cookie 落顶级域 apex，所有子域可见 → 带 cookie 的 validator search 直接通过。
+- **移动 UA 登录**（Probe Android WebView 裸 `/render`）→ 可能被站点重定向到 `wap` 子域，登录态落 wap；裸 `/render` 的 WebView cookie 按完整域隔离、不走归一 → 主站 search 仍验证码。
+- **关键**：能用的社区书源常见配置是 `bookSourceUrl=www`、`loginUrl=www/...login`、`enabledCookieJar=false`、正文用直 CSS（无 webView/webJs）。登录靠阅读 App 全局 CookieManager + 归一，不靠书源显式 cookieJar。
+- **可能更深一层**：有的站 web 登录页本身就 503（Geo/IP 封锁），真正登录通道是原生 App 私有 API（设备指纹 + 验证码）。这种 Probe WebView 登录不一定可达；最可靠是用户在能开登录页的环境（带代理的桌面浏览器、或真机阅读 App）登录后，cookie 经归一注入 validator。
 
 `[action]` 反爬被登录墙挡住时：① 让用户登录（登录可能解除，值得一试，但不保证）；② 登录后 cookie 经 Probe 桥接（`resolveValidateCookieFile`）或 `cookies.json` 注入 validator，validator 归一后跨子域生效；③ 登录仍不解除 → 真站点限制，收敛 needs_app_review。**不要断言"登录一定有效/无效"——取决于登录通道、落点域、网络环境，必须实测。**
 

@@ -71,7 +71,7 @@ node "<skill-dir>/scripts/bsg.mjs" android --run <run-dir> --dump-cookie "runs/<
 
 ```json
 {
-  "wap.example.com": "user_id=...; login_token=...; ci_session=..."
+  "example.com": "sessionid=...; auth_token=..."
 }
 ```
 
