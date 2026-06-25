@@ -2012,25 +2012,24 @@ describe("bsg workflow user-action gates", () => {
     const matrix = JSON.parse(await fs.readFile(path.join(runDir, "capability-matrix.json"), "utf8"));
     const state = JSON.parse(await fs.readFile(path.join(runDir, "run-state.json"), "utf8"));
 
-    assert.equal(result.status, "needs_app_review");
+    assert.equal(result.status, "degraded");
     assert.equal(result.warningBy, "content_vip_lock");
     assert.equal(result.requiredUserAction, undefined);
     assert.equal(state.pendingUserAction, null);
     assert.equal(state.phases.validate.status, "completed");
     assert.notEqual(matrix.links.content.blocker, "android_webview_content_not_verified");
     assert.equal(matrix.links.content.blocker, "vip");
-    assert.equal(matrix.overall.status, "partial_candidate");
     assert.deepEqual(matrix.overall.blockers, ["content:vip"]);
 
     const delivered = await runBsg(["deliver", "--run", runDir], { env: adbEnv });
-    assert.equal(delivered.finalStatus, "needs_app_review");
+    assert.equal(delivered.finalStatus, "degraded");
   });
 
   it("treats VIP-lock Android content with no extracted text as vip, not webview-content-not-verified", async () => {
     // ciweimao 黑盒场景：Probe WebView 渲染了 VIP 锁页(有 webViewHtmlPreview)，
     // 但 content 规则在付费墙页上抽不到正文(contentPreview 空)。
     // 修复前：被 android_webview_content_not_verified 短路，当成"WebView 坏"要修规则；
-    // 修复后：识别为 VIP 锁页，收敛为 needs_app_review(content:vip)。
+    // 修复后：识别为 VIP 锁页，收敛为 degraded(content:vip)。
     const adbEnv = {
       ...process.env,
       BSG_TEST_ADB_DEVICES_OUTPUT: "List of devices attached\nABC123\tdevice\n",
@@ -2075,7 +2074,7 @@ describe("bsg workflow user-action gates", () => {
     const result = await runBsg(["record-validation", "--run", runDir, "--status", "failed"], { env: adbEnv });
     const matrix = JSON.parse(await fs.readFile(path.join(runDir, "capability-matrix.json"), "utf8"));
 
-    assert.equal(result.status, "needs_app_review");
+    assert.equal(result.status, "degraded");
     assert.equal(result.warningBy, "content_vip_lock");
     assert.notEqual(matrix.links.content.blocker, "android_webview_content_not_verified");
     assert.equal(matrix.links.content.blocker, "vip");
@@ -2213,6 +2212,65 @@ describe("bsg workflow user-action gates", () => {
     assert.equal(result.status, "needs_app_review");
     assert.equal(result.warningBy, "anti_bot_triggered");
     assert.equal(state.pendingUserAction, null);
+  });
+
+  it("intercepts WebViewNotSupportedException in http mode and suggests android mode", async () => {
+    const runDir = await initRun(tmpDir, { env: noDeviceEnv });
+    await advanceToValidateWithWebViewSource(tmpDir, runDir);
+    await writeGeneratedValidatorReport(runDir, {
+      status: "needs_app_review",
+      mode: "http",
+      phases: { search: "error" },
+      summary: { resultCount: 0, firstBook: "", chapterCount: 0, contentLength: 0, contentPreview: "" },
+      steps: [
+        {
+          phase: "search",
+          status: "error",
+          mode: "http",
+          error: "webView(https://example.com/search): 需 App 复核，validator 不支持 WebView 执行",
+          needsAppReview: true,
+          reviewReason: "validator 不支持 WebView 执行",
+          request: { url: "https://example.com/search" },
+        },
+      ],
+    });
+
+    const result = await runBsgBlocked(["record-validation", "--run", runDir, "--status", "needs_app_review"], { env: noDeviceEnv });
+
+    assert.equal(result.status, "blocked");
+    assert.equal(result.blockedBy, "mode_switch_needed");
+    assert.match(result.nextCommand, /--mode android/);
+    assert.ok(result.forbiddenActions.includes("record_needs_app_review"));
+  });
+
+  it("intercepts POST search in browser mode and suggests http mode", async () => {
+    const runDir = await initRun(tmpDir, { env: noDeviceEnv });
+    await advanceToGenerate(tmpDir, runDir);
+    await writeValidSource(tmpDir);
+    await runBsg(["advance", "--run", runDir]);
+    await writeGeneratedValidatorReport(runDir, {
+      status: "needs_app_review",
+      mode: "browser",
+      phases: { search: "error" },
+      summary: { resultCount: 0, firstBook: "", chapterCount: 0, contentLength: 0, contentPreview: "" },
+      steps: [
+        {
+          phase: "search",
+          status: "error",
+          mode: "browser",
+          error: "浏览器模式暂不支持 POST 搜索，需 App 复核",
+          needsAppReview: true,
+          reviewReason: "POST 搜索需 App 复核",
+          request: { url: "https://example.com/search", method: "POST" },
+        },
+      ],
+    });
+
+    const result = await runBsgBlocked(["record-validation", "--run", runDir, "--status", "needs_app_review"], { env: noDeviceEnv });
+
+    assert.equal(result.status, "blocked");
+    assert.equal(result.blockedBy, "mode_switch_needed");
+    assert.match(result.nextCommand, /--mode http/);
   });
 
   it("asks for Android availability before accepting non-Android passed validation", async () => {

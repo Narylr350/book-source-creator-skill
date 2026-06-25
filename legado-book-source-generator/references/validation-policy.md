@@ -25,7 +25,7 @@
 1. `[blackbox] [action]` **Cloudflare/Turnstile** — error 或 bodyPreview 含 "Cloudflare" / "Turnstile" / "challenge"。**任何客户端重试都计入同一 IP 累积，会触发 IP 风控。**见 `failure-diagnosis.md` 反爬段。
 2. `[blackbox] [action]` **登录/验证码** — 需要登录态或验证码。同上，不要换 mode/keyword 反复尝试。
 3. `[source] [action]` **WebView/App-only 验证失败** — Android 真机或模拟器可用但未用 Android Probe、Probe 断开、WebView 未渲染、或 WebView 后没有正文提取证据
-4. `[heuristic]` ~~**付费墙**~~ — **已降级为软警告**（不再硬阻塞）。`CONTENT_IS_VIP_LOCK_PAGE` 收敛为 `needs_app_review` + `content:vip` 警告，免费/非 VIP 能力可交付。详见下方"VIP 边界"段。
+4. `[heuristic]` ~~**付费墙**~~ — **已降级为软警告**（不再硬阻塞）。`CONTENT_IS_VIP_LOCK_PAGE` 收敛为 `degraded` + `content:vip` 警告，免费/非 VIP 能力可交付。详见下方"VIP 边界"段。
 5. `[source]` **生成源含 WebView/WebJs 但未用 Android 验证** — 设备可用时必须用 `mode=android`；HTTP passed 不能作为可用结论
 6. `[source]` **Probe 登录态未进入验证请求** — Probe 登录后报告仍是 anonymous 且无 Cookie/Authorization，必须重新注入登录态验证
 7. `[source]` **只有 Android mode 但没有正文 WebView 渲染证据** — content 阶段必须有 rendered HTML、截图或 WebView preview；否则按未验证处理
@@ -55,7 +55,7 @@
 
 验证结果必须通过 `bsg.mjs record-validation` 记录。不能用手工创建的 report/summary 代替。`record-validation` 会生成 `capability-matrix.json`，后续只能从 matrix 判断 search/detail/toc/content 的状态、blocker、render 和 full pass。返回 `blockedBy=android_final_authority_not_used`、`android_probe_not_used`、`android_probe_cookie_not_used`、`android_webview_not_used`、`android_webview_content_not_verified`、`android_device_disconnected`、`hard_rule_error`、`cookie_not_injected`、`content_repeated_noise`、`content_page_chrome` 时按提示补用户动作、凭据或规则后重跑 validator。返回 `requiredUserAction=toc_sample_review` 时，只能在确认短目录是目标书真实状态后运行 `resolve-user-action --action toc_chapter_count_confirmed`。
 
-`CONTENT_IS_VIP_LOCK_PAGE` / VIP / 付费 / 订阅边界不是 selector 错误，也不再作为硬阻塞。`record-validation` 会收敛为 `needs_app_review` 并在 matrix 保留 `content:vip` 警告；可以继续交付免费/非 VIP 能力，但不得写成 full pass、正常阅读全部章节或 VIP 支持。
+`CONTENT_IS_VIP_LOCK_PAGE` / VIP / 付费 / 订阅边界不是 selector 错误，也不再作为硬阻塞。`record-validation` 会收敛为 `degraded` 并在 matrix 保留 `content:vip` 警告；可以继续交付免费/非 VIP 能力，但不得写成 full pass、正常阅读全部章节或 VIP 支持。
 
 ## 质量门槛
 

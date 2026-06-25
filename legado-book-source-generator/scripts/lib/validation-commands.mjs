@@ -86,6 +86,18 @@ function isAntiBotTriggered(report) {
   return false;
 }
 
+// 模式不匹配检测：webView:true / webJs 在 http 模式抛 WebViewNotSupportedException，
+// 或 POST 搜索在 browser 模式不支持。不是真 needs_app_review——Probe 能处理。
+function isModeSwitchNeeded(report) {
+  const steps = report?.steps || [];
+  const reviewSteps = steps.filter(s => s.status === "error" && s.needsAppReview === true);
+  if (reviewSteps.length === 0) return false;
+  return reviewSteps.every(s => {
+    const err = String(s.error || s.reviewReason || "");
+    return /validator 不支持 WebView 执行|浏览器模式暂不支持 POST|POST 搜索需 App/.test(err);
+  });
+}
+
 // 按卡点指路：不同 blocker 该读不同文档段，不是永远指 validation-policy + validator-integration 这两篇。
 // 弱模型只会读 readNext 列表的前 1-2 项，所以这里把最相关的放最前。
 const READ_NEXT_FOR_BLOCKER = {
@@ -587,6 +599,49 @@ export function cmdRecordValidation(args) {
     } catch { /* ignore */ }
   }
 
+  // 模式不匹配拦截：webView:true/webJs 在 http 模式抛异常，POST 搜索在 browser 模式不支持。
+  // 不是真 needs_app_review——Android Probe 能渲染 WebView，http 模式能处理 POST。
+  // 必须在反爬熔断前拦截：这类错误与反爬无关，是模式选错了。
+  if (isModeSwitchNeeded(report) && (status === "failed" || status === "needs_app_review")) {
+    const reportMode = report?.mode || report?.steps?.[0]?.mode || "http";
+    if (reportMode !== "android") {
+      const hasWebViewErr = (report.steps || []).some(s =>
+        /validator 不支持 WebView 执行/.test(String(s.error || s.reviewReason || "")));
+      const hasPostErr = (report.steps || []).some(s =>
+        /浏览器模式暂不支持 POST|POST 搜索需 App/.test(String(s.error || s.reviewReason || "")));
+      const suggestMode = hasWebViewErr ? "android" : "http";
+      validationWarning = [
+        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+        `⚠️  模式不匹配 — 请用 --mode ${suggestMode} 重新验证`,
+        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+        hasWebViewErr
+          ? "书源使用了 webView:true 或 webJs，HTTP/browser 模式无法渲染。Android Probe 可以执行 WebView。"
+          : "POST 搜索在 browser 模式下不支持。HTTP 模式（OkHttp）原生支持 POST。",
+        "这不是规则错误，也不是站点限制——只是验证模式不匹配。",
+        "",
+        `  node "<skill-dir>/scripts/bsg.mjs" validate --run ${runDir} --mode ${suggestMode}`,
+        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+      ].join("\n");
+      v.attempts -= 1;
+      saveRunState(runDir, state);
+      writeCapabilityMatrix(runDir, reportPathForMode, "blocked:mode_switch_needed");
+      writeValidatorSummary(runDir, status, "blocked:mode_switch_needed", reportPathForMode);
+      return {
+        ok: true,
+        status: "blocked",
+        blockedBy: "mode_switch_needed",
+        warning: validationWarning,
+        message: validationWarning,
+        shouldRetry: true,
+        nextAction: `retry_with_${suggestMode}_mode`,
+        nextCommand: `node "<skill-dir>/scripts/bsg.mjs" validate --run ${runDir} --mode ${suggestMode}`,
+        forbiddenActions: ["deliver", "record_needs_app_review", "record_passed"],
+        readNext: ["references/android-probe-guide.md"],
+      };
+    }
+    // android 模式下仍触发 webView 异常 → detail/toc 不走 Probe 的已知限制，落入 needs_app_review
+  }
+
   // 反爬熔断：必须放在 Android 拦截前。Android 同样会触发 server-side verify，跑 Android 不能"绕过"。
   // 让 agent 反复换 mode/keyword 重试 = 累积同一 IP 访问 → IP 级风控倒计时。
   if (isAntiBotTriggered(report) && (status === "failed" || status === "needs_app_review")) {
@@ -883,17 +938,17 @@ export function cmdRecordValidation(args) {
   } else if (status === "failed") {
     if (isVipLockFailure(report)) {
       warningBy = "content_vip_lock";
-      finalStatus = "needs_app_review";
+      finalStatus = "degraded";
       v.lastStatus = finalStatus;
       v.status = "completed";
       v.consecutiveSame = 0;
       validationWarning = [
         "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
-        "⚠️  正文命中登录/付费边界",
+        "⚠️  正文命中付费/VIP 边界 — 按免费能力交付",
         "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
-        "validator-report.json 显示正文页是 VIP/付费/需登录边界。这可能只是账号没有订阅/付费权限，不应强制阻塞交付。",
-        "已收敛为 needs_app_review：可以继续 deliver，但 capability-matrix 会保留 content:vip 警告，不能宣称 full pass 或 VIP 已支持。",
-        "如果用户提供具备权限的账号，可通过 Android 单入口重新验证以提高覆盖；否则按免费/非 VIP 能力交付。",
+        "validator-report.json 显示正文页是 VIP/付费锁页。这是账号权限问题，不是规则错误。",
+        "App 验证也无能为力：没有 VIP 账号，App 同样访问不了 VIP 内容。",
+        "已收敛为 degraded：免费/非 VIP 内容可读，可以继续 deliver，但 capability-matrix 会保留 content:vip 警告，不能宣称 full pass 或 VIP 已支持。",
         "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
       ].join("\n");
     } else {
