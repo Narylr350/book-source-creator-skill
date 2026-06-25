@@ -96,6 +96,7 @@ function isAntiBotTriggered(report) {
 // 弱模型只会读 readNext 列表的前 1-2 项，所以这里把最相关的放最前。
 const READ_NEXT_FOR_BLOCKER = {
   anti_bot_triggered: ["references/failure-diagnosis.md", "references/policies.md"],
+  anti_bot_login_required: ["references/failure-diagnosis.md", "references/android-probe-guide.md", "references/policies.md"],
   content_vip_lock: ["references/validation-policy.md", "references/android-probe-guide.md"],
   hard_rule_error: ["references/official-rule-pack.json", "references/legado-json-structure.md"],
   csr_shell_detected: ["references/webview-behavior-matrix.md", "references/android-probe-guide.md"],
@@ -596,38 +597,81 @@ export function cmdRecordValidation(args) {
   // 让 agent 反复换 mode/keyword 重试 = 累积同一 IP 访问 → IP 级风控倒计时。
   if (isAntiBotTriggered(report) && (status === "failed" || status === "needs_app_review")) {
     warningBy = "anti_bot_triggered";
-    finalStatus = "needs_app_review";
-    v.lastStatus = finalStatus;
-    v.status = "completed";
-    v.consecutiveSame = 0;
-    v.lastError = "";
-    v.recordedAt = new Date().toISOString();
+    // 已登录后仍触发反爬 = 真站点限制（登录也救不了），直接收敛交付。
+    // 未登录 = 反爬很可能登录可解除（ciweimao 实测：登录后搜索/全章目录/正文限制解除），
+    // 必须先问用户是否愿意登录，不能直接 needs_app_review 交付把返工转嫁给用户。
+    const alreadyLoggedIn = state.loginFeatures?._loginVerified === true
+      || state.userDecisions?.login === "completed"
+      || state.userDecisions?.login === "no_account";
+    if (alreadyLoggedIn) {
+      finalStatus = "needs_app_review";
+      v.lastStatus = finalStatus;
+      v.status = "completed";
+      v.consecutiveSame = 0;
+      v.lastError = "";
+      v.recordedAt = new Date().toISOString();
+      validationWarning = [
+        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+        "⚠️  站点反爬触发 — 登录后仍被拦",
+        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+        "validator 报告显示链路被站点弹到人机验证 / Cloudflare / 验证码页。这是 server-side 站点行为，不是规则错误。",
+        "已确认用户登录态(或已明确无账号)，登录仍无法解除此反爬 → 这是真站点限制。",
+        "已收敛为 needs_app_review：可以继续 deliver，但 matrix 会保留反爬警告，不能标 full pass。",
+        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+      ].join("\n");
+      saveRunState(runDir, state);
+      writeCapabilityMatrix(runDir, reportPathForMode, "needs_app_review");
+      writeValidatorSummary(runDir, status, finalStatus, reportPathForMode);
+      return {
+        ok: true,
+        status: finalStatus,
+        warningBy,
+        warning: validationWarning,
+        message: validationWarning,
+        nextCommand: `node "<skill-dir>/scripts/bsg.mjs" deliver --run ${runDir}`,
+        readNext: readNextForBlocker("anti_bot_triggered"),
+        forbiddenActions: ["rerun_validator", "switch_mode_retry", "switch_keyword_retry"],
+      };
+    }
+    // 未登录：raise login_required，让 agent 必须问用户是否愿意登录。
+    // 这是合法路径，不算"重试"——登录后 session 桥接是解除反爬的正路。
     validationWarning = [
       "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
-      "⚠️  站点反爬触发 — 停止自动重试",
+      "⚠️  站点反爬触发 — 停止自动重试，先问用户是否登录",
       "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
       "validator 报告显示链路被站点弹到人机验证 / Cloudflare / 验证码页。这是 server-side 站点行为，不是规则错误。",
       "**任何客户端(curl / validator / Probe / 浏览器)请求都计入同一 IP 累积，反复重试会触发 IP 级风控。**",
-      "已收敛为 needs_app_review。正路：",
-      "1. 让用户在浏览器或 Probe 里手动访问主页并过一次人机验证，让 session 持续有效。",
-      "2. 然后让用户从主页正常导航到目标链路，让 cookie 落到 CookieStore。",
-      "3. session 桥接好后再用 validator 一次性走完链路。",
       "",
-      "禁止：自动重跑 validator、换 mode 重试(http/browser/android)、换 keyword 重试、跑 android single-entry 期望\"绕过\"——Android 端同样会被 server-side verify。",
+      "很多反爬站(如刺猬猫)登录后能解除部分限制：搜索不再弹验证码、目录显示全章、正文可读。",
+      "在直接交付 needs_app_review 之前，必须先问用户是否愿意登录：",
+      "  - 用户愿意登录 → 走 Android 单入口 `android --run <dir> --setup` 打开登录页，用户登录后 `--login-completed`，session 桥接后重跑 validator。",
+      "  - 用户无账号/不愿登录 → 运行 `resolve-user-action --action no_account`，再收敛 needs_app_review 交付。",
+      "",
+      "禁止：自动重跑 validator、换 mode 重试(http/browser/android)、换 keyword 重试——这些是无效重试，不是登录路径。",
       "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
     ].join("\n");
+    const pending = setPendingUserAction(state, "login_required", "anti_bot_login_decision", validationWarning, {
+      blockingPhase: "validate",
+      warningBy,
+      validatorStatus: status,
+    });
+    v.attempts -= 1;
     saveRunState(runDir, state);
     writeCapabilityMatrix(runDir, reportPathForMode, "needs_app_review");
-    writeValidatorSummary(runDir, status, finalStatus, reportPathForMode);
+    writeValidatorSummary(runDir, status, "needs_app_review", reportPathForMode);
     return {
       ok: true,
-      status: finalStatus,
+      status: "blocked",
+      blockedBy: "anti_bot_login_required",
       warningBy,
       warning: validationWarning,
       message: validationWarning,
-      nextCommand: `node "<skill-dir>/scripts/bsg.mjs" deliver --run ${runDir}`,
+      shouldRetry: true,
+      nextAction: "resolve_user_action",
+      requiredUserAction: "login_required",
+      pendingUserAction: pending,
       readNext: readNextForBlocker("anti_bot_triggered"),
-      forbiddenActions: ["rerun_validator", "switch_mode_retry", "switch_keyword_retry", "android_single_entry_retry"],
+      forbiddenActions: ["rerun_validator", "switch_mode_retry", "switch_keyword_retry"],
     };
   }
 
