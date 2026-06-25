@@ -95,16 +95,16 @@ node "<skill-dir>/scripts/bsg.mjs" deliver --run <run-dir>
 
 ## 红旗
 
-出现以下想法时先用工具查证，不要直接交付：
+红旗不是穷举禁止动作，是三条判断原则——核心都是"**结论不能强过证据**"。冒出下列任一念头时，先用工具查证再继续：
 
-- “某条必需链路失败，所以用未验证的替代入口继续。”
-- “为了判断 SSR/CSR，先用浏览器 evaluate / JS 自动探测搜索页或登录页。”
-- “JS/浏览器探测后出现验证码，所以直接断言站点天然验证码。”
-- “桌面浏览器或 HTTP 能看到内容，所以 Android WebView / 阅读 App 一定可用。”
-- “Android 真机或模拟器可用，但先用 HTTP 验证交付。”
-- “当前没插手机/没开模拟器，所以直接按 PC passed 交付。”
-- “mode=android 跑过，即使 probe_unavailable，也算 Android Probe 证据。”
-- “规则错误或验证器缺证据可以标 needs_app_review / validator_limitation 通过。”
+**A. 证据强度要匹配结论强度。** 未验证的不当已验证，弱证据不下强结论；用"需复核 / 工具限制"归类不能掩盖本可定位的规则错误或证据缺失。
+> 常见违反（举例，不限于）：必需链路失败就改用未验证的替代入口继续；`mode=android` 跑过但 `probe_unavailable`，仍当成 Android Probe 证据；规则错误或验证器缺证据，标成 `needs_app_review` / `validator_limitation` 蒙混。
+
+**B. 书源最终在阅读 App 跑，最高权威证据来自 Android / 真机。** 有该环境必须用它取证；没有就如实降级标注，不用低权威环境的"通过"冒充交付结论。
+> 常见违反（举例，不限于）：桌面浏览器或 HTTP 能看到内容，就断言 Android WebView / 阅读 App 一定可用；Android 在线却先用 HTTP 验证就交付；没插手机 / 没开模拟器，就直接按 PC passed 交付。
+
+**C. 判定站点性质要用对证据类型，且探测动作本身可能改变站点状态。** 判 SSR/CSR 看 HTTP 原始响应（浏览器看到的是渲染后 DOM，会把 CSR 误判成 SSR）；反复探测同一反爬端点会累积触发风控，探测后才出现的验证码可能是探测副作用、不是站点固有行为。
+> 常见违反（举例，不限于）：为判断 SSR/CSR，默认用浏览器 evaluate / JS 自动探测搜索页或登录页；JS / 反复探测后出现验证码，就断言该站天然有验证码。
 
 ## 输出
 
