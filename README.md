@@ -4,9 +4,25 @@
 
 下载和使用前请先阅读免责声明。本项目不是书源分享包，不提供内容资源，只是 AI 生成和本地验证 Legado/阅读书源规则的开发辅助工具。
 
-它的目标不是收集现成书源，而是把工作流做成**可执行的代码门禁**，而非靠自然语言规范约束 AI。核心是 `bsg.mjs` 工作流状态机——强制阶段顺序、结构完整性检查、收敛检测和交付物验证。AI 负责分析网站和编写规则，脚本负责所有可机器判断的规则。
+## 这个项目的核心是什么
 
-## 重要免责声明
+人类做书源的闭环是：凭规则和经验写 → 在阅读 App 的调试模式里跑 → 哪里不对就去翻阅读源码看 → 修。这套对人类有效，但对 AI 很低效：人机共同 debug 慢、AI 拿到的信息不全、不知道为什么失败就只能瞎猜。
+
+本项目把这个闭环搬到 AI 能独立完成的环境里，核心是一个**验证器（validator）**：
+
+> **validator 是阅读 App 书源引擎（webBook / analyzeRule / rhino）的 JVM 移植，不是另写一套半成品。** 书源能通过 validator，几乎等价于在阅读 App 里可用。
+
+这是整个项目的价值锚点。配套的 `android-probe`（真机 WebView 验证）和 `bsg.mjs`（工具箱 CLI）都服务于同一个目标：**模拟阅读的真实执行，并把人类靠读源码才能得到的信息，结构化地喂给 AI，让它能自己修。**
+
+只要书源能通过 validator 并走完 `deliver`，导入阅读 App 即可用。
+
+## 设计取向
+
+- **价值锚点是真实执行，不是流程约束。** `bsg.mjs` 是工具箱——先初始化，再按当前问题选工具，不是必须机械走完的长状态机。判定对错的最终依据是 validator 跑出来的客观结果。
+- **判定建立在客观证据上，不是关键词猜测。** 页面分类、失败归因尽量来自 validator 的结构化 `errorCode`（对应阅读引擎真实会发生的提取失败），而不是扫描 HTML 文本里的 `vip` / `验证码` 等裸词——后者换个站就失效，还会误判正常页。
+- **给弱模型的脚手架，但脚手架要可靠。** 强模型能自主探索、自己判断怎么修；弱模型不会，需要被"推着走"去读对应文档、被门禁挡住偷工。这些脚手架（`nextCommand`、按卡点指路的 `readNext`、`deliver` 门禁）都保留，但都建立在 validator 客观信号上。
+
+## 免责声明
 
 - 本项目不是 Legado/阅读 官方项目，与原 App 作者、维护者及任何站点无从属、授权或背书关系。
 - 本项目只用于辅助分析用户有权访问的网站结构，并生成/验证书源规则。
@@ -24,14 +40,41 @@
 - 阅读官方教程：<https://mgz0227.github.io/The-tutorial-of-Legado/>
 - 本仓库主 skill：[`legado-book-source-generator/SKILL.md`](./legado-book-source-generator/SKILL.md)
 
-## 这个仓库解决什么问题
+## 快速开始
 
-1. AI 不会先判断"这个站到底适不适合做书源"
-2. 遇到可登录站点时，AI 会默认匿名分析，遗漏关键能力差异
-3. AI 会写出结构像样、实际不可用的规则，或者直接跳到过重的 JS / 解密方案
-4. 书源失败后，AI 只会泛泛索要"日志/源码"，不会按阅读 App 的真实调试入口和用户协作
+作为 AI Skill 安装（推荐）——把 [`legado-book-source-generator`](./legado-book-source-generator) 复制或 junction 到 AI 工具的 skills 目录：
 
-本仓库用文档、样例、辅助脚本和测试把这些问题收成可执行规范。
+| 工具 | 安装路径 |
+|------|---------|
+| Claude Code | `~/.claude/skills/legado-book-source-generator/` |
+| Codex | `$CODEX_HOME/skills/legado-book-source-generator/` |
+| 其他 | 对应工具的 skills 目录 |
+
+安装后对 AI 说：**"帮我给 https://xxx.com 生成书源"**。
+
+AI 的典型流程（工具箱模式，按需取用，非固定顺序）：
+
+```powershell
+node "<skill-dir>/scripts/bsg.mjs" init <url>      # 初始化，自动检测 Java/adb 环境
+node "<skill-dir>/scripts/bsg.mjs" toolbox         # 看可用工具
+# … 分析站点、写规则、生成 book-source.json …
+node "<skill-dir>/scripts/bsg.mjs" validate --run <run-dir>          # validator 跑真实链路
+node "<skill-dir>/scripts/bsg.mjs" record-validation --run <run-dir> --status <status>
+node "<skill-dir>/scripts/bsg.mjs" deliver --run <run-dir>           # 唯一最终审计
+```
+
+`deliver` 返回 ok 是任务完成的唯一标志。绕过它交一个 JSON 文件，不算完成。
+
+## 也可以脱离 AI 手动用
+
+下载 Release 包给人类调试 / 手动验证：
+
+1. 到 GitHub Releases 下载发布包并解压
+2. 进入 `legado-book-source-generator\validator\`，双击 `run.bat`
+3. 浏览器打开 `http://localhost:1111`，导入书源 JSON、输入关键词、选模式运行
+4. `Ctrl+C` 或双击 `stop.bat` 停止
+
+普通使用者不需要本地编译 Gradle 项目；只有开发 validator 或 Android Probe 时才需要 clone 仓库并构建。
 
 ## 输出结构
 
@@ -39,181 +82,82 @@
 outputs/<site-slug>/
   book-source.json          # 唯一默认用户交付物
 
-runs/<site-slug>/
-  assessment.md             # 可生成性评估（过程记录）
-  analysis.md               # 网站分析（过程记录）
-  validation-checklist.md   # 验收清单（过程记录）
+runs/<site-slug>/           # 过程记录，用于 AI 接力和故障回溯
+  assessment.md             # 可生成性评估
+  analysis.md               # 网站分析
   validator-report.json     # validator 验证报告
-  validator-summary.md      # validator 验证摘要
+  capability-matrix.json    # 能力矩阵（各链路状态 + blocker）
+  validator-summary.md      # 验证摘要
 ```
 
-- `outputs/` 只放可交付内容
-- `runs/` 放 AI 生成过程、自检、分析记录，用于 AI 接力和故障回溯
+## 文档导航
 
-## 核心文档怎么用
+第一次接触，按顺序读：
 
-第一次接触这个仓库，按这个顺序读：
+1. [`SKILL.md`](./legado-book-source-generator/SKILL.md) — 工具箱入口、硬规则、输出要求
+2. [`references/workflow.md`](./legado-book-source-generator/references/workflow.md) — 完整工作流
+3. [`references/policies.md`](./legado-book-source-generator/references/policies.md) — 硬阻断规则
+4. [`references/legado-json-structure.md`](./legado-book-source-generator/references/legado-json-structure.md) — JSON 字段要求
+5. [`references/official-rule-pack.json`](./legado-book-source-generator/references/official-rule-pack.json) — 官方规则校验包
+6. [`references/validator-integration.md`](./legado-book-source-generator/references/validator-integration.md) — validator API 与 errorCode 详解
 
-1. [`SKILL.md`](./legado-book-source-generator/SKILL.md) — 主流程、阻断条件、输出要求
-2. [`references/policies.md`](./legado-book-source-generator/references/policies.md) — 硬阻断规则
-3. [`references/workflow.md`](./legado-book-source-generator/references/workflow.md) — 完整工作流
-4. [`references/assessment-template.md`](./legado-book-source-generator/references/assessment-template.md) — 评估模板
-5. [`references/legado-official-rule-notes.md`](./legado-book-source-generator/references/legado-official-rule-notes.md) — 官方规则
-6. [`references/legado-json-structure.md`](./legado-book-source-generator/references/legado-json-structure.md) — JSON字段要求
+验证失败回修读 `references/failure-diagnosis.md`；Android / WebView / 登录态读 `references/android-probe-guide.md`。
 
-## 推荐使用流程
+## bsg.mjs 自动负责的判断
 
-> **AI 执行** = AI 自主完成 &nbsp;|&nbsp; **人类协助** = 需要人类操作
+把可机器判断的部分交给脚本，AI 不必记忆规则：
 
-1. **AI** 运行 `bsg.mjs init <url>` 初始化工作流，自动检测 Java/adb 环境
-2. **AI** 按 `nextAction` 执行各阶段：`probe → assess → analyze → generate → validate → deliver`
-3. **AI** 用 Browser MCP 分析搜索、详情、目录、正文；**人类** 操作浏览器登录（如需要）
-4. **AI** 生成 `book-source.json` 到 `outputs/`，`advance` 进入 validate 前自动检查结构完整性（chapterUrl 缺 webView、webJs 无轮询、enabledCookieJar 缺失等硬拦截）
-5. **AI** 用 validator 跑真实链路验证，CSR 站点自动要求 Android Probe
-6. **AI** validator 失败时自动回修规则（不限次数，同一错误连续 5 次才停止）；但命中站点反爬（人机验证 / Cloudflare）时**首次即停**，不反复重试
-7. 反爬/登录墙：**AI** 先问用户是否愿意登录（登录可能解除），用户登录后 Cookie 经 Probe 桥接注入 validator 重验；登录仍不解除或验证码/付费墙等硬边界，才需 **人类/App** 复核
-
-固定评级：`可生成`（附带风险标签） / `不建议生成`（硬阻断）
-
-## 安装
-
-### 方式 0：作为 AI Skill（推荐）
-
-把 [`legado-book-source-generator`](./legado-book-source-generator) 复制（或 junction）到 AI 工具的 skills 目录：
-
-| 工具 | 安装路径 |
-|------|---------|
-| Claude Code | `~/.claude/skills/legado-book-source-generator/` |
-| Mimo Code | `~/.config/mimocode/skills/legado-book-source-generator/` |
-| Codex | `$CODEX_HOME/skills/legado-book-source-generator/` |
-
-安装后对 AI 说：**"帮我给 https://xxx.com 生成书源"**。工作流由 `bsg.mjs`（或 `bsg.bat`）驱动。
-
-### 方式 1：下载 Release 包（人类调试 / 手动验证）
-
-1. 到 GitHub Releases 下载 `legado-book-source-generator-<version>.zip`
-2. 解压后进入 `legado-book-source-generator\validator\`
-3. 双击 `run.bat`，浏览器打开 `http://localhost:1111`
-4. 导入书源 JSON，输入关键词，选择验证模式后运行
-
-`run.bat` 会打开可见窗口，`Ctrl+C` 停止；也可以双击 `stop.bat`。
-
-Release 包里已经包含：
-
-```text
-legado-book-source-generator\
-  SKILL.md
-  bsg.bat
-  references\
-  scripts\
-  tests\
-  validator\
-    run.bat
-    stop.bat
-    setup-adb.bat
-    setup-android-probe.bat
-    android-probe.apk
-    app\legado-source-validator.jar
-    examples\
-```
-
-普通使用者不需要本地编译 Gradle 项目；只有开发 validator 或 Android Probe 时才需要 clone 仓库并构建。
-
-### 方式 2：作为 Codex Skill
-
-把目录复制到 `$CODEX_HOME/skills/legado-book-source-generator/`。
-
-### 方式 3：作为仓库直接引用
-
-1. clone 本仓库
-2. 让 AI 先阅读 `SKILL.md`
-3. 再按顺序加载 `references/`
-4. 用 `scripts/` 做脚手架和静态检查
+- **结构完整性**：generate→validate 前检查 chapterUrl webView 声明、webJs 轮询、enabledCookieJar / loginUrl 配套、@text/@href、jQuery 选择器、POST 语法等硬错误。
+- **客观失败归因**：validator 真实执行后，按结构化 `errorCode`（选择器空、内容过短、HTTP 阻断、CSR 空壳、VIP 锁页等）定位失败链路和可改字段，而非裸词猜测。
+- **反爬熔断 + 登录求助**：链路被弹到人机验证 / Cloudflare / 验证码页时**首次即停**（任何客户端重试都累积触发站点 IP 风控）；未登录先求助用户登录（登录可能解除），已登录仍被拦才收敛 `needs_app_review`。
+- **Cookie 跨子域归一**：validator 的 CookieStore 按 eTLD+1 归一（复刻阅读 `getSubDomain`），一次登录的 Cookie 在 `www`/`wap`/`m` 子域间共享。
+- **Android Probe 强制**：书源含 webView 且真机/模拟器在线时，最终交付证据必须来自 Android mode，不能用 PC HTTP 的 passed 冒充。
+- **收敛与防偷工**：同一错误连续 5 次才停（反爬首次即停）；`deliver` 是唯一成功标志；`run-state.json` 有 SHA256 签名防手动篡改。
+- **按卡点指路**：`record-validation` 的 `readNext` 随 blocker 变，把弱模型推到最相关的文档前。
 
 ## 环境要求
 
 - Node.js 18+（运行 bsg.mjs 和脚本）
-- Java 17+（运行 validator，`bsg.mjs init` 自动检测，缺失时提示安装）
-- adb + Android 设备（需要 WebView Probe 时；`bsg.mjs init` 自动检测，`validator/setup-adb.bat` 一键安装）
+- Java 17+（运行 validator，`init` 自动检测）
+- adb + Android 设备 / 模拟器（需要 WebView Probe 时；`init` 自动检测，Release 包内含 `setup-adb.bat` 一键安装）
 - Browser MCP 或等价浏览器分析能力
 - 可访问目标网站的网络环境
 
 详细 validator 启动、adb 安装、Android Probe 配置见 **[SETUP.md](docs/SETUP.md)**。
 
-## 核心能力
-
-`bsg.mjs` 自动执行以下检查，不需 AI 记忆规则：
-
-- **结构完整性**（advance generate→validate）：chapterUrl webView、webJs 轮询、enabledCookieJar、loginUrl、header、@text/@href 缺失、jQuery 选择器、POST 语法、webView 位置、respondTime（11 项硬拦截）
-- **CSR 空壳检测**（record-validation）：识别 Vite/Nuxt/Next.js 壳，拒绝假阳性 passed
-- **反爬熔断 + 登录求助**（record-validation）：search/正文被弹到人机验证 / Cloudflare / 验证码页时**首次即停**，不反复重试（任何客户端重试都累积触发站点 IP 风控）；未登录先求助用户登录（登录可能解除反爬），已登录仍被拦才收敛 `needs_app_review`
-- **Cookie 跨子域归一**（validator）：CookieStore 按 eTLD+1 归一（复刻阅读 `getSubDomain`），登录 Cookie 在 `www`/`wap`/`m` 子域间共享，使一次登录覆盖全站链路
-- **VIP / 验证码分类收紧**：用组合证据（抽不到正文 + 付费动作词）判付费墙，不靠裸词 `vip`/`验证码`，避免把含这些字样的正常页误判为锁页
-- **Android Probe 强制 + 原生登录**：webView + adb 在线时必须 Android 验证；`/login` 在手机显示登录页，CookieManager 共享——环境一致不掉验证
-- **登录墙阻断**（advance assess→analyze）：登录未完成则阻塞，Probe Cookie 检测通过则放行
-- **收敛检测**：同一错误连续 5 次才停（反爬触发首次即停），不同错误无限重试
-- **deliver 唯一成功标志**：未跑通 `deliver` 不得宣称完成——validator 是阅读引擎移植，deliver 通过≈App 可用，用总结表格代替交付只会把返工转嫁用户
-- **按卡点指路**：`record-validation` 的 `readNext` 随 blocker 变（反爬指 failure-diagnosis、Android 指 android-probe-guide…），不再永远只给两篇阶段文档
-- **run-state.json SHA256 签名**：防篡改，手动编辑被拒绝
-- **Cookie 注入检测**：enabledCookieJar 已设但 cookies.json 缺失时拒绝
-- **环境自动检测**：init 时检测 Java + adb，缺失提示安装
-
-## 辅助脚本
+## 常用脚本
 
 ```powershell
-# 创建 outputs/<site-slug>/book-source.json
-npm run scaffold -- .\outputs https://example.com
-
-# 创建 runs/<site-slug>/ 过程文档
-npm run scaffold-run -- .\runs https://example.com
-
-# 校验 JSON
-npm run validate -- .\outputs\example-com\book-source.json
-
-# 静态审计
-npm run audit -- .\outputs\example-com\book-source.json --keyword 凡人修仙 --page 1
-
-# 运行测试
-npm test
+npm test                                              # 运行测试
+npm run validate -- .\outputs\example-com\book-source.json     # 校验 JSON 结构
+npm run audit -- .\outputs\example-com\book-source.json        # 静态审计
 ```
 
-注意：
-
-- `book-source.json` 提供给阅读导入时，顶层必须是 JSON 数组
-- `audit-source.mjs` 只做静态审计，不模拟阅读 App 的完整规则执行
-- 静态审计通过，不代表书源运行一定可用
-
-## 测试
-
-```powershell
-cd legado-book-source-generator
-npm test
-```
+注意：`book-source.json` 顶层必须是 JSON 数组；静态审计只做结构检查，不等于运行可用——运行可用以 validator + deliver 为准。
 
 ## 样例
 
-| 样例 | 关键特征 |
-|------|----------|
-| `pattern-css-pagination/` | CSS 选择器 + JS 内容处理 + 目录分页 |
-| `pattern-post-detail-toc/` | POST 搜索、目录嵌详情页、纯静态 HTML |
-| `pattern-api-webview-auth/` | JSON API + CSR WebView 正文 + CookieJar + 登录态 |
+| 样例 | 验证状态 | 关键特征 |
+|------|---------|----------|
+| `pattern-api-webview-auth/` | ✅ App 实测通过 | JSON API + CSR WebView 正文 + CookieJar + 登录态 |
+| `pattern-css-pagination/` | ✅ App 实测通过 | CSS 选择器 + JS 内容处理 + 目录分页 |
+| `pattern-post-detail-toc/` | ❌ 站已加盾 | POST 搜索语法参考（不可导入） |
 
-样例不暴露真实域名，不能直接复制到目标站点上套用。
+样例用于说明交付结构与规则组织方式，**不暴露真实域名，不能直接复制套用**。每个样例目录的 `NOTES.md` 记录了真实生成中踩过的坑。
 
 ## 仓库结构
 
-```
+```text
 legado-book-source-generator/    # AI Skill 目录（SKILL.md + references + scripts + tests + validator）
-validator/                       # validator 源码（Kotlin/Gradle）
+validator/                       # validator 源码（Kotlin/Gradle，阅读引擎 JVM 移植）
 android-probe/                   # Android WebView Probe 源码（Kotlin/Gradle）
+docs/SETUP.md                    # 环境配置详解
 ```
 
-详细结构见 [SKILL.md](./legado-book-source-generator/SKILL.md) 和 [SETUP.md](docs/SETUP.md)。
-
----
+开发 validator 后需 `cd validator && .\gradlew.bat jar` 重建，并把 `build/libs/legado-source-validator.jar` 部署到 `legado-book-source-generator/validator/app/`，否则改动不生效。
 
 ## 限制与风险
 
-- 书源长期可用性取决于目标站点是否改版、加反爬或下线。AI 生成规则即使 validator passed 也建议 App 端实测。
+- 书源长期可用性取决于目标站点是否改版、加反爬或下线。validator passed 也建议 App 端实测。
 - 登录态书源涉及 Cookie/Token，注意隐私安全，不要分发含凭据的书源文件。
 - 本项目不绕过验证码、付费墙、Cloudflare、DRM。这些场景标记 `needs_app_review`，需用户自行判断。
