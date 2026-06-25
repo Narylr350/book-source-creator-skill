@@ -2574,6 +2574,49 @@ describe("advance response fields", () => {
     await fs.rm(tmpDir, { recursive: true, force: true });
   });
 
+  it("blocks login completion when book source lacks enabledCookieJar", async () => {
+    const tmpDir = await makeTmpDir();
+    const runDir = await initRun(tmpDir);
+    await writeAssessmentAndRecord(runDir, [
+      "- 评级: 可生成",
+      "- 登录需求: 是",
+      "- 风险标签: 需登录态",
+    ]);
+    await runBsg(["advance", "--run", runDir], {
+      env: {
+        ...process.env,
+        BSG_TEST_ADB_DEVICES_OUTPUT: "List of devices attached\nABC123\tdevice\n",
+      },
+    });
+    // 写一个书源,故意不设 enabledCookieJar
+    await fs.mkdir(path.join(tmpDir, "outputs", "example-com"), { recursive: true });
+    await fs.writeFile(
+      path.join(tmpDir, "outputs", "example-com", "book-source.json"),
+      JSON.stringify([{ bookSourceUrl: "https://example.com", bookSourceName: "test", searchUrl: "https://example.com/search?q={{key}}", ruleSearch: { bookList: "li", name: "a@text", bookUrl: "a@href" }, ruleBookInfo: { name: "h1@text" }, ruleToc: { chapterList: "li", chapterName: "a@text", chapterUrl: "a@href" }, ruleContent: { content: "div@text" }, enabledCookieJar: false }], null, 2),
+      "utf-8",
+    );
+
+    const loginEnv = await fakeAndroidToolEnv(tmpDir, {
+      BSG_TEST_PROBE_COOKIE_CHECK: JSON.stringify({
+        hasCookies: true,
+        authenticated: true,
+        cookies: "auth_token=abc; user_id=123",
+        url: "https://example.com",
+      }),
+    });
+    await assert.rejects(
+      () => runBsg(["android", "--run", runDir, "--login-completed"], { env: loginEnv }),
+      (err) => {
+        const result = JSON.parse(err.stdout);
+        assert.equal(result.ok, false);
+        assert.match(result.error, /enabledCookieJar/);
+        assert.match(result.correctiveAction, /enabledCookieJar.*true/);
+        return true;
+      },
+    );
+    await fs.rm(tmpDir, { recursive: true, force: true });
+  });
+
   it("android setup does not clear an already verified Probe login", async () => {
     const tmpDir = await makeTmpDir();
     const runDir = await initRun(tmpDir);

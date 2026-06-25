@@ -104,7 +104,9 @@ export function cmdAndroid(args) {
     return {
       ...resolved,
       via: "android:login-completed",
-      nextCommand: androidCommand(runDir),
+      // 失败时（如缺 enabledCookieJar）保留 correctiveAction 的 nextCommand，
+      // 不覆盖成 android --run。
+      ...(resolved.ok ? { nextCommand: androidCommand(runDir) } : {}),
     };
   }
 

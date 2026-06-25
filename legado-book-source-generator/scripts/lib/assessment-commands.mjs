@@ -317,6 +317,27 @@ export function cmdResolveUserAction(args) {
     }
     state.userDecisions.login = "completed";
     state.loginFeatures._loginVerified = true;
+
+    // 登录成功后，validator 的 CookieStore 里已有登录 cookie，但 OkHttp 拦截器
+    // 只在请求头含 "CookieJar" 标记时才带 cookie——该标记来自书源的
+    // enabledCookieJar: true。不设的话 cookie 存了却不发，登录白做，搜索仍被反爬。
+    const bsPath = path.join(state.workingDir, "outputs", state.siteSlug, "book-source.json");
+    if (fileExists(bsPath)) {
+      try {
+        const bs = JSON.parse(fs.readFileSync(bsPath, "utf-8"));
+        const source = Array.isArray(bs) ? bs[0] : bs;
+        if (source?.enabledCookieJar !== true) {
+          saveRunState(runDir, state);
+          return {
+            ok: false,
+            error: "登录已验证，但书源未设 enabledCookieJar: true。validator 的 CookieStore 虽有登录 cookie，但 OkHttp 只在 enabledCookieJar=true 时才把 cookie 带进请求——不设的话登录 cookie 不会进 validator 请求，搜索/正文仍会因匿名被反爬拦。请在 book-source.json 顶层加 \"enabledCookieJar\": true，然后重新通过 rule-check 和 validate。",
+            probeCookieEvidence,
+            correctiveAction: "在 book-source.json 顶层加 \"enabledCookieJar\": true，保存后重新运行 run 通过 rule-check，再重跑 validate。登录的 cookie 才会进入 validator 请求。",
+            nextCommand: `node "<skill-dir>/scripts/bsg.mjs" run --run ${runDir}`,
+          };
+        }
+      } catch { /* 书源读取失败不阻塞登录收敛 */ }
+    }
   } else if (action === "continue_after_rating_block") {
     state.userDecisions.ratingBlocked = "continue";
   } else if (action === "continue_after_entry_risk") {
