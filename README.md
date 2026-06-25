@@ -70,8 +70,8 @@ runs/<site-slug>/
 3. **AI** 用 Browser MCP 分析搜索、详情、目录、正文；**人类** 操作浏览器登录（如需要）
 4. **AI** 生成 `book-source.json` 到 `outputs/`，`advance` 进入 validate 前自动检查结构完整性（chapterUrl 缺 webView、webJs 无轮询、enabledCookieJar 缺失等硬拦截）
 5. **AI** 用 validator 跑真实链路验证，CSR 站点自动要求 Android Probe
-6. **AI** validator 失败时自动回修规则（不限次数，同一错误连续 5 次才停止）
-7. 只有硬边界（验证码、Cloudflare、付费墙、Android WebView 不可用等）才需 **人类/App** 复核
+6. **AI** validator 失败时自动回修规则（不限次数，同一错误连续 5 次才停止）；但命中站点反爬（人机验证 / Cloudflare）时**首次即停**，不反复重试
+7. 反爬/登录墙：**AI** 先问用户是否愿意登录（登录可能解除），用户登录后 Cookie 经 Probe 桥接注入 validator 重验；登录仍不解除或验证码/付费墙等硬边界，才需 **人类/App** 复核
 
 固定评级：`可生成`（附带风险标签） / `不建议生成`（硬阻断）
 
@@ -146,9 +146,14 @@ legado-book-source-generator\
 
 - **结构完整性**（advance generate→validate）：chapterUrl webView、webJs 轮询、enabledCookieJar、loginUrl、header、@text/@href 缺失、jQuery 选择器、POST 语法、webView 位置、respondTime（11 项硬拦截）
 - **CSR 空壳检测**（record-validation）：识别 Vite/Nuxt/Next.js 壳，拒绝假阳性 passed
+- **反爬熔断 + 登录求助**（record-validation）：search/正文被弹到人机验证 / Cloudflare / 验证码页时**首次即停**，不反复重试（任何客户端重试都累积触发站点 IP 风控）；未登录先求助用户登录（登录可能解除反爬），已登录仍被拦才收敛 `needs_app_review`
+- **Cookie 跨子域归一**（validator）：CookieStore 按 eTLD+1 归一（复刻阅读 `getSubDomain`），登录 Cookie 在 `www`/`wap`/`m` 子域间共享，使一次登录覆盖全站链路
+- **VIP / 验证码分类收紧**：用组合证据（抽不到正文 + 付费动作词）判付费墙，不靠裸词 `vip`/`验证码`，避免把含这些字样的正常页误判为锁页
 - **Android Probe 强制 + 原生登录**：webView + adb 在线时必须 Android 验证；`/login` 在手机显示登录页，CookieManager 共享——环境一致不掉验证
 - **登录墙阻断**（advance assess→analyze）：登录未完成则阻塞，Probe Cookie 检测通过则放行
-- **收敛检测**：同一错误连续 5 次才停，不同错误无限重试
+- **收敛检测**：同一错误连续 5 次才停（反爬触发首次即停），不同错误无限重试
+- **deliver 唯一成功标志**：未跑通 `deliver` 不得宣称完成——validator 是阅读引擎移植，deliver 通过≈App 可用，用总结表格代替交付只会把返工转嫁用户
+- **按卡点指路**：`record-validation` 的 `readNext` 随 blocker 变（反爬指 failure-diagnosis、Android 指 android-probe-guide…），不再永远只给两篇阶段文档
 - **run-state.json SHA256 签名**：防篡改，手动编辑被拒绝
 - **Cookie 注入检测**：enabledCookieJar 已设但 cookies.json 缺失时拒绝
 - **环境自动检测**：init 时检测 Java + adb，缺失提示安装
