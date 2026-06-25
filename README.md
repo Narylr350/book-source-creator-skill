@@ -165,9 +165,13 @@ legado-book-source-generator/    # AI Skill 目录（SKILL.md + references + scr
 validator/                       # validator 源码（Kotlin/Gradle，阅读引擎 JVM 移植）
 android-probe/                   # Android WebView Probe 源码（Kotlin/Gradle）
 docs/SETUP.md                    # 环境配置详解
+docs/webview-behavior-matrix.md  # WebView 行为矩阵（App vs Probe vs Validator 能力对比）
+docs/legado-source-behavior.md  # 阅读源码已确认的行为边界
 ```
 
 开发 validator 后需 `cd validator && .\gradlew.bat jar` 重建，并把 `build/libs/legado-source-validator.jar` 部署到 `legado-book-source-generator/validator/app/`，否则改动不生效。
+
+架构和能力边界参考 [`docs/webview-behavior-matrix.md`](./docs/webview-behavior-matrix.md)（阅读 App / Android Probe / Validator HTTP 三列对比）和 [`docs/legado-source-behavior.md`](./docs/legado-source-behavior.md)（Jsoup 选择器等已确认边界）。
 
 ## 限制与风险
 
