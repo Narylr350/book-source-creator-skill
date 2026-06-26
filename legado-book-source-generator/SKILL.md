@@ -40,7 +40,6 @@ node "<skill-dir>/scripts/bsg.mjs" status --run <run-dir>
 
 ## 常见坑
 
-- 书源 `header` 里的 User-Agent 必须是完整浏览器 UA（含引擎名+版本号，如 `Mozilla/5.0 (Linux; Android 11) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.120 Mobile Safari/537.36`）。截断的 UA 会被反爬系统识别为非标准客户端。抄示例时不要漏掉后半截。
 - 用 `curl.exe` 调 HTTP，不要用 `curl`；PowerShell 里的 `curl` 可能是 `Invoke-WebRequest` 别名。
 - 优先写一行命令。不要混用 bash 的 `\`、cmd 的 `^`、PowerShell 的反引号续行。
 - JSON 请求体优先用单引号包住：`-d '{"url":"https://example.com","timeout":60000}'`。复杂 JSON 用 `$body = @{ ... } | ConvertTo-Json -Depth 8`。
@@ -50,33 +49,10 @@ node "<skill-dir>/scripts/bsg.mjs" status --run <run-dir>
 - `ConvertFrom-Json` 只能吃纯 JSON；命令输出混有日志、提示词或乱码时，先保存/截取纯 JSON 再解析。
 - 不确定 shell 写法时，不要临时拼长命令；优先运行 `toolbox`、`android-status`、`android --run`、`validate --run` 这些封装命令。
 
-## User-Agent 完整性
+## 原则
 
-书源 `header` 里的 User-Agent 必须是完整浏览器 UA，包含引擎名和版本号。截断的 UA（如只有 `Mozilla/5.0 (Linux; Android 11) AppleWebKit/537.36`）会被反爬系统识别为非标准客户端。
-
-完整 UA：`Mozilla/5.0 (Linux; Android 11) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.120 Mobile Safari/537.36`
-
-抄示例时不要漏掉 `(KHTML, like Gecko) Chrome/... Safari/...` 后半截。详见 `references/legado-source-behavior.md`。
-
-## 验证码与登录态
-
-搜索/入口链路触发验证码（CAPTCHA）时，如果站点有登录功能，**登录态可能解除反爬限制**。很多站点（如刺猬猫）对匿名搜索弹验证码，但登录后搜索正常。这不是绕过反爬——登录是站点提供的正常交互，登录后的 session 被站点视为可信用户。
-
-遇到入口验证码时的正确顺序：
-1. 检查 site-facts 的 `features.hasLogin`——如果有登录功能，先尝试登录路径
-2. 走 `android --run <dir> --setup` → 用户在 Probe 登录 → `--login-completed` → 重跑 validate
-3. 登录后仍弹验证码 → 确认是站点固有限制，按 `failed` 收敛
-4. 搜索仍被阻塞但 detail/toc/content 需要验证 → 用 `validate --book-url <url>` 跳过搜索直接测试后续链路
-
-## 验证码与登录态
-
-搜索/入口链路触发验证码时，不要假设这是不可解决的站点限制。很多站点（如刺猬猫）登录后能解除搜索验证码、目录限制、正文限制。
-
-原则：**验证码触发时，如果站点有登录功能，先走登录路径再重试验证。** 只有登录后仍被拦，才判定为真站点限制。
-
-登录路径：`android --run <run-dir> --setup` → 用户在手机/模拟器登录 → `--login-completed` → 重跑 `validate --run <run-dir>`。
-
-如果搜索仍被验证码阻塞但 detail/toc/content 需要验证，用 `validate --run <run-dir> --book-url <书籍URL>` 跳过搜索，直接从详情页开始验证后续链路（对齐阅读 App debug 模式的 URL 直接入口）。
+- **UA 完整性**：书源 `header` 的 UA 必须完整（含引擎名+版本号）。截断的 UA 会被反爬识别。详见 `references/legado-source-behavior.md`。
+- **验证码与登录态**：验证码触发时，如果站点有登录功能，先走登录路径再重试验证。只有登录后仍被拦才判定为站点固有限制。搜索仍被阻塞时用 `validate --book-url <url>` 跳过搜索验证后续链路。详见 `references/policies.md`。
 
 ## Android / WebView 快速配方
 
