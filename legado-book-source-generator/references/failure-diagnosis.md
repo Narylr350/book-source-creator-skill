@@ -71,18 +71,18 @@ validator 返回失败后，按以下顺序检查：
 
 `[blackbox]` 站点把搜索/登录类端点放在反爬墙后是普遍现象（实测过的站：搜索 API 单次直接访问即 303 跳到人机验证页；同类还有 Cloudflare turnstile、各站自研 captcha）。
 
-`[source]` validator 把这类响应识别为 `APP_REVIEW_REQUIRED`（见 `containsAppReviewChallenge`，匹配 `cloudflare turnstile` / `Just a moment` / 验证页 finalUrl）。`record-validation` 命中此 errorCode 会熔断收敛为 `needs_app_review` + `warningBy: anti_bot_triggered`，并在响应里返回 `forbiddenActions`。
+`[source]` validator 把这类响应识别为 `CAPTCHA_DETECTED`（见 `containsAppReviewChallenge`，匹配 `cloudflare turnstile` / `Just a moment` / 验证页 finalUrl）。`record-validation` 命中此 errorCode 会收敛为 `blocked:captcha` + `warningBy: "captcha"`，并在响应里返回 `forbiddenActions`。
 
-`[source]` server-side 检测对客户端无差别——curl / validator OkHttp / Probe Android WebView / 浏览器 MCP **都会被弹同一个 verify 页**（已实测）。换 mode、换关键词、换 UA 都不绕过。
+`[source]` server-side 检测对客户端无差别——curl / validator (curl) / Probe Android WebView / 浏览器 MCP **都会被弹同一个 verify 页**（已实测）。换 mode、换关键词、换 UA 都不绕过。
 
 `[blackbox]` 反复访问反爬端点累积到阈值会触发**站点 IP 级风控**——之后连"已经在用的浏览器"也开始弹验证。一旦到这一步，本次会话基本无解，要等冷却或换 IP。
 
-`[action]` 命中 anti_bot_triggered 时：
+`[action]` 命中 captcha 时：
 
 1. **禁止** 自动重跑 validator、换 mode 重试、换 keyword 重试、跑 `android --run` 期望"绕过"。
 2. 让用户在浏览器或 Probe 里手动访问主页并过一次人机验证，让 session cookie 持续。
 3. 让用户从主页正常导航到目标链路（例如点击搜索框输入关键词，而非直接访问搜索 API 端点），让 cookie 落到 CookieStore。
-4. session 桥接好后再用 validator 一次性走完链路；如果 deliver 时仍未过验证，由用户确认是否按 `needs_app_review` 交付。
+4. session 桥接好后再用 validator 一次性走完链路；搜索仍被阻塞时用 `validate --book-url <url>` 跳过搜索验证后续链路；如果仍未过验证，按 `failed` 交付。
 
 `[heuristic]` 一些站点把人机验证放在 session cookie 缺失时，过一次后 session 持续；另一些站点（如 Cloudflare 完整模式）每次新 IP 都要过。前者用 1 一步 session 桥接即可，后者只能告诉用户"此站点不适合本机自动化验证"。
 
@@ -105,7 +105,7 @@ validator 返回失败后，按以下顺序检查：
 - **关键**：能用的社区书源常见配置是 `bookSourceUrl=www`、`loginUrl=www/...login`、`enabledCookieJar=false`、正文用直 CSS（无 webView/webJs）。登录靠阅读 App 全局 CookieManager + 归一，不靠书源显式 cookieJar。
 - **可能更深一层**：有的站 web 登录页本身就 503（Geo/IP 封锁），真正登录通道是原生 App 私有 API（设备指纹 + 验证码）。这种 Probe WebView 登录不一定可达；最可靠是用户在能开登录页的环境（带代理的桌面浏览器、或真机阅读 App）登录后，cookie 经归一注入 validator。
 
-`[action]` 反爬被登录墙挡住时：① 让用户登录（登录可能解除，值得一试，但不保证）；② 登录后 cookie 经 Probe 桥接（`resolveValidateCookieFile`）或 `cookies.json` 注入 validator，validator 归一后跨子域生效；③ 登录仍不解除 → 真站点限制，收敛 needs_app_review。**不要断言"登录一定有效/无效"——取决于登录通道、落点域、网络环境，必须实测。**
+`[action]` 反爬被登录墙挡住时：① 让用户登录（登录可能解除，值得一试，但不保证）；② 登录后 cookie 经 Probe 桥接（`resolveValidateCookieFile`）或 `cookies.json` 注入 validator，validator 归一后跨子域生效；③ 登录仍不解除 → 真站点限制，按 `failed` 收敛。用 `validate --book-url <url>` 跳过搜索验证后续链路。**不要断言"登录一定有效/无效"——取决于登录通道、落点域、网络环境，必须实测。**
 
 ### TOC chapterCount=1
 

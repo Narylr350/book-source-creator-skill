@@ -41,7 +41,7 @@
 
 以下情况标记 `failed_unresolved`：
 
-14. `[heuristic]` **收敛失败** — 同一错误连续 5 次未修复（相同 error + 相同失败字段），判定为死循环，停止自动回修。阈值 5 是经验值，反爬触发（`anti_bot_triggered`）会更早熔断（首次即停）。
+14. `[heuristic]` **收敛失败** — 同一错误连续 5 次未修复（相同 error + 相同失败字段），判定为死循环，停止自动回修。阈值 5 是经验值，搜索命中验证码（`CAPTCHA_DETECTED` → `blocked:captcha`）首次即停，不进入回修循环。
 
 ## 验收标准
 

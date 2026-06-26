@@ -51,7 +51,14 @@
   },
   "evidence": [
     { "id": "search-1", "phase": "search", "kind": "html", "note": "当前实测证据" }
-  ]
+  ],
+  "features": {
+    "hasLogin": false,
+    "hasVip": false,
+    "hasCaptcha": false,
+    "hasCloudflare": false,
+    "isAppRequired": false
+  }
 }
 ```
 
@@ -60,6 +67,8 @@
 `render` 只能使用枚举值 `ssr_or_http`、`csr`、`webview`、`csr_encrypted` 或 `null`，不要写“正常阅读”“SSR 渲染”“CSR 可用”等自由文本。`csr`/`webview` 会推导为 `WebView 依赖`，`csr_encrypted` 会同时推导为 `WebView 依赖` 和 `加密正文`。
 
 `blocker` 使用阻塞类型，如 `captcha`、`login`、`vip`、`cloudflare`、`encrypt`。不要把风险只写在 `assessment.md` 备注里，必须进入 facts。
+
+`features` 是可选但推荐的对象，5 个布尔字段：`hasLogin`、`hasVip`、`hasCaptcha`、`hasCloudflare`、`isAppRequired`。`record-assessment` 会读取这些字段推导风险：`hasLogin`/`hasVip` → 需登录态；`hasCaptcha`/`hasCloudflare` → 有反爬风险 + 入口反爬；`isAppRequired` → WebView 依赖。
 
 ## 运行规则
 

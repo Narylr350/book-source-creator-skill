@@ -38,6 +38,8 @@
 | `blocker` | 付费、登录、验证码、加密情况，或 `null` |
 | `evidenceIds` | 证据 ID 列表，如 `["search-1"]` |
 
+`features` 对象（可选但推荐）：`hasLogin`、`hasVip`、`hasCaptcha`、`hasCloudflare`、`isAppRequired`。`record-assessment` 会读取这些字段推导风险，即使 `links` 的 blocker 为 null 也能检测到登录/反爬风险。
+
 验证码、VIP、加密必须写入 `blocker` 或 `render`，不能只写在自然语言备注里。
 
 ## assessment.md 证据区块

@@ -72,7 +72,7 @@ export function cmdValidate(args) {
   const bookSourcePath = path.join(state.workingDir, "outputs", state.siteSlug, "book-source.json");
   if (!fileExists(bookSourcePath)) return fail(`book-source.json 不存在: ${bookSourcePath}。请先完成 generate 阶段。`);
 
-  // Determine keyword: override → specific analysis.md title → siteSlug
+  // Determine keyword: override → analysis.md title → site-facts evidence → error (no siteSlug fallback)
   let keyword = keywordArg;
   if (!keyword) {
     const analysisPath = path.join(runDir, "analysis.md");
