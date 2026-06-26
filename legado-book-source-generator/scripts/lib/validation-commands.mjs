@@ -870,24 +870,48 @@ export function cmdRecordValidation(args) {
         "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
       ].join("\n");
     } else {
-      const errorSig = validationErrorSignature(report, status);
-
-      if (errorSig === v.lastError) {
-        v.consecutiveSame = (v.consecutiveSame || 0) + 1;
-      } else {
-        v.consecutiveSame = 1;
-      }
-      v.lastError = errorSig;
-
-      if (v.consecutiveSame >= 5) {
-        finalStatus = "failed_unresolved";
-        v.status = "completed";
-        convergenceBlock = `同一错误连续 ${v.consecutiveSame} 次未修复 (${errorSig.slice(0, 120)})，判定为死循环。停止自动回修，需人工介入。`;
-      } else {
-        shouldRetry = true;
+      const searchStep = (report?.steps || []).find(s => s.phase === "search" && s.errorCode === "CAPTCHA_DETECTED");
+      if (searchStep) {
+        const hasLogin = state.loginFeatures?.hasLoginUrl || state.loginFeatures?._loginVerified;
+        validationWarning = [
+          "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+          "⚠️  搜索触发验证码 — 这不是规则错误",
+          "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+          "validator 等价于阅读 App，App 搜索也会弹验证码。不要修改书源规则。",
+          "",
+          hasLogin
+            ? "站点有登录功能。验证码可能通过登录解除——先走 android --setup 登录，再重跑 validate。"
+            : "如果站点有登录功能，登录态可能解除验证码。检查 site-facts features.hasLogin。",
+          "",
+          "搜索仍被阻塞时，用 --book-url 跳过搜索验证后续链路：",
+          `  node "<skill-dir>/scripts/bsg.mjs" validate --run ${runDir} --keyword <关键词> --book-url <书籍URL> --mode android`,
+          "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+        ].join("\n");
         finalStatus = "failed";
-        nextAction = "repair_in_generate";
-        enterGenerateRepair(state, buildRepairContext(report, status, "validator_failed", fileSha256(loadedSource.bookSourcePath)));
+        v.lastStatus = finalStatus;
+        v.status = "completed";
+        v.consecutiveSame = 0;
+        v.lastError = "";
+      } else {
+        const errorSig = validationErrorSignature(report, status);
+
+        if (errorSig === v.lastError) {
+          v.consecutiveSame = (v.consecutiveSame || 0) + 1;
+        } else {
+          v.consecutiveSame = 1;
+        }
+        v.lastError = errorSig;
+
+        if (v.consecutiveSame >= 5) {
+          finalStatus = "failed_unresolved";
+          v.status = "completed";
+          convergenceBlock = `同一错误连续 ${v.consecutiveSame} 次未修复 (${errorSig.slice(0, 120)})，判定为死循环。停止自动回修，需人工介入。`;
+        } else {
+          shouldRetry = true;
+          finalStatus = "failed";
+          nextAction = "repair_in_generate";
+          enterGenerateRepair(state, buildRepairContext(report, status, "validator_failed", fileSha256(loadedSource.bookSourcePath)));
+        }
       }
     }
   } else if (status === "needs_app_review") {

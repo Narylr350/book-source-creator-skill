@@ -121,7 +121,7 @@ export function cmdValidate(args) {
   if (!cookiePlan.ok) return fail(cookiePlan.error);
   let cmd = `node "${validatorScript}" "${bookSourcePath}" "${keyword}" ${mode} --output "${runDir}"`;
   if (cookiePlan.cookieFile) cmd += ` --cookie=${shellQuote(cookiePlan.cookieFile)}`;
-  if (bookUrlArg) cmd += ` --book-url=${shellQuote(bookUrlArg)}`;
+  if (bookUrlArg) cmd += ` --book-url=${bookUrlArg}`;
 
   console.error(`验证中: ${bookSourcePath}`);
   console.error(`关键词: ${keyword}, mode: ${mode}`);
@@ -129,7 +129,7 @@ export function cmdValidate(args) {
   if (cookiePlan.source === "probe") console.error("检测到 Android Probe Cookie，自动注入 validator");
 
   try {
-    const out = execSync(cmd, { encoding: "utf-8", timeout: 180000, maxBuffer: 10 * 1024 * 1024 });
+    const out = execSync(cmd, { encoding: "utf-8", timeout: 180000, maxBuffer: 50 * 1024 * 1024 });
     const report = JSON.parse(out);
     const nextCommand = report.status === "skipped"
       ? `node "<skill-dir>/scripts/bsg.mjs" validator-start`
