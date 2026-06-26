@@ -880,18 +880,30 @@ export function cmdRecordValidation(args) {
           "validator 等价于阅读 App，App 搜索也会弹验证码。不要修改书源规则。",
           "",
           hasLogin
-            ? "站点有登录功能。验证码可能通过登录解除——先走 android --setup 登录，再重跑 validate。"
+            ? "站点有登录功能。验证码可能通过登录解除——先走 android --setup 登录，再重跑 validate。注意：Probe 用移动 UA 登录会落 wap 子域，www 搜索可能仍弹验证码。"
             : "如果站点有登录功能，登录态可能解除验证码。检查 site-facts features.hasLogin。",
           "",
-          "搜索仍被阻塞时，用 --book-url 跳过搜索验证后续链路：",
+          "搜索仍被阻塞时，用 --book-url 跳过搜索验证后续链路（detail/toc/content）：",
           `  node "<skill-dir>/scripts/bsg.mjs" validate --run ${runDir} --keyword <关键词> --book-url <书籍URL> --mode android`,
           "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
         ].join("\n");
-        finalStatus = "failed";
-        v.lastStatus = finalStatus;
-        v.status = "completed";
-        v.consecutiveSame = 0;
-        v.lastError = "";
+        v.attempts -= 1;
+        saveRunState(runDir, state);
+        writeCapabilityMatrix(runDir, reportPathForMode, "blocked:captcha");
+        writeValidatorSummary(runDir, status, "blocked:captcha", reportPathForMode);
+        return {
+          ok: true,
+          status: "blocked",
+          blockedBy: "captcha",
+          warningBy: "captcha",
+          warning: validationWarning,
+          message: validationWarning,
+          shouldRetry: true,
+          nextAction: "login_or_book_url",
+          nextCommand: `node "<skill-dir>/scripts/bsg.mjs" validate --run ${runDir} --keyword <关键词> --book-url <书籍URL> --mode android`,
+          forbiddenActions: ["modify_rules", "deliver", "record_needs_app_review"],
+          readNext: ["references/policies.md"],
+        };
       } else {
         const errorSig = validationErrorSignature(report, status);
 
