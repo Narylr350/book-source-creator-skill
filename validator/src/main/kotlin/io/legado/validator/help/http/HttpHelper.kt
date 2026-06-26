@@ -92,29 +92,53 @@ object HttpHelper {
     }
 
     fun get(url: String, headers: Map<String, String> = emptyMap(), charset: String? = null): StrResponse {
-        val builder = Request.Builder().url(url).get()
-        headers.forEach { (k, v) -> builder.addHeader(k, v) }
-        val response = client.newCall(builder.build()).execute()
-        val body = response.body?.let {
-            val bytes = it.bytes()
-            val cs = charset ?: detectCharset(bytes, it.contentType()?.charset()?.name())
-            String(bytes, Charset.forName(cs))
-        } ?: ""
-        return StrResponse(response.request.url.toString(), body, response.headers, response.code)
+        return curlRequest(url, "GET", null, null, headers, charset)
     }
 
     fun post(url: String, body: String, contentType: String = "application/x-www-form-urlencoded",
              headers: Map<String, String> = emptyMap(), charset: String? = null): StrResponse {
-        val builder = Request.Builder().url(url)
-            .post(body.toByteArray().toRequestBody(contentType.toMediaType()))
-        headers.forEach { (k, v) -> builder.addHeader(k, v) }
-        val response = client.newCall(builder.build()).execute()
-        val respBody = response.body?.let {
-            val bytes = it.bytes()
-            val cs = charset ?: detectCharset(bytes, it.contentType()?.charset()?.name())
-            String(bytes, Charset.forName(cs))
-        } ?: ""
-        return StrResponse(response.request.url.toString(), respBody, response.headers, response.code)
+        return curlRequest(url, "POST", body, contentType, headers, charset)
+    }
+
+    private fun curlRequest(
+        url: String,
+        method: String,
+        body: String?,
+        contentType: String?,
+        headers: Map<String, String>,
+        charset: String?
+    ): StrResponse {
+        val cmd = mutableListOf("curl", "-s", "-L", "--max-time", "30", "-X", method)
+        for ((k, v) in headers) {
+            cmd.add("-H"); cmd.add("$k: $v")
+        }
+        if (body != null) {
+            cmd.add("-d"); cmd.add(body)
+            if (contentType != null) {
+                cmd.add("-H"); cmd.add("Content-Type: $contentType")
+            }
+        }
+        cmd.add("-w")
+        cmd.add("\n---CURL_META---\n%{http_code}\n%{url_effective}")
+        cmd.add(url)
+        val pb = ProcessBuilder(cmd)
+        pb.redirectErrorStream(true)
+        val proc = pb.start()
+        val out = proc.inputStream.readBytes()
+        proc.waitFor(30, java.util.concurrent.TimeUnit.SECONDS)
+        val raw = String(out, Charsets.UTF_8)
+        val metaMarker = "\n---CURL_META---\n"
+        val metaIdx = raw.lastIndexOf(metaMarker)
+        if (metaIdx < 0) {
+            return StrResponse(url, raw, okhttp3.Headers.headersOf(), 200)
+        }
+        val bodyStr = raw.substring(0, metaIdx)
+        val meta = raw.substring(metaIdx + metaMarker.length).trim().split("\n")
+        val code = meta.getOrNull(0)?.toIntOrNull() ?: 200
+        val effectiveUrl = meta.getOrNull(1) ?: url
+        val cs = charset ?: detectCharset(bodyStr.toByteArray(), null)
+        val finalBody = if (cs != "UTF-8") String(bodyStr.toByteArray(Charsets.ISO_8859_1), Charset.forName(cs)) else bodyStr
+        return StrResponse(effectiveUrl, finalBody, okhttp3.Headers.headersOf(), code)
     }
 
     fun getBytes(url: String, headers: Map<String, String> = emptyMap()): ByteArray {
