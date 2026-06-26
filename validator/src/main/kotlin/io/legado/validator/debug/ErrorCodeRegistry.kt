@@ -11,9 +11,10 @@ enum class ErrorCode {
     // 通用 (1)
     HTTP_BLOCKED,
 
-    // 搜索 (4)
+    // 搜索 (5)
     SEARCH_EMPTY,
     SEARCH_SELECTOR_EMPTY,
+    CAPTCHA_DETECTED,
     BOOK_URL_EMPTY,
     BOOK_URL_MALFORMED,
 
@@ -388,6 +389,23 @@ object ErrorCodeRegistry {
         docHint = "检查 bookList 选择器是否正确匹配搜索结果列表容器。"
     )
 
+    val CAPTCHA_DETECTED_META = ErrorCodeMeta(
+        code = ErrorCode.CAPTCHA_DETECTED,
+        phase = Phase.SEARCH,
+        subphase = Subphase.FETCH,
+        severity = Severity.BLOCKED,
+        category = Category.ANTI_BOT,
+        failedField = null,
+        allowedFixes = emptyList(),
+        forbiddenFixes = listOf("searchUrl", "ruleSearch", "ruleBookInfo", "ruleToc", "ruleContent", "header", "loginUrl"),
+        requiredCapabilities = emptyList(),
+        humanAction = HumanAction.SOLVE_CAPTCHA,
+        retryPolicy = RetryPolicy.NO_AUTO_RETRY,
+        messageTemplate = "请求返回了验证码/人机验证页面。validator 等价于阅读 App，App 同样会触发验证码。",
+        evidenceKeys = listOf("responseCode", "htmlKind", "captchaType", "debugArtifacts.responseHtml"),
+        docHint = "这是站点反爬行为，不是规则错误。validator 等价于阅读 App——App 也会弹验证码。不要修改书源规则。可能原因：需要登录态（检查 enabledCookieJar + header cookie 注入）、UA 不完整被识别为爬虫、或 IP 触发风控。"
+    )
+
     val BOOK_URL_EMPTY_META = ErrorCodeMeta(
         code = ErrorCode.BOOK_URL_EMPTY,
         phase = Phase.SEARCH,
@@ -636,6 +654,7 @@ object ErrorCodeRegistry {
         register(HTTP_BLOCKED_META)
         register(SEARCH_EMPTY_META)
         register(SEARCH_SELECTOR_EMPTY_META)
+        register(CAPTCHA_DETECTED_META)
         register(BOOK_URL_EMPTY_META)
         register(BOOK_URL_MALFORMED_META)
         register(DETAIL_SELECTOR_EMPTY_META)

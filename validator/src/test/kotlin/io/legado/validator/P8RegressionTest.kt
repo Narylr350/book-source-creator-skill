@@ -6,6 +6,7 @@ import io.legado.validator.analyzeRule.AnalyzeUrl
 import io.legado.validator.debug.DebugStep
 import io.legado.validator.debug.ErrorCode
 import io.legado.validator.debug.ErrorCodeRegistry
+import io.legado.validator.debug.Severity
 import io.legado.validator.debug.classifyHtmlKind
 import io.legado.validator.debug.classifyHtmlKindExt
 import io.legado.validator.debug.containsAppReviewChallenge
@@ -90,6 +91,32 @@ class P8RegressionTest {
     fun `69shuba POST search detected`() {
         val source = loadSource("69shuba-com.json")
         assertTrue(source.searchUrl?.contains(";post") == true, "69shuba should use POST")
+    }
+
+    @Test
+    fun `selectSearchEmptyErrorCode returns CAPTCHA_DETECTED for captcha response`() {
+        val captchaBody = """<html><head><title>验证码 - 刺猬猫</title></head>
+            <body><div class="man-machine-verify-page">
+            <img src="/signup/verifyimg" alt="请点击刷新验证码">
+            <input type="text" placeholder="验证码" class="form-control captcha" name="code">
+            </div></body></html>"""
+        val res = StrResponse("https://example.com/search", captchaBody, okhttp3.Headers.headersOf(), 200)
+        val code = selectSearchEmptyErrorCode(res)
+        assertEquals(ErrorCode.CAPTCHA_DETECTED, code)
+        val meta = ErrorCodeRegistry.get(code)
+        assertEquals(Severity.BLOCKED, meta?.severity)
+    }
+
+    @Test
+    fun `selectSearchEmptyErrorCode returns SEARCH_EMPTY for truly empty response`() {
+        val res = StrResponse("https://example.com/search", "", okhttp3.Headers.headersOf(), 200)
+        assertEquals(ErrorCode.SEARCH_EMPTY, selectSearchEmptyErrorCode(res))
+    }
+
+    @Test
+    fun `selectSearchEmptyErrorCode returns SEARCH_SELECTOR_EMPTY for non-empty non-captcha response`() {
+        val res = StrResponse("https://example.com/search", "<html><body>some results</body></html>", okhttp3.Headers.headersOf(), 200)
+        assertEquals(ErrorCode.SEARCH_SELECTOR_EMPTY, selectSearchEmptyErrorCode(res))
     }
 
     @Test

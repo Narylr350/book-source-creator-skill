@@ -38,8 +38,9 @@ node "<skill-dir>/scripts/bsg.mjs" status --run <run-dir>
 
 当前默认 shell 是 PowerShell。复制或手写命令时先确认语法属于 PowerShell，不要混用 bash、cmd 和 PowerShell。
 
-常见坑：
+## 常见坑
 
+- 书源 `header` 里的 User-Agent 必须是完整浏览器 UA（含引擎名+版本号，如 `Mozilla/5.0 (Linux; Android 11) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.120 Mobile Safari/537.36`）。截断的 UA 会被反爬系统识别为非标准客户端。抄示例时不要漏掉后半截。
 - 用 `curl.exe` 调 HTTP，不要用 `curl`；PowerShell 里的 `curl` 可能是 `Invoke-WebRequest` 别名。
 - 优先写一行命令。不要混用 bash 的 `\`、cmd 的 `^`、PowerShell 的反引号续行。
 - JSON 请求体优先用单引号包住：`-d '{"url":"https://example.com","timeout":60000}'`。复杂 JSON 用 `$body = @{ ... } | ConvertTo-Json -Depth 8`。
@@ -48,6 +49,14 @@ node "<skill-dir>/scripts/bsg.mjs" status --run <run-dir>
 - `Select-Object -Index 40..80` 是错的；要先读数组再用 `$lines[40..80]`。
 - `ConvertFrom-Json` 只能吃纯 JSON；命令输出混有日志、提示词或乱码时，先保存/截取纯 JSON 再解析。
 - 不确定 shell 写法时，不要临时拼长命令；优先运行 `toolbox`、`android-status`、`android --run`、`validate --run` 这些封装命令。
+
+## User-Agent 完整性
+
+书源 `header` 里的 User-Agent 必须是完整浏览器 UA，包含引擎名和版本号。截断的 UA（如只有 `Mozilla/5.0 (Linux; Android 11) AppleWebKit/537.36`）会被反爬系统识别为非标准客户端。
+
+完整 UA：`Mozilla/5.0 (Linux; Android 11) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.120 Mobile Safari/537.36`
+
+抄示例时不要漏掉 `(KHTML, like Gecko) Chrome/... Safari/...` 后半截。详见 `references/legado-source-behavior.md`。
 
 ## Android / WebView 快速配方
 

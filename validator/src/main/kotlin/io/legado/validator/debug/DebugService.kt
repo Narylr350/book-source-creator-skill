@@ -27,7 +27,7 @@ internal fun containsAppReviewChallenge(text: String): Boolean {
 internal fun selectSearchEmptyErrorCode(res: StrResponse?): ErrorCode {
     val body = res?.body ?: ""
     return when {
-        res != null && containsAppReviewChallenge(body) -> ErrorCode.APP_REVIEW_REQUIRED
+        res != null && containsAppReviewChallenge(body) -> ErrorCode.CAPTCHA_DETECTED
         res != null && res.code != 200 -> ErrorCode.HTTP_BLOCKED
         res != null && body.isNotBlank() -> ErrorCode.SEARCH_SELECTOR_EMPTY
         else -> ErrorCode.SEARCH_EMPTY
@@ -373,18 +373,18 @@ class DebugService {
                     val errorMsg = if (res != null) {
                         when {
                             containsAppReviewChallenge(res.body) && res.body.contains("turnstile", ignoreCase = true) ->
-                                "Cloudflare Turnstile 验证页，需浏览器/App 复核"
+                                "Cloudflare Turnstile 验证页"
                             containsAppReviewChallenge(res.body) && res.body.contains("Just a moment", ignoreCase = true) ->
-                                "Cloudflare challenge 页面，需浏览器/App 复核"
+                                "Cloudflare challenge 页面"
                             containsAppReviewChallenge(res.body) ->
-                                "需要验证码，需浏览器/App 复核"
+                                "搜索返回验证码/人机验证页面"
                             res.code != 200 -> makeHttpError(res, "搜索")
                             else -> "搜索结果为空 (HTTP ${res.code}, 列表大小:0)"
                         }
                     } else "搜索结果为空"
                     val sErrorCode = selectSearchEmptyErrorCode(res).name
                     val sMeta = try { ErrorCodeRegistry.get(ErrorCode.valueOf(sErrorCode)) } catch (_: Exception) { null }
-                    val needsReview = sErrorCode == ErrorCode.APP_REVIEW_REQUIRED.name
+                    val needsReview = false
                     DebugStep(
                         phase = "search", status = "error",
                         request = reqInfo, response = resInfo,
@@ -575,13 +575,21 @@ class DebugService {
                     reviewReason = e.message
                 )
             } catch (e: Exception) {
+                val res = WebBook.lastResponse
+                val captchaCode = if (res != null && containsAppReviewChallenge(res.body ?: "")) {
+                    ErrorCode.CAPTCHA_DETECTED.name
+                } else null
+                val captchaMeta = captchaCode?.let { ErrorCodeRegistry.get(ErrorCode.valueOf(it)) }
                 DebugStep(
                     phase = "detail", status = "error", mode = mode,
                     request = buildRequestInfo(),
-                    response = buildResponseInfo(WebBook.lastResponse),
+                    response = buildResponseInfo(res),
                     androidBackend = androidBackendFor(mode),
                     androidProbeUsed = androidProbeUsedFor(mode),
-                    error = "${e::class.simpleName}: ${e.message}"
+                    error = captchaMeta?.messageTemplate ?: "${e::class.simpleName}: ${e.message}",
+                    errorCode = captchaCode,
+                    subphase = captchaMeta?.subphase?.name?.lowercase(),
+                    forbiddenFixes = captchaMeta?.forbiddenFixes ?: emptyList()
                 )
             }
         }
@@ -618,13 +626,21 @@ class DebugService {
                     reviewReason = e.message
                 )
             } catch (e: Exception) {
+                val res = WebBook.lastResponse
+                val captchaCode = if (res != null && containsAppReviewChallenge(res.body ?: "")) {
+                    ErrorCode.CAPTCHA_DETECTED.name
+                } else null
+                val captchaMeta = captchaCode?.let { ErrorCodeRegistry.get(ErrorCode.valueOf(it)) }
                 DebugStep(
                     phase = "toc", status = "error", mode = mode,
                     request = buildRequestInfo(),
-                    response = buildResponseInfo(WebBook.lastResponse),
+                    response = buildResponseInfo(res),
                     androidBackend = androidBackendFor(mode),
                     androidProbeUsed = androidProbeUsedFor(mode),
-                    error = "${e::class.simpleName}: ${e.message}"
+                    error = captchaMeta?.messageTemplate ?: "${e::class.simpleName}: ${e.message}",
+                    errorCode = captchaCode,
+                    subphase = captchaMeta?.subphase?.name?.lowercase(),
+                    forbiddenFixes = captchaMeta?.forbiddenFixes ?: emptyList()
                 )
             }
         }
