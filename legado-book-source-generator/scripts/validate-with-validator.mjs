@@ -239,10 +239,6 @@ async function main() {
   const cookieFile = cookieArg ? cookieArg.split('=')[1] : null;
   const bookUrlArg = args.find(a => a.startsWith('--book-url='));
   const bookUrl = bookUrlArg ? bookUrlArg.split('=').slice(1).join('=') : null;
-  const bookUrlIdx = args.indexOf('--book-url');
-  const bookUrl = bookUrlIdx >= 0 ? args[bookUrlIdx + 1] : null;
-  const bookUrlArg = args.find(a => a.startsWith('--book-url='));
-  const bookUrl = bookUrlArg ? bookUrlArg.split('=')[1] : null;
   
   // 加载 Cookie
   if (cookieFile) {
