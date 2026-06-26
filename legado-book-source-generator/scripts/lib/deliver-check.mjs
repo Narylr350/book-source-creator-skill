@@ -10,10 +10,10 @@ import {
   ensureRuleCheckSourceFresh,
 } from "./facts.mjs";
 
-// deliver 失败的统一尾注：本 skill validator 等价于阅读 App，
+// deliver 失败的统一尾注：本 skill 的 validator 复现了阅读书源规则引擎的核心语义，
 // deliver 没通过 = 用户拿到此书源大概率用不了 = 必然返工。
 // 不能用"写总结/写表格"绕过交付门，必须修到 deliver 通过或停在 needs_app_review。
-const DELIVER_FAIL_TAIL = '\n\n⚠️ deliver 没通过 = 用户拿到此书源大概率用不了 = 必然返工。本 skill 的 validator 等价于阅读 App，不存在“validator 过不了但阅读能用”的中间地带。修到 deliver 通过，或停在 needs_app_review/validator_limitation 让用户知道限制。不要写总结表格替代交付。';
+const DELIVER_FAIL_TAIL = '\n\n⚠️ deliver 没通过 = 用户拿到此书源大概率用不了 = 必然返工。本 skill 的 validator 复现了阅读书源规则引擎的核心语义，不存在“validator 过不了但阅读能用”的中间地带。修到 deliver 通过，或停在 needs_app_review/validator_limitation 让用户知道限制。不要写总结表格替代交付。';
 function deliverFail(message) {
   return fail(message + DELIVER_FAIL_TAIL);
 }

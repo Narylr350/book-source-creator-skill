@@ -2081,11 +2081,9 @@ describe("bsg workflow user-action gates", () => {
     assert.deepEqual(matrix.overall.blockers, ["content:vip"]);
   });
 
-  it("halts on anti-bot trigger and asks user to login instead of looping repair", async () => {
-    // ciweimao 类反爬站场景：search 端点被弹到 man_machine_verify。
-    // server-side 反爬，任何客户端重试都计入同一 IP 累积 → IP 风控。
-    // 修复后：检测到反爬触发立即停，未登录时向用户求助登录(登录可能解除反爬)，
-    // 而非直接交付 needs_app_review、也非跑 android 验证(android 同样被 verify)。
+  it("anti-bot needs_app_review falls through to android_probe_not_used when WebView source and adb available", async () => {
+    // anti-bot 熔断逻辑已移除（1098d0f）。needs_app_review 不再从反爬收敛为 anti_bot_login_required，
+    // 而是落到 android 检查：WebView 源 + adb 在线 + 未用 Probe → android_probe_not_used。
     const adbEnv = {
       ...process.env,
       BSG_TEST_ADB_DEVICES_OUTPUT: "List of devices attached\nABC123\tdevice\n",
@@ -2113,30 +2111,19 @@ describe("bsg workflow user-action gates", () => {
     });
 
     const result = await runBsgBlocked(["record-validation", "--run", runDir, "--status", "needs_app_review"], { env: adbEnv });
-    const state = JSON.parse(await fs.readFile(path.join(runDir, "run-state.json"), "utf8"));
 
     assert.equal(result.status, "blocked");
-    assert.equal(result.blockedBy, "anti_bot_login_required");
-    assert.equal(result.warningBy, "anti_bot_triggered");
-    // 反爬触发该向用户求助登录(登录可能解除)，而非直接交付或跑 android 验证
-    assert.equal(result.requiredUserAction, "login_required");
-    assert.ok(state.pendingUserAction);
-    assert.equal(state.pendingUserAction.type, "login_required");
-    // 禁止无效重试(换 mode/keyword/重跑 = IP 累积)，但登录是合法路径
-    assert.ok(result.forbiddenActions.includes("rerun_validator"));
-    assert.ok(result.forbiddenActions.includes("switch_mode_retry"));
-    assert.ok(result.forbiddenActions.includes("switch_keyword_retry"));
-    // 消息引导登录
-    assert.match(result.message, /登录/);
-    // 不进 repair 循环
-    assert.notEqual(state.phases.generate.status, "in_progress");
+    assert.equal(result.blockedBy, "android_probe_not_used");
+    assert.equal(result.shouldRetry, true);
+    assert.equal(result.nextAction, "setup_android_probe_and_retry");
+    assert.ok(result.forbiddenActions.includes("deliver"));
+    assert.ok(result.forbiddenActions.includes("validate_http"));
+    assert.match(result.nextCommand, /android --run/);
   });
 
-  it("halts on anti-bot HTTP_BLOCKED+needsAppReview and asks user to login", async () => {
-    // 黑盒实测 ciweimao 第二轮：search 命中反爬被弹到 man_machine_verify，
-    // validator 给 errorCode=HTTP_BLOCKED + needsAppReview:true (不是 APP_REVIEW_REQUIRED)。
-    // 修复前：record-validation 走 android_probe_not_used 路径要求"跑 Android"，Android 同样被墙，循环。
-    // 修复后：HTTP_BLOCKED+needsAppReview 也触发熔断，未登录时向用户求助登录。
+  it("anti-bot HTTP_BLOCKED+needsAppReview falls through to android_probe_not_used when WebView source and adb available", async () => {
+    // anti-bot 熔断逻辑已移除（1098d0f）。HTTP_BLOCKED+needsAppReview 不再收敛为 anti_bot_login_required，
+    // 而是落到 android 检查：WebView 源 + adb 在线 + 未用 Probe → android_probe_not_used。
     const adbEnv = {
       ...process.env,
       BSG_TEST_ADB_DEVICES_OUTPUT: "List of devices attached\nABC123\tdevice\n",
@@ -2163,15 +2150,14 @@ describe("bsg workflow user-action gates", () => {
     });
 
     const result = await runBsgBlocked(["record-validation", "--run", runDir, "--status", "failed"], { env: adbEnv });
-    const state = JSON.parse(await fs.readFile(path.join(runDir, "run-state.json"), "utf8"));
 
     assert.equal(result.status, "blocked");
-    assert.equal(result.blockedBy, "anti_bot_login_required");
-    assert.equal(result.warningBy, "anti_bot_triggered");
-    assert.equal(result.requiredUserAction, "login_required");
-    assert.ok(state.pendingUserAction);
-    assert.ok(result.forbiddenActions?.includes("rerun_validator"));
-    assert.ok(result.forbiddenActions?.includes("switch_mode_retry"));
+    assert.equal(result.blockedBy, "android_probe_not_used");
+    assert.equal(result.shouldRetry, true);
+    assert.equal(result.nextAction, "setup_android_probe_and_retry");
+    assert.ok(result.forbiddenActions.includes("deliver"));
+    assert.ok(result.forbiddenActions.includes("validate_http"));
+    assert.match(result.nextCommand, /android --run/);
   });
 
   it("anti-bot failure stays failed, does not converge to needs_app_review", async () => {
@@ -2793,6 +2779,7 @@ describe("advance response fields", () => {
         BSG_TEST_ADB_DEVICES_OUTPUT: "List of devices attached\nemulator-5554\tdevice\n",
       },
     });
+    await fs.writeFile(path.join(runDir, "analysis.md"), "# test\n", "utf8");
     await writeValidSource(tmpDir);
 
     const result = await runBsg(["android", "--run", runDir], {
@@ -2904,6 +2891,7 @@ describe("advance response fields", () => {
       env: { ...process.env, BSG_TEST_ADB_DEVICES_OUTPUT: "List of devices attached\nemulator-5554\tdevice\n" },
     });
     await advanceToGenerate(tmpDir, runDir);
+    await fs.writeFile(path.join(runDir, "analysis.md"), "# test\n", "utf8");
     await writeValidSource(tmpDir);
     await runBsg(["advance", "--run", runDir]);
     await writeGeneratedValidatorReport(runDir, {
@@ -3002,6 +2990,7 @@ describe("advance response fields", () => {
     const tmpDir = await makeTmpDir();
     const runDir = await initRun(tmpDir);
     await advanceToGenerate(tmpDir, runDir);
+    await fs.writeFile(path.join(runDir, "analysis.md"), "# example-com\n", "utf8");
     await writeValidSource(tmpDir);
     await runBsg(["advance", "--run", runDir]);
 

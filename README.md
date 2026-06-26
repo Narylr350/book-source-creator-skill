@@ -6,7 +6,7 @@
 
 ## 这个项目是什么
 
-一个让 AI 自主生成和验证书源的 skill。核心是 validator——阅读 App 书源引擎的 JVM 移植。书源通过 validator + deliver，导入即用，不会返工。
+一个让 AI 自主生成和验证书源的 skill。核心是 validator——基于阅读书源规则语义的 JVM/Kotlin 兼容验证器，实现了规则解析、JS/Rhino 执行、CSS/JSONPath/XPath/Regex 提取和主要验证链路。书源通过 validator + deliver 代表规则层具有较强参考价值，纯 HTTP/SSR 站点通常导入即用。
 
 ## 免责声明
 
@@ -136,7 +136,7 @@ npm run audit -- .\outputs\example-com\book-source.json        # 静态审计
 
 ```text
 legado-book-source-generator/    # AI Skill 目录（SKILL.md + references + scripts + tests + validator）
-validator/                       # validator 源码（Kotlin/Gradle，阅读引擎 JVM 移植）
+validator/                       # validator 源码（Kotlin/Gradle）
 android-probe/                   # Android WebView Probe 源码（Kotlin/Gradle）
 docs/SETUP.md                    # 环境配置详解
 docs/webview-behavior-matrix.md  # WebView 行为矩阵（App vs Probe vs Validator 能力对比）
@@ -151,4 +151,4 @@ docs/legado-source-behavior.md  # 阅读源码已确认的行为边界
 
 - 书源长期可用性取决于目标站点是否改版、加反爬或下线。validator passed 也建议 App 端实测。
 - 登录态书源涉及 Cookie/Token，注意隐私安全，不要分发含凭据的书源文件。
-- 本项目不绕过验证码、付费墙、Cloudflare、DRM。这些场景标记 `needs_app_review`，需用户自行判断。
+- 本项目不绕过验证码、付费墙、Cloudflare、DRM。这些场景标记为 `failed` 或 `degraded`，不是 `needs_app_review`。
