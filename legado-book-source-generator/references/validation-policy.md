@@ -22,8 +22,8 @@
 
 > 分级标签说明：`[source]` 来自 validator/阅读源码或代码强约束；`[blackbox]` 实测站点/链路观察；`[heuristic]` 启发式判断（有出口、可被用户确认放行）；`[action]` 操作命令。弱模型读到 `[heuristic]` 时不应当作铁律。
 
-1. `[blackbox] [action]` **Cloudflare/Turnstile** — error 或 bodyPreview 含 "Cloudflare" / "Turnstile" / "challenge"。**任何客户端重试都计入同一 IP 累积，会触发 IP 风控。**见 `failure-diagnosis.md` 反爬段。
-2. `[blackbox] [action]` **登录/验证码** — 需要登录态或验证码。同上，不要换 mode/keyword 反复尝试。
+1. `[blackbox] [action]` **Cloudflare/Turnstile** — error 或 bodyPreview 含 "Cloudflare" / "Turnstile" / "challenge"。validator 等价于阅读 App，App 也会被 Cloudflare 拦。这是 `failed`，不是 `needs_app_review`。
+2. `[blackbox] [action]` **登录/验证码** — 需要登录态或验证码。App 同样会弹验证码。这是 `failed`，不是 `needs_app_review`。如果书源配了登录态（enabledCookieJar + loginUrl + header cookie 注入）但仍失败，检查登录 cookie 是否落在正确域、UA 是否导致重定向到错误子域。
 3. `[source] [action]` **WebView/App-only 验证失败** — Android 真机或模拟器可用但未用 Android Probe、Probe 断开、WebView 未渲染、或 WebView 后没有正文提取证据
 4. `[heuristic]` ~~**付费墙**~~ — **已降级为软警告**（不再硬阻塞）。`CONTENT_IS_VIP_LOCK_PAGE` 收敛为 `degraded` + `content:vip` 警告，免费/非 VIP 能力可交付。详见下方"VIP 边界"段。
 5. `[source]` **生成源含 WebView/WebJs 但未用 Android 验证** — 设备可用时必须用 `mode=android`；HTTP passed 不能作为可用结论

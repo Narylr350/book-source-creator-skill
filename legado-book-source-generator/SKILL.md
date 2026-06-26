@@ -81,7 +81,7 @@ node "<skill-dir>/scripts/bsg.mjs" deliver --run <run-dir>
 
 本 skill 的 validator 后端是阅读 App 书源引擎（webBook/analyzeRule/rhino）的 JVM 移植，不是另写一套半成品。**书源能通过 validator + deliver，几乎等价于在阅读 App 里可用。** 这是本 skill 的价值锚点：用户拿到 deliver 通过的书源，导入即用，不会返工。
 
-反过来：**绕过 deliver 交一个 `book-source.json` 文件，无论你已经验证了多少链路、写了多完整的总结表格，都视为未完成。** 用户拿到此书源大概率用不了，必然回来要求返工——你只是把返工成本转嫁给了用户，不是完成了任务。validator 已经等价于阅读 App，所以不存在"validator 过不了但阅读能用"的中间地带可以让你提前交差；过不了就是过不了，去修到过，或诚实地停在 `needs_app_review` / `validator_limitation` 让用户知道限制。
+反过来：**绕过 deliver 交一个 `book-source.json` 文件，无论你已经验证了多少链路、写了多完整的总结表格，都视为未完成。** 用户拿到此书源大概率用不了，必然回来要求返工——你只是把返工成本转嫁给了用户，不是完成了任务。validator 已经等价于阅读 App，所以不存在"validator 过不了但阅读能用"的中间地带可以让你提前交差；过不了就是过不了，去修到过，或诚实地停在 `validator_limitation`（validator 能力不足，如 sourceRegex 嗅探）。验证码/Cloudflare/付费墙不是 `needs_app_review`——App 同样会触发，这是 `failed` 或 `degraded`。
 
 判断你是否在偷懒的自检：如果你正准备"写个总结交付"而不是"运行 deliver"，停下来——你正在制造返工。
 

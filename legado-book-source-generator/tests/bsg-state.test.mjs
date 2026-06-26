@@ -2174,19 +2174,12 @@ describe("bsg workflow user-action gates", () => {
     assert.ok(result.forbiddenActions?.includes("switch_mode_retry"));
   });
 
-  it("converges anti-bot to needs_app_review when user already logged in", async () => {
-    // 已登录后反爬仍触发 = 真站点限制(登录也救不了),
-    // 不再 raise login_required 反复求助,直接收敛 needs_app_review 交付。
-    const adbEnv = {
-      ...process.env,
-      BSG_TEST_ADB_DEVICES_OUTPUT: "List of devices attached\nABC123\tdevice\n",
-    };
-    const runDir = await initRun(tmpDir, { env: adbEnv });
+  it("anti-bot failure stays failed, does not converge to needs_app_review", async () => {
+    const runDir = await initRun(tmpDir, { env: noDeviceEnv });
     await advanceToValidateWithWebViewSource(tmpDir, runDir);
-    // 模拟用户已登录
     await runBsg(["set-login-features", "--run", runDir, "--flags", JSON.stringify({ hasWebView: true, _loginVerified: true })]);
     await writeGeneratedValidatorReport(runDir, {
-      status: "needs_app_review",
+      status: "failed",
       mode: "http",
       phases: { search: "error" },
       summary: { resultCount: 0, firstBook: "", chapterCount: 0, contentLength: 0, contentPreview: "" },
@@ -2205,13 +2198,10 @@ describe("bsg workflow user-action gates", () => {
       ],
     });
 
-    const result = await runBsg(["record-validation", "--run", runDir, "--status", "needs_app_review"], { env: adbEnv });
-    const state = JSON.parse(await fs.readFile(path.join(runDir, "run-state.json"), "utf8"));
+    const result = await runBsg(["record-validation", "--run", runDir, "--status", "failed"], { env: noDeviceEnv });
 
-    // 已登录 → 不再 raise login_required，直接收敛
-    assert.equal(result.status, "needs_app_review");
-    assert.equal(result.warningBy, "anti_bot_triggered");
-    assert.equal(state.pendingUserAction, null);
+    assert.notEqual(result.status, "needs_app_review");
+    assert.notEqual(result.warningBy, "anti_bot_triggered");
   });
 
   it("intercepts WebViewNotSupportedException in http mode and suggests android mode", async () => {
