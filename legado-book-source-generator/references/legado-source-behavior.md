@@ -20,6 +20,10 @@
 
 反爬系统检查 UA 完整性是常见行为。AI 抄示例时容易漏掉 `(KHTML, like Gecko) Chrome/... Safari/...` 后半截，因为看起来"不重要"。
 
+## TLS 指纹
+
+部分站点（如刺猬猫）通过 TLS 握手特征（JA3）区分真实客户端和自动化工具。PC JVM 的 JSSE TLS 指纹与 Android BoringSSL 不同，会被识别为爬虫。validator 改用 curl（OpenSSL）发 HTTP 请求绕过此检测。书源规则不涉及 TLS——这是 validator 的运行环境问题，不是书源配置问题。
+
 ## 记录原则
 
 - 没有源码或实现证据的经验不写入本文件。

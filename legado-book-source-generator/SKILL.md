@@ -53,6 +53,7 @@ node "<skill-dir>/scripts/bsg.mjs" status --run <run-dir>
 
 - **UA 完整性**：书源 `header` 的 UA 必须完整（含引擎名+版本号）。截断的 UA 会被反爬识别。详见 `references/legado-source-behavior.md`。
 - **验证码与登录态**：验证码触发时，如果站点有登录功能，先走登录路径再重试验证。只有登录后仍被拦才判定为站点固有限制。搜索仍被阻塞时用 `validate --book-url <url>` 跳过搜索验证后续链路。详见 `references/policies.md`。
+- **TLS 指纹**：validator 用 curl 发 HTTP 请求（非 OkHttp），避免 PC JVM 的 TLS 指纹被反爬识别。详见 `references/legado-source-behavior.md`。
 
 ## Android / WebView 快速配方
 
