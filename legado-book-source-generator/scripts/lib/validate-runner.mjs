@@ -61,6 +61,7 @@ export function cmdValidate(args) {
 
   const keywordArg = parseArg(args, "--keyword");
   const modeArg = parseArg(args, "--mode");
+  const bookUrlArg = parseArg(args, "--book-url");
 
   // Read run state
   const statePath = path.join(runDir, "run-state.json");
@@ -120,6 +121,7 @@ export function cmdValidate(args) {
   if (!cookiePlan.ok) return fail(cookiePlan.error);
   let cmd = `node "${validatorScript}" "${bookSourcePath}" "${keyword}" ${mode} --output "${runDir}"`;
   if (cookiePlan.cookieFile) cmd += ` --cookie=${shellQuote(cookiePlan.cookieFile)}`;
+  if (bookUrlArg) cmd += ` --book-url=${shellQuote(bookUrlArg)}`;
 
   console.error(`验证中: ${bookSourcePath}`);
   console.error(`关键词: ${keyword}, mode: ${mode}`);

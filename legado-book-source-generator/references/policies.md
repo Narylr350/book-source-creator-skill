@@ -60,6 +60,16 @@
 - 一旦进入调试协作模式，必须先按 `references/debugging-collaboration.md` 选择对应故障模板，先索取该阶段最小证据包。
 - 在拿到当前阶段最小证据包之前，禁止把本地文件、历史输出或模型推断优先于用户当前 Legado App 内实际使用的规则与源码。
 
+## 验证码与登录态
+
+搜索/入口链路触发验证码（CAPTCHA）时，如果站点有登录功能，**登录态可能解除反爬限制**。很多站点对匿名搜索弹验证码，但登录后搜索正常。这不是绕过反爬——登录是站点提供的正常交互，登录后的 session 被站点视为可信用户。
+
+正确顺序：
+1. 检查 site-facts 的 `features.hasLogin`——如果有登录功能，先尝试登录路径
+2. 走 `android --run <dir> --setup` → 用户在 Probe 登录 → `--login-completed` → 重跑 validate
+3. 登录后仍弹验证码 → 确认是站点固有限制，按 `failed` 收敛
+4. 搜索仍被阻塞但 detail/toc/content 需要验证 → 用 `validate --book-url <url>` 跳过搜索直接测试后续链路
+
 ## 登录态丢失处理
 
 触发条件：当前操作中出现页面跳转到登录页、API 返回 401/403、或 Cookie 失效。

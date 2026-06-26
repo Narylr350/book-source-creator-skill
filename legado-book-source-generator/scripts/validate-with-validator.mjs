@@ -35,9 +35,10 @@ async function checkValidator() {
   }
 }
 
-async function runDebug(sourceJson, sourceUrl, keyword, mode = 'http', debugDir = null) {
+async function runDebug(sourceJson, sourceUrl, keyword, mode = 'http', debugDir = null, bookUrl = null) {
   const body = { sourceJson, sourceUrl, keyword, mode };
   if (debugDir) body.debugDir = debugDir;
+  if (bookUrl) body.bookUrl = bookUrl;
   const res = await fetch(`${VALIDATOR_URL}/api/debug/run`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -222,7 +223,7 @@ async function main() {
   const args = process.argv.slice(2);
   
   if (args.length < 2) {
-    console.error('用法: node validate-with-validator.mjs <source-json-file> <keyword> [http|browser|android] [--output {dir}] [--cookie=<file>]');
+    console.error('用法: node validate-with-validator.mjs <source-json-file> <keyword> [http|browser|android] [--output {dir}] [--cookie=<file>] [--book-url=<url>]');
     process.exit(1);
   }
   
@@ -236,6 +237,12 @@ async function main() {
   const outputDir = outputIdx >= 0 ? args[outputIdx + 1] : null;
   const cookieArg = args.find(a => a.startsWith('--cookie='));
   const cookieFile = cookieArg ? cookieArg.split('=')[1] : null;
+  const bookUrlArg = args.find(a => a.startsWith('--book-url='));
+  const bookUrl = bookUrlArg ? bookUrlArg.split('=').slice(1).join('=') : null;
+  const bookUrlIdx = args.indexOf('--book-url');
+  const bookUrl = bookUrlIdx >= 0 ? args[bookUrlIdx + 1] : null;
+  const bookUrlArg = args.find(a => a.startsWith('--book-url='));
+  const bookUrl = bookUrlArg ? bookUrlArg.split('=')[1] : null;
   
   // 加载 Cookie
   if (cookieFile) {
@@ -300,7 +307,7 @@ async function main() {
 
   // 调用 validator
   console.error(`验证中: ${sourceUrl} keyword="${keyword}" mode=${mode}`);
-  const result = await runDebug(sourceJson, sourceUrl, keyword, mode, debugDir);
+  const result = await runDebug(sourceJson, sourceUrl, keyword, mode, debugDir, bookUrl);
   
   // 判定状态
   const { status, reason, phase } = determineStatus(result);

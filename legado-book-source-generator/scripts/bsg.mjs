@@ -66,7 +66,7 @@ function printUsage() {
       "  node \"<skill-dir>/scripts/bsg.mjs\" source inspect|set --run {dir}",
       "  node \"<skill-dir>/scripts/bsg.mjs\" android-status",
       "  node \"<skill-dir>/scripts/bsg.mjs\" login [--run <dir> | --url <login-url>] [--keep-cookies]",
-      "  node \"<skill-dir>/scripts/bsg.mjs\" validate --run {dir} [--keyword <kw>] [--mode http|browser|android]",
+      "  node \"<skill-dir>/scripts/bsg.mjs\" validate --run {dir} [--keyword <kw>] [--mode http|browser|android] [--book-url <url>]",
       "  node \"<skill-dir>/scripts/bsg.mjs\" validator-start [--background]",
       "  node \"<skill-dir>/scripts/bsg.mjs\" validator-stop",
     ].join("\n")

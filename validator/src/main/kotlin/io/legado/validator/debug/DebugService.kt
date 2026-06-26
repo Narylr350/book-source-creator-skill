@@ -206,7 +206,7 @@ class DebugService {
 
     private var debugDir: java.io.File? = null
 
-    suspend fun runFull(source: BookSource, keyword: String, mode: String = "http", debugDir: java.io.File? = null): List<DebugStep> {
+    suspend fun runFull(source: BookSource, keyword: String, mode: String = "http", debugDir: java.io.File? = null, bookUrl: String? = null): List<DebugStep> {
         this.debugDir = debugDir
         steps.clear()
         val book = Book()
@@ -214,24 +214,31 @@ class DebugService {
         val sourceDomain = try { java.net.URI(source.bookSourceUrl).toURL().host.lowercase() } catch (_: Exception) { "" }
         val sessionMode = if (sourceDomain.isNotEmpty() && io.legado.validator.web.CookieStore.getCookie(sourceDomain) != null) "authenticated" else "anonymous"
 
-        // Step 1: Search
-        val searchStep = (when (mode) {
-            "android" -> runSearchAndroid(source, keyword)
-            "browser" -> runSearchBrowser(source, keyword)
-            else -> runSearch(source, keyword) // "http"
-        }).withWarnings(warnings).copy(sessionMode = sessionMode)
-        steps.add(searchStep)
-        listener?.invoke(searchStep)
-        if (searchStep.status == "error") return steps.toList()
+        if (bookUrl != null && bookUrl.isNotBlank()) {
+            book.bookUrl = bookUrl
+            book.tocUrl = bookUrl
+        } else {
+            // Step 1: Search
+            val searchStep = (when (mode) {
+                "android" -> runSearchAndroid(source, keyword)
+                "browser" -> runSearchBrowser(source, keyword)
+                else -> runSearch(source, keyword) // "http"
+            }).withWarnings(warnings).copy(sessionMode = sessionMode)
+            steps.add(searchStep)
+            listener?.invoke(searchStep)
+            if (searchStep.status == "error") return steps.toList()
 
-        // 后续步骤继承 search 的实际模式
-        val actualMode = searchStep.mode
+            // 后续步骤继承 search 的实际模式
+            val actualMode = searchStep.mode
 
-        val firstBook = searchStep.extracted["firstBook"] as? SearchBook ?: return steps.toList()
-        book.bookUrl = firstBook.bookUrl
-        book.name = firstBook.name
-        book.author = firstBook.author
-        book.tocUrl = firstBook.bookUrl
+            val firstBook = searchStep.extracted["firstBook"] as? SearchBook ?: return steps.toList()
+            book.bookUrl = firstBook.bookUrl
+            book.name = firstBook.name
+            book.author = firstBook.author
+            book.tocUrl = firstBook.bookUrl
+        }
+
+        val actualMode = mode
 
         // Step 2: Detail
         val detailStep = runDetail(source, book, actualMode).withWarnings(warnings).copy(sessionMode = sessionMode)
