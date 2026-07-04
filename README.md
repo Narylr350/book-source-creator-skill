@@ -128,6 +128,12 @@ http://localhost:1111
 * [docs/SETUP.md](docs/SETUP.md)
 * [legado-book-source-generator/references/android-probe-guide.md](legado-book-source-generator/references/android-probe-guide.md)
 
+## 需要 Browser MCP / 浏览器访问能力吗？
+
+大多数普通网站不需要。
+
+如果 AI 当前没有浏览器工具（如 Browser MCP 未配置、当前 AI 客户端不支持网页浏览），普通 HTTP 站点仍可尝试生成和验证。遇到必须浏览器渲染、登录 Cookie、复杂前端页面时，AI 会提示配置 Browser MCP、使用 Android Probe，或换用支持浏览器工具的 AI 客户端。
+
 ## 常见问题
 
 ### 这是书源仓库吗？
