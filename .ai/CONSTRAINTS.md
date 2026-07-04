@@ -12,6 +12,7 @@
 - validator 源码改动后必须 `./gradlew.bat jar` 并部署 jar 到 `legado-book-source-generator/validator/app/`
 - validator 和 Probe 的构建命令见 `.ai/VALIDATION.md`
 - 不提交 `docs/superpowers/`、临时文件、调试产物
+- `docs/compose/`、`docs/superpowers/` 是 ignored 历史计划材料，不作为当前行为事实源；当前事实以源码、测试、`SKILL.md`、`references/` 和 `.ai/` 为准
 
 ## 部署规则
 

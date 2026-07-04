@@ -115,7 +115,7 @@ Android Probe 渲染后，WebView 的 Set-Cookie 会自动回存到本地 Cookie
 
 - Cookie 只用于本地验证，不会写入 book-source.json。
 - 不要把 Cookie、token、登录头提交到仓库或发给别人。
-- 匿名验证通过但存在 loginUrl、enabledCookieJar、Authorization、webJs 或 webView 时，状态应为 anonymous_candidate，不能标可用。
+- 匿名验证通过但存在 loginUrl、enabledCookieJar 或 Authorization 时，状态应为 anonymous_candidate，不能标可用。webJs / webView 只说明渲染或验证路径，不等于登录态。
 
 ## 停止服务
 
@@ -135,7 +135,7 @@ Android Probe 渲染后，WebView 的 Set-Cookie 会自动回存到本地 Cookie
 - validator 已支持通过 Android Probe 调用真实 Android WebView 复核部分 webView:true / webJs 场景，但需要已连接的 Android 设备或模拟器。
 - Android Probe 通过只代表该设备 WebView 环境下通过，不等于阅读 App 100% 通过。
 - validator Cookie 支持本地持久化（`validator-cookies.json`），重启不丢失；Android Probe 渲染后自动回存 Set-Cookie。
-- anonymous_candidate 不是可用通过，只表示匿名链路可作为候选，仍需登录态或 App/WebView 复核。
+- anonymous_candidate 不是可用通过，只表示匿名链路可作为候选，仍需登录态或 App 复核。
 - Cloudflare、验证码、付费墙、会员权限、DRM、强风控等访问控制不会也不应被绕过；具体状态以 record-validation / capability-matrix 为准，不能手工改写成需复核。
 - validator passed 只代表当前技术链路跑通，不代表质量通过、长期可用、合法可用或阅读体验完整。
 - 多章节 URL 为空、不可区分、全部指向同一全文页、伪章节等情况应标记 degraded。

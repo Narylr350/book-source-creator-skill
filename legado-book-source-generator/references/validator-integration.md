@@ -214,7 +214,7 @@ Validator 返回结构化错误码（`DebugStep.errorCode`），每个 code 绑�
 
 | 状态 | 含义 | Skill 动作 |
 |------|------|-----------|
-| `passed` | Android mode 全链路 success + 无登录态特征 | 交付书源 |
+| `passed` | validator 全链路 success + 无登录态特征 | 进入 `record-validation`；交付前仍受 Android/登录态/WebView 门禁约束 |
 | `anonymous_candidate` | 匿名全链路 success，但站点有 loginUrl/enabledCookieJar/Authorization | 不能标可用，需登录态复核 |
 | `failed` | 某阶段 error，有可修证据（含 errorCode） | AI 根据 allowedFixes 自动回修 |
 | `needs_app_review` | validator 无法自动确认，且 `record-validation` 已收敛为需 App 实测的硬边界 | 停止自动修，标记需 App 复核 |
@@ -271,7 +271,7 @@ Probe 登录后的报告必须有登录态证据：非 `anonymous` 的 `sessionM
 
 - 登录页：需要登录态，优先走 Android Probe 登录。
 - VIP/付费页：可能只是当前账号没有订阅/付费权限；记录为 `content:vip` 警告并收敛到 `degraded`，不能宣称 VIP 支持或 full pass。
-- 验证码页：不能自动绕过，记录 blocker 或走用户/App 复核。
+- 验证码页：不能自动绕过，记录 blocker 或走用户/App 复核；这不等于手工改成 `needs_app_review`，最终状态仍以 `record-validation` 为准。
 
 这些边界不能回到 generate 乱改 `book-source.json`。登录页、验证码页仍是阻塞；VIP/付费页是可交付警告，最终说明必须按 matrix 写清限制。
 

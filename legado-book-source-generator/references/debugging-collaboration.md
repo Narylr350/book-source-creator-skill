@@ -11,7 +11,6 @@
 - 仅在以下情况进入调试模式：
   - `record-validation` 返回 `needs_app_review`、`validator_limitation` 或 `failed_unresolved`
   - `record-validation` 返回登录、Android、WebView、付费、验证码相关 `requiredUserAction`
-  - validator 标记 `failed_unresolved`（同一错误连续 5 次未修复）
   - 用户反馈"书源用不了了"
   - 导入失败
   - 搜索、详情、目录、正文任一链路失效
