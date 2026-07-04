@@ -59,18 +59,3 @@
 3. 跑 validator 构建或测试，确认 JVM validator 与 README 描述的部署路径一致。
 4. 跑 Android Probe 构建，确认 APK 仍可作为 release 包内置探针。
 5. 检查 release 包结构，确认 `legado-book-source-generator`、validator、Probe、docs 和样例引用没有断链。
-6. 用 ciweimao 或其他反爬站点跑一轮完整黑盒，验证 curl HTTP + CAPTCHA_DETECTED + --book-url 链路。
-7. 检查 `legado-source-behavior.md` 和 `webview-behavior-matrix.md` 是否与最新验证器行为一致。
-
-## v2.0.0 黑盒实测关键结论
-
-以下已写入对应文档和代码，在此作为长期参考：
-
-- **TLS 指纹检测**：ciweimao 通过 JA3 指纹检测 PC JVM 的 JSSE → validator HTTP 改用 curl (OpenSSL) 绕过。
-- **`needs_app_review` 收紧**：验证码/反爬是 `failed`，不是 `needs_app_review`。`needs_app_review` 仅用于 validator 能力不足（sourceRegex 等）。
-- **搜索验证码 → `--book-url`**：搜索被验证码阻塞时，用 `--book-url` 跳过搜索直接验证 detail/toc/content。
-- **`CAPTCHA_DETECTED` errorCode**：搜索/详情/目录阶段验证码不再走 `APP_REVIEW_REQUIRED` 兜底。
-- **features 推导**：`site-facts.json` 的 `features` 区（hasLogin/hasVip/hasCaptcha/hasCloudflare/isAppRequired）现在被 `deriveAssessmentFromFacts` 读取。
-- **deliver 重同步 loginFeatures**：deliver 时从 book-source.json 重新同步 loginFeatures，不再用评估阶段的过时状态。
-- **UA 完整性**：截断的 UA 会被反爬识别。文档已记录完整 UA 模板。
-- **validator ≈ 阅读 App 实测验证**：通过阅读 App 的 WebSocket debug API 远程触发搜索，对比 validator 结果，确认两者在有效登录态下行为一致。
