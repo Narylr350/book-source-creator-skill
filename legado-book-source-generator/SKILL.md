@@ -86,9 +86,9 @@ node "<skill-dir>/scripts/bsg.mjs" deliver --run <run-dir>
 
 **0. `bsg.mjs deliver` 返回 ok 是任务完成的唯一标志。没有第三种状态。**
 
-本 skill 的 validator 是基于阅读书源规则语义的 JVM/Kotlin 兼容验证器，实现了书源规则解析、JS/Rhino 执行、CSS/JSONPath/XPath/Regex 提取，以及 search → detail → toc → content 的主要验证链路。**书源通过 validator + deliver 代表规则层具有较强参考价值；纯 HTTP/SSR 站点通常可直接导入使用。** 涉及 Android WebView、登录态、CookieJar 持久化、付费/VIP、验证码、Cloudflare 的站点，需按报告降级或 App 端复核。
+本 skill 的 validator 是基于阅读书源规则语义的 JVM/Kotlin 兼容验证器，实现了书源规则解析、JS/Rhino 执行、CSS/JSONPath/XPath/Regex 提取，以及 search → detail → toc → content 的主要验证链路。**书源通过 validator + record-validation + deliver 代表规则层具有较强参考价值；纯 HTTP/SSR 站点通常可直接导入使用。** 涉及 Android WebView、登录态、CookieJar 持久化、付费/VIP、验证码、Cloudflare 的站点，必须以 `record-validation` 归一化后的状态和 `capability-matrix.json` 为准，不能由 AI 摘要自行改结论。
 
-反过来：**绕过 deliver 交一个 `book-source.json` 文件，无论你已经验证了多少链路、写了多完整的总结表格，都视为未完成。** 用户拿到此书源大概率用不了，必然回来要求返工——你只是把返工成本转嫁给了用户，不是完成了任务。validator 复现了阅读书源规则引擎的核心语义，不存在"validator 过不了但阅读能用"的中间地带让你提前交差；过不了就是过不了，去修到过，或诚实地停在 `needs_app_review`（匿名登录站无登录态、WebView 页面无可用 Android 设备）或 `validator_limitation`（WebView 不可用等 validator 无法等价复现的场景）。验证码/Cloudflare/付费墙/规则错误不是 `needs_app_review`，这是 `failed` 或 `degraded`。
+反过来：**绕过 deliver 交一个 `book-source.json` 文件，无论你已经验证了多少链路、写了多完整的总结表格，都视为未完成。** 用户拿到此书源大概率用不了，必然回来要求返工——你只是把返工成本转嫁给了用户，不是完成了任务。validator 复现了阅读书源规则引擎的核心语义，不存在"validator 过不了但阅读能用"的中间地带让你提前交差；过不了就是过不了，去修到过，或按 `record-validation` 返回的状态诚实停下。`needs_app_review` 只用于 validator 无法自动确认、且脚本已收敛为需 App 实测的硬边界；验证码、Cloudflare、登录失败、付费/VIP、规则错误、选择器为空、URL 错误都不是 `needs_app_review`。VIP/付费由脚本按证据收敛为 `degraded` 或失败，不能写成 full pass。
 
 判断你是否在偷懒的自检：如果你正准备"写个总结交付"而不是"运行 deliver"，停下来——你正在制造返工。
 

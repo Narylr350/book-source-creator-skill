@@ -65,6 +65,7 @@ Android、模拟器、登录态、WebView/WebJs、入口反爬复核不要靠命
 
 - 优先稳定 API / JSON。其次稳定 HTML。
 - 若 Browser MCP 已证明章节页本身可稳定渲染正文，而不稳定点只在直连接口，优先考虑 `WebView`。
+- 若当前 AI 没有 Browser MCP，不得声称已观察 DOM、接口、Cookie 或渲染正文。HTTP/validator 足够时继续；必须浏览器证据时改用 Android Probe、让用户配置 Browser MCP，或明确停在能力缺口。
 - 只有更简单的规则无法表达站点行为时，才加 JS。
 - 生成时保持以下文档同步打开：
   - `references/official-rule-pack.json`
@@ -83,11 +84,11 @@ Android、模拟器、登录态、WebView/WebJs、入口反爬复核不要靠命
 
 ## 5. Validator 验证
 
-生成 `book-source.json` 后，必须用 `bsg.mjs validate --run runs/<slug>` 跑真实链路验证，自动写入 `validator-report.json`。重试次数和状态判定由 `bsg.mjs record-validation` 强制管理；`record-validation` 不接受手写 report 或外部 report 路径。
+生成 `book-source.json` 后，必须用 `bsg.mjs validate --run runs/<slug>` 跑真实链路验证，自动写入 `validator-report.json`。重试次数和状态判定由 `bsg.mjs record-validation` 强制管理；`record-validation` 不接受手写 report 或外部 report 路径，也不是摘要工具。它是从真实 report 到最终状态、能力矩阵、修复上下文的唯一收敛门。
 
 PC HTTP / Browser 验证是开发辅助，不是最终交付事实。`record-validation` 看到非 Android `passed` 时，会先要求确认 Android 真机或模拟器：有设备就运行 `android --run <run-dir>`，没有设备必须让用户明确确认后才降级记录，不能宣称 full pass。
 
-`record-validation` 会生成 `capability-matrix.json`。最终交付状态只从 matrix、`rule-check.json` 和 run-state 推导；不要把局部链路成功写成 full pass。
+`record-validation` 会生成 `capability-matrix.json`。最终交付状态只从 matrix、`rule-check.json` 和 run-state 推导；不要把局部链路成功写成 full pass。`deliver` 是最终审计，不是补写总结；缺产物、产物过期或状态不一致时按它返回的 `nextCommand` / `correctiveAction` 修。
 
 **CSR/WebView 边界**：遇到正文可能是 CSR/WebView 时，先读 `references/android-probe-guide.md`，再运行 `android --run <run-dir>`。没有 Android 真机或模拟器时不强制阻塞，但 HTTP/browser 通过只能由 `record-validation` 降级为 `validator_limitation`，交付说明必须标明正文 App/WebView 可靠性未知。
 
@@ -104,7 +105,9 @@ PC HTTP / Browser 验证是开发辅助，不是最终交付事实。`record-val
 
 只有以下情况才进入人工/App 复核：
 - `record-validation` 收敛为 `needs_app_review`
-- validator 标记 `validator_limitation`
-- validator 标记 `failed_unresolved`（收敛失败）
+- `record-validation` 收敛为 `validator_limitation`
+- `record-validation` 收敛为 `failed_unresolved`（收敛失败）
+
+`needs_app_review` 不是验证码、Cloudflare、登录失败、付费墙或规则错误的兜底标签。这些情况必须按 validator errorCode 和 `record-validation` 的 `blockedBy` / `correctiveAction` 处理。
 
 使用 `references/debugging-collaboration.md`。

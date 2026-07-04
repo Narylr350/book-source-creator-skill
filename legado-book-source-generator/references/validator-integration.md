@@ -217,9 +217,11 @@ Validator 返回结构化错误码（`DebugStep.errorCode`），每个 code 绑�
 | `passed` | Android mode 全链路 success + 无登录态特征 | 交付书源 |
 | `anonymous_candidate` | 匿名全链路 success，但站点有 loginUrl/enabledCookieJar/Authorization | 不能标可用，需登录态复核 |
 | `failed` | 某阶段 error，有可修证据（含 errorCode） | AI 根据 allowedFixes 自动回修 |
-| `needs_app_review` | validator 能力限制（如 sourceRegex 嗅探），无法自动验证 | 停止自动修，标记需复核 |
-| `validator_limitation` | validator 不支持的规则能力 | validator 无法验证该能力 |
+| `needs_app_review` | validator 无法自动确认，且 `record-validation` 已收敛为需 App 实测的硬边界 | 停止自动修，标记需 App 复核 |
+| `validator_limitation` | validator 不支持的规则能力，或无 Android 设备导致 WebView 正文无法等价验证 | validator 无法验证该能力 |
 | `failed_unresolved` | 同一错误签名连续 5 次未修复 | 收敛失败，需人工检查 |
+
+`needs_app_review` 不是兜底状态。验证码、Cloudflare、登录失败、VIP/付费页、选择器为空、URL 拼错、正文提取污染、规则字段缺失等都有更具体的 errorCode、`blockedBy` 或 `correctiveAction`，不能手工改写成 `needs_app_review`。最终状态必须来自 `record-validation`，不能来自 AI 总结。
 
 ## BSG 记录门禁
 
@@ -273,7 +275,7 @@ Probe 登录后的报告必须有登录态证据：非 `anonymous` 的 `sessionM
 
 这些边界不能回到 generate 乱改 `book-source.json`。登录页、验证码页仍是阻塞；VIP/付费页是可交付警告，最终说明必须按 matrix 写清限制。
 
-`deliver` 没有 `record-validation` 状态会拒绝交付。不要手工伪造 `validator-report.json`、`validator-summary.md` 或 `capability-matrix.json`；`validator-report.json` 只能由 `validate-with-validator.mjs`（被 `bsg.mjs validate` 包装）生成，`validator-summary.md` 和 `capability-matrix.json` 只能由 `record-validation` 生成。`deliver` 同时要求 `rule-check.json` 已通过。
+`deliver` 没有 `record-validation` 状态会拒绝交付。不要手工伪造 `validator-report.json`、`validator-summary.md` 或 `capability-matrix.json`；`validator-report.json` 只能由 `validate-with-validator.mjs`（被 `bsg.mjs validate` 包装）生成，`validator-summary.md` 和 `capability-matrix.json` 只能由 `record-validation` 生成。`deliver` 同时要求 `rule-check.json` 已通过。它是最终审计门，不是让 AI 补写结论的摘要步骤。
 
 ## 判定逻辑（Validator 端）
 
@@ -379,7 +381,7 @@ if ((curl.exe -s --max-time 3 http://localhost:1111/api/sources 2>$null) -match 
 
 ## record-validation 前置条件
 
-`record-validation` 用来把真实 `validator-report.json` 收敛成状态、能力矩阵和修复上下文。`bsg.mjs run --run <run-dir>` 发现已有有效报告时也会自动执行这一步。
+`record-validation` 用来把真实 `validator-report.json` 收敛成状态、能力矩阵和修复上下文。它是逻辑门禁，不是报告摘要器；它会检查 report 来源、source hash、Android/WebView/登录态证据、规则错误和正文污染。`bsg.mjs run --run <run-dir>` 发现已有有效报告时也会自动执行这一步。
 
 工具箱顺序：
 

@@ -124,10 +124,10 @@ Android Probe 渲染后，WebView 的 Set-Cookie 会自动回存到本地 Cookie
 ## 结果状态说明
 
 - passed：validator 全链路通过（search→detail→toc→content）
-- anonymous_candidate：匿名验证通过，但站点存在登录态/WebView/Cookie/token 依赖，不能标可用，需登录态或 App/WebView 复核
+- anonymous_candidate：匿名验证通过，但站点存在登录态/Cookie/token 依赖，不能标可用，需登录态或 App 复核
 - degraded：技术链路通过但阅读体验降级（如章节 URL 不可区分）
 - validator_limitation：validator 不支持该能力，需 App/WebView 复核
-- needs_app_review：验证码、登录、Cloudflare、WebView、付费等需人工或 App 复核
+- needs_app_review：validator 无法自动确认且已由 record-validation 收敛为需 App 实测的硬边界；不是验证码、Cloudflare、登录失败、付费墙或规则错误的兜底标签
 - failed：AI 回修后仍未通过，需人工检查
 
 ## 当前已知限制
@@ -136,7 +136,7 @@ Android Probe 渲染后，WebView 的 Set-Cookie 会自动回存到本地 Cookie
 - Android Probe 通过只代表该设备 WebView 环境下通过，不等于阅读 App 100% 通过。
 - validator Cookie 支持本地持久化（`validator-cookies.json`），重启不丢失；Android Probe 渲染后自动回存 Set-Cookie。
 - anonymous_candidate 不是可用通过，只表示匿名链路可作为候选，仍需登录态或 App/WebView 复核。
-- Cloudflare、验证码、付费墙、会员权限、DRM、强风控等访问控制只能标记需复核，不会也不应被绕过。
+- Cloudflare、验证码、付费墙、会员权限、DRM、强风控等访问控制不会也不应被绕过；具体状态以 record-validation / capability-matrix 为准，不能手工改写成需复核。
 - validator passed 只代表当前技术链路跑通，不代表质量通过、长期可用、合法可用或阅读体验完整。
 - 多章节 URL 为空、不可区分、全部指向同一全文页、伪章节等情况应标记 degraded。
 
@@ -160,7 +160,7 @@ legado-book-source-generator\
 - 本项目只用于辅助分析用户有权访问的网站结构，并生成/验证书源规则。
 - 本项目不提供、不托管、不分发任何小说正文内容。
 - 本项目不提供绕过验证码、登录限制、付费墙、会员权限、DRM、反爬或访问控制的能力。
-- 对需要登录、验证码、Cloudflare、Android WebView、webJs、CookieJar、付费或 App-only 行为的站点，工具只能标记需复核，不能保证可用。
+- 对需要登录、验证码、Cloudflare、Android WebView、webJs、CookieJar、付费或 App-only 行为的站点，工具只能按 validator / record-validation 证据降级或阻塞，不能保证可用。
 - 使用者应自行确认目标站点的服务条款、版权状态、访问权限和当地法律法规。
 - 生成的书源仅供个人学习、调试和兼容性验证；不得用于侵权传播、批量抓取、商业分发或规避平台限制。
 - AI 生成结果可能错误；validator passed 只代表当前链路验证通过，不代表长期可用、合法可用或阅读体验完整。

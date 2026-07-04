@@ -15,7 +15,7 @@
 ## 不要做
 
 - **WebView 不解密**。正文 API 返回 AES-GCM 密文，页面 JS 自行解密后渲染到 DOM。书源只负责从 DOM 提取，不负责解密。不要分析加密算法。
-- **三层反爬是叠加的**：Cloudflare → 百度/360 验证 → Geetest 滑块。前两层 Cookie 能过，滑块必须人手。标 `needs_app_review`，不标 `passed`。
+- **三层反爬是叠加的**：Cloudflare → 百度/360 验证 → Geetest 滑块。前两层 Cookie 能过，滑块必须人手。按 validator / record-validation 证据收敛为 failed、degraded 或需 App 实测，不手工标 `passed`。
 - **不要反复 probe 同一站**。多次 Browser MCP + HTTP fetch 会触发风控封 IP。Cookie 持久化，首次探站后后续迭代直接注入。
 
 ## 登录优先级

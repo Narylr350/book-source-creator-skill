@@ -22,7 +22,7 @@
 
 - `bookSourceGroup`
 - `bookUrlPattern`
-- `header`
+- `header` — JSON 字符串形式的请求头；UA 完整性要求见 `legado-source-behavior.md`
 - `loginUrl`
 - `loginUi`
 - `loginCheckJs`
@@ -48,6 +48,7 @@
 - `chapterList`
 - `chapterName`
 - `chapterUrl`
+- `nextTocUrl` — 目录分页入口，返回下一页 URL 或 URL 数组；没有真实分页证据时不要编造
 
 ### `ruleContent`
 
@@ -59,6 +60,7 @@
 - 默认不启用发现：除非用户明确要求发现页，否则设定 `enabledExplore=false`，并且不生成 `exploreUrl` / `ruleExplore`。
 - 搜索、详情、目录、正文的规则字段命名必须和 Legado 源码保持一致。
 - 能用静态规则表达时，不要加 JS。
+- XPath、CSS、JSONPath、Regex 都要以 validator 实测命中为准；选择器语法不确定时先做局部验证，不要把浏览器控制台可用语法直接当成阅读规则语法。
 - 默认不要在 `bookSourceComment` 中写调试说明。
 - 只有用户明确要求保留限制说明，或进入故障回修阶段时，才考虑在 `bookSourceComment` 写入必要备注。
 

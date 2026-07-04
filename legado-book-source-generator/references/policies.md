@@ -32,11 +32,13 @@
 用户回复完成后，运行 `node "<skill-dir>/scripts/bsg.mjs" android --run <run-dir> --login-completed`。脚本会检查 Probe Cookie 和登录证据；adb 在线时 Browser Cookie 不能替代。
 
 **Browser MCP 提取流程:**
-1. 仅在 Android/Probe 不可用时使用。用户打开目标站点登录页，在 Browser MCP 中完成登录（账号密码/扫码）
+1. 仅在 Android/Probe 不可用且当前 AI 确实具备 Browser MCP 时使用。用户打开目标站点登录页，在 Browser MCP 中完成登录（账号密码/扫码）
 2. AI 通过 `browser_network_requests` 找到 API 请求的 Cookie 或 Authorization header（注意：HttpOnly cookie 无法通过 `document.cookie` 获取，必须从网络请求头提取）
 3. AI 将凭据保存为 `{"www.example.com": "cookie_string"}` JSON 格式；或保存为 `{"domain":"www.example.com","cookie":"cookie_string"}`
 4. 保存到 `runs/<site-slug>/cookies.json`
 5. 调用 `node "<skill-dir>/scripts/bsg.mjs" validate --run runs/<site-slug>`（自动检测 cookies.json）
+
+如果当前客户端没有 Browser MCP，停止浏览器取证分支。不要编造 DOM、接口、Cookie、Authorization header、渲染正文或登录状态；HTTP/validator 能继续的部分可继续，必须浏览器证据时改用 Android Probe、请用户配置 Browser MCP，或换用支持浏览器工具的 AI 客户端。
 
 ## 风险升级
 
@@ -46,11 +48,13 @@
 ## 实测优先
 
 - 如果 Browser MCP 与模型推断冲突，以实测为准，并写明修正原因。
+- 如果没有 Browser MCP 实测，不能把模型推断写成页面事实；只能写成待验证假设或能力缺口。
 
 ## WebView 回退
 
 - 如果正文接口带签名、返回密文，或阅读页只有 CSR 空壳，但 Browser MCP 已能稳定看到渲染后的正文，先按 `可生成但高风险` 处理，优先评估 WebView 方案。
 - 不能直接判 `不建议生成`。
+- 如果没有 Browser MCP 或 Android Probe 证据，不要声称 WebView 方案已被证明可行；只能说明需要渲染端复核。
 - 如果准备给出 `不建议生成`，必须先排除更低复杂度的回退路径，尤其是 WebView 和直接提取方案。参考 `examples/pattern-api-webview-auth/` 的 CSR + WebView 混合模式。
 
 ## 调试模式触发
