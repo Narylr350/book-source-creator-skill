@@ -2,7 +2,7 @@
 
 让 AI 帮你写 Legado（阅读 App）书源。
 
-给它一个小说网站地址，它会尝试分析网站结构，生成阅读可导入的 `book-source.json`，并在本地自动检查搜索、目录、正文等链路是否能跑通。
+给 AI 一个小说网站地址，它会尝试分析网站结构，生成阅读可导入的 `book-source.json`，并在本地自动检查搜索、目录、正文等链路是否能跑通。
 
 **这是一个给 Claude Code / Codex 等 AI 使用的“阅读书源生成 Skill”。**
 
@@ -23,7 +23,7 @@
 
 ## 快速开始
 
-到 GitHub Releases 下载最新压缩包：
+到 [GitHub Releases](https://github.com/Narylr350/book-source-creator-skill/releases) 下载最新压缩包：
 
 ```text
 legado-book-source-generator-*.zip
@@ -89,6 +89,7 @@ outputs/<网站名>/book-source.json
 * 不绕过验证码
 * 不绕过登录限制
 * 不绕过付费墙、会员权限、DRM
+* 不绕过 Cloudflare、强反爬或其他访问控制
 * 不保证站点长期可用
 * 不保证所有网站都能生成成功
 
@@ -118,15 +119,14 @@ http://localhost:1111
 
 需要时，AI 会提示。不需要自己研究模拟器怎么装，让 AI 检查当前环境，并让它尽量帮你完成 adb、模拟器或 Android Probe 的准备工作。
 
-如果不使用模拟器可能需要准备：
+如果不使用模拟器，可能需要准备：
 
 * Android 真机和一根能连接电脑的数据线
 
 详细说明见：
 
-```text
-docs/SETUP.md
-```
+* [docs/SETUP.md](docs/SETUP.md)
+* [legado-book-source-generator/references/android-probe-guide.md](legado-book-source-generator/references/android-probe-guide.md)
 
 ## 常见问题
 
@@ -169,23 +169,19 @@ docs/SETUP.md
 
 如果你只是想使用这个 Skill，建议先看：
 
-```text
-docs/SETUP.md
-```
+* [docs/SETUP.md](docs/SETUP.md)
 
-记录了运行环境、Java、validator、adb、Android 真机/模拟器、Android Probe 等配置说明。
+这里记录了运行环境、Java、validator、adb、Android 真机/模拟器、Android Probe 等配置说明。
 
 如果想了解底层行为边界，可以看：
 
-```text
-docs/webview-behavior-matrix.md
-docs/legado-source-behavior.md
-```
+* [docs/webview-behavior-matrix.md](docs/webview-behavior-matrix.md)
+* [docs/legado-source-behavior.md](docs/legado-source-behavior.md)
 
 其中：
 
-* `docs/webview-behavior-matrix.md`：对比阅读 App、Android Probe、Validator HTTP 模式在 WebView、Cookie、UA、TLS、sourceRegex 等行为上的差异。
-* `docs/legado-source-behavior.md`：记录已经从阅读源码或明确实现中确认过的书源规则行为边界。
+* [docs/webview-behavior-matrix.md](docs/webview-behavior-matrix.md)：对比阅读 App、Android Probe、Validator HTTP 模式在 WebView、Cookie、UA、TLS、sourceRegex 等行为上的差异。
+* [docs/legado-source-behavior.md](docs/legado-source-behavior.md)：记录已经从阅读源码或明确实现中确认过的书源规则行为边界。
 
 项目主要目录：
 
@@ -196,9 +192,17 @@ android-probe/                   # Android WebView 辅助验证源码
 docs/                            # 安装、架构和行为边界说明
 ```
 
+更多 AI Skill 入口和规则说明见：
+
+* [legado-book-source-generator/SKILL.md](legado-book-source-generator/SKILL.md)
+* [legado-book-source-generator/references/workflow.md](legado-book-source-generator/references/workflow.md)
+* [legado-book-source-generator/references/policies.md](legado-book-source-generator/references/policies.md)
+* [legado-book-source-generator/references/failure-diagnosis.md](legado-book-source-generator/references/failure-diagnosis.md)
+* [legado-book-source-generator/references/validator-integration.md](legado-book-source-generator/references/validator-integration.md)
+
 ## 提交问题
 
-如果 AI 已经明确判断目标站点因为验证码、登录限制、付费墙、Cloudflare、DRM、强反爬或站点访问限制而无法生成书源，这通常不是 Skill 的 bug，不建议提交“让这个站点可用”的 issue。
+如果 AI 已经明确判断目标站点因为验证码、登录限制、付费墙、Cloudflare、DRM、强反爬或站点访问限制而无法生成书源，这通常不是 Skill 的 bug。请不要提交“帮我绕过限制 / 让这个站点可用”这类 issue。
 
 如果你认为 AI 判断错了，或者工具给出的失败原因不清楚、前后矛盾、无法继续排查，可以提交 issue。
 
@@ -209,8 +213,8 @@ docs/                            # 安装、架构和行为边界说明
 * 失败时的提示
 * 生成过程里的 `runs/<网站名>/` 目录内容
 
+提交前请先检查并删除可能包含账号、Cookie、Token 或个人信息的内容。
 不要提交包含 Cookie、Token、账号凭据的文件。
-
 
 ## 免责声明
 
