@@ -42,32 +42,15 @@
 
 ## Tech Direction
 
-保持现有三层技术方向：
-
-- Node.js 负责 skill 工具箱、`bsg.mjs` 命令入口、状态收敛、静态审计和脚本测试。
-- Kotlin/JVM validator 负责贴近阅读书源规则语义的链路验证，包括 JS/Rhino、CSS、JSONPath、XPath、Regex 提取，以及 search/detail/toc/content 主要验证链路。
-- Android Probe 负责 WebView、WebJs、登录态、CookieJar、CSR 正文等更接近阅读 App 环境的自动化验证。
-
-不把 validator 改成纯 Node 实现；这会降低与阅读规则语义和 Android WebView 行为的贴近度。不把项目退化成纯文档/模板 skill；`record-validation` 和 `deliver` 是降低返工的核心门禁。
+详见 `.ai/TECH.md`。三层架构（Node.js CLI + Kotlin/JVM validator + Android Probe）。
 
 ## Constraints and Working Rules
 
-- 每次改动只动必要范围，匹配既有风格；不顺手重构无关代码。
-- 结论强度必须匹配证据强度；源码和真实工具输出优先于推理。
-- `bsg.mjs deliver --run <run-dir>` 返回 ok 是书源生成任务完成的唯一最终标志。
-- 修改 `book-source.json` 后必须重新通过 rule-check 和 validator，不能复用旧报告、旧 matrix 或旧 deliver 结论。
-- 涉及 WebView、WebJs、登录态、CookieJar 或 App-only 行为时，Android/真机证据优先；没有 Android 环境时只能按工具收敛为降级或限制说明。
-- 验证环境需要 Node.js 18+、Java 17+/validator 运行环境；开发 validator 需要 Gradle/Kotlin；开发 Android Probe 需要 Android Gradle/SDK/adb。
-- 环境不可用时，AI 先尝试可逆修复；涉及凭据、管理员权限或全局安装时再提示用户。
-- 未接入外部执行层 skill。后续如需接入 TDD、diagnosing-bugs、webapp-testing 或 codebase-design，应先由用户明确确认，再更新本节。
+详见 `.ai/CONSTRAINTS.md`。核心：`deliver` 是唯一任务完成标志；validator 等价阅读 App；验证码/反爬是 `failed` 不是 `needs_app_review`。
 
 ## Validation
 
-- 脚本层：在 `legado-book-source-generator` 下运行 `npm test`。
-- validator：在 `validator` 下运行 Gradle 测试或构建，并确认 jar 部署到 skill 内置目录的流程仍成立。
-- Android Probe：在 `android-probe` 下构建 APK；有设备时用 `bsg.mjs android --run <run-dir>` 验证 WebView 链路。
-- 书源交付：必须经过 `record-validation` 收敛，再运行 `bsg.mjs deliver --run <run-dir>`。
-- 文档或 workflow-only 改动至少检查 Git diff，确认只影响预期文件。
+详见 `.ai/VALIDATION.md`。脚本测试、validator 构建测试、Probe 构建、书源交付验证流程、dry-run 规则校验。
 
 ## Seed Tasks
 
@@ -76,3 +59,18 @@
 3. 跑 validator 构建或测试，确认 JVM validator 与 README 描述的部署路径一致。
 4. 跑 Android Probe 构建，确认 APK 仍可作为 release 包内置探针。
 5. 检查 release 包结构，确认 `legado-book-source-generator`、validator、Probe、docs 和样例引用没有断链。
+6. 用 ciweimao 或其他反爬站点跑一轮完整黑盒，验证 curl HTTP + CAPTCHA_DETECTED + --book-url 链路。
+7. 检查 `legado-source-behavior.md` 和 `webview-behavior-matrix.md` 是否与最新验证器行为一致。
+
+## v2.0.0 黑盒实测关键结论
+
+以下已写入对应文档和代码，在此作为长期参考：
+
+- **TLS 指纹检测**：ciweimao 通过 JA3 指纹检测 PC JVM 的 JSSE → validator HTTP 改用 curl (OpenSSL) 绕过。
+- **`needs_app_review` 收紧**：验证码/反爬是 `failed`，不是 `needs_app_review`。`needs_app_review` 仅用于 validator 能力不足（sourceRegex 等）。
+- **搜索验证码 → `--book-url`**：搜索被验证码阻塞时，用 `--book-url` 跳过搜索直接验证 detail/toc/content。
+- **`CAPTCHA_DETECTED` errorCode**：搜索/详情/目录阶段验证码不再走 `APP_REVIEW_REQUIRED` 兜底。
+- **features 推导**：`site-facts.json` 的 `features` 区（hasLogin/hasVip/hasCaptcha/hasCloudflare/isAppRequired）现在被 `deriveAssessmentFromFacts` 读取。
+- **deliver 重同步 loginFeatures**：deliver 时从 book-source.json 重新同步 loginFeatures，不再用评估阶段的过时状态。
+- **UA 完整性**：截断的 UA 会被反爬识别。文档已记录完整 UA 模板。
+- **validator ≈ 阅读 App 实测验证**：通过阅读 App 的 WebSocket debug API 远程触发搜索，对比 validator 结果，确认两者在有效登录态下行为一致。
