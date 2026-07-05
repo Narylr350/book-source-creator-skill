@@ -3,7 +3,7 @@
 # 用法: powershell -ExecutionPolicy Bypass -File package-release.ps1
 
 param(
-    [string]$Version = "v2.0.0"
+    [string]$Version = "v2.1.0"
 )
 
 $ErrorActionPreference = "Stop"
