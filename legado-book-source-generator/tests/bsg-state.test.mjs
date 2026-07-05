@@ -2631,6 +2631,58 @@ describe("run response fields", () => {
     await fs.rm(tmpDir, { recursive: true, force: true });
   });
 
+  it("accepts user-confirmed Probe login when cookies changed after setup", async () => {
+    const tmpDir = await makeTmpDir();
+    const init = await runBsg(["init", "https://example.com", "--cwd", tmpDir]);
+
+    await runBsg(["android", "--run", init.runDir, "--setup"], { env: await fakeAndroidToolEnv(tmpDir) });
+    const stateAfterSetup = JSON.parse(await fs.readFile(path.join(init.runDir, "run-state.json"), "utf8"));
+    assert.equal(stateAfterSetup.pendingUserAction?.details?.probeCookieBaseline?.hasCookies, false);
+
+    const completed = await runBsg(["android", "--run", init.runDir, "--login-completed"], {
+      env: await fakeAndroidToolEnv(tmpDir, {
+        BSG_TEST_PROBE_COOKIE_CHECK: JSON.stringify({
+          hasCookies: true,
+          cookies: "opaque_session=after-login; route=mobile",
+          url: "https://example.com",
+        }),
+      }),
+    });
+    const stateAfterComplete = JSON.parse(await fs.readFile(path.join(init.runDir, "run-state.json"), "utf8"));
+    const stateText = JSON.stringify(stateAfterComplete);
+
+    assert.equal(completed.resolved, "login_required");
+    assert.equal(completed.probeCookieEvidence.hasLoginEvidence, false);
+    assert.equal(stateAfterComplete.loginFeatures._loginMethod, "probe_cookie_delta");
+    assert.equal(stateAfterComplete.loginFeatures._loginEvidence.type, "cookie_delta_user_confirmed");
+    assert.doesNotMatch(stateText, /after-login|route=mobile|opaque_session=after-login/);
+    await fs.rm(tmpDir, { recursive: true, force: true });
+  });
+
+  it("rejects user-confirmed Probe login when anonymous cookies did not change", async () => {
+    const tmpDir = await makeTmpDir();
+    const init = await runBsg(["init", "https://example.com", "--cwd", tmpDir]);
+    const env = await fakeAndroidToolEnv(tmpDir, {
+      BSG_TEST_PROBE_COOKIE_CHECK: JSON.stringify({
+        hasCookies: true,
+        cookies: "sid=anonymous; route=mobile",
+        url: "https://example.com",
+      }),
+    });
+
+    await runBsg(["android", "--run", init.runDir, "--setup"], { env });
+    await assert.rejects(
+      () => runBsg(["android", "--run", init.runDir, "--login-completed"], { env }),
+      (err) => {
+        const result = JSON.parse(err.stdout);
+        assert.equal(result.ok, false);
+        assert.match(result.error, /没有明确登录证据|Cookie 状态变化/);
+        return true;
+      },
+    );
+    await fs.rm(tmpDir, { recursive: true, force: true });
+  });
+
   it("blocks login completion when book source lacks enabledCookieJar", async () => {
     const tmpDir = await makeTmpDir();
     const runDir = await initRun(tmpDir);

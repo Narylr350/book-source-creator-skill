@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { createHash } from "node:crypto";
 import { execSync } from "node:child_process";
 import { fileExists } from "./state.mjs";
 
@@ -295,6 +296,26 @@ export function probeCookieResultNames(parsed) {
     return parsed.cookieNames.map((name) => String(name).trim()).filter(Boolean);
   }
   return cookieNamesFromString(parsed?.cookies || parsed?.cookie || "");
+}
+
+export function probeCookieFingerprint(parsed) {
+  const cookie = String(parsed?.cookies || parsed?.cookie || "").trim();
+  const cookieNames = probeCookieResultNames(parsed).map((name) => String(name).toLowerCase()).sort();
+  return {
+    hasCookies: cookie.length > 0 || parsed?.hasCookies === true,
+    selectedDomain: probeCookieResultDomain(parsed),
+    cookieNames,
+    cookieHash: cookie ? createHash("sha256").update(cookie).digest("hex").slice(0, 16) : null,
+  };
+}
+
+export function probeCookieFingerprintChanged(before, after) {
+  if (!after?.hasCookies) return false;
+  if (!before || before.hasCookies !== true) return true;
+  const beforeNames = JSON.stringify([...(before.cookieNames || [])].map((name) => String(name).toLowerCase()).sort());
+  const afterNames = JSON.stringify([...(after.cookieNames || [])].map((name) => String(name).toLowerCase()).sort());
+  if (beforeNames !== afterNames) return true;
+  return Boolean(before.cookieHash && after.cookieHash && before.cookieHash !== after.cookieHash);
 }
 
 export function summarizeProbeCookieCheck(siteUrl, result) {

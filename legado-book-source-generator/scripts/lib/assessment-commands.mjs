@@ -7,7 +7,7 @@ import {
 import {
   PHASE_ORDER, currentPhaseIndex, diagnoseAndroid,
   detectAuthFromAnalysis, checkProbeCookies, hasProbeLoginEvidence,
-  summarizeProbeCookieCheck,
+  probeCookieFingerprint, probeCookieFingerprintChanged, summarizeProbeCookieCheck,
 } from "./phase-engine.mjs";
 import {
   loadAndValidateAssessment, validateCookieFileShape,
@@ -295,19 +295,29 @@ export function cmdResolveUserAction(args) {
     if (adbOnline) {
       const probeCookies = checkProbeCookies(state.siteUrl);
       probeCookieEvidence = summarizeProbeCookieCheck(state.siteUrl, probeCookies);
+      const currentCookieFingerprint = probeCookieFingerprint(probeCookies.parsed);
       if (!probeCookies.ok) {
         return {
           ...fail("Android 真机或模拟器在线时，login_completed 必须先通过 Probe Cookie 检查。请运行 node \"<skill-dir>/scripts/bsg.mjs\" android --run <dir> 打开手机/模拟器登录页，登录完成后再运行 node \"<skill-dir>/scripts/bsg.mjs\" android --run <dir> --login-completed。"),
           probeCookieEvidence,
         };
       }
-      if (!hasProbeLoginEvidence(probeCookies.parsed)) {
+      const baseline = pending.details?.probeCookieBaseline || state.loginFeatures?._probeCookieBaseline || null;
+      const strongEvidence = hasProbeLoginEvidence(probeCookies.parsed);
+      const deltaEvidence = Boolean(baseline) && probeCookieFingerprintChanged(baseline, currentCookieFingerprint);
+      if (!strongEvidence && !deltaEvidence) {
         return {
-          ...fail("Probe /cookie-check 只证明目标域存在 Cookie，不能证明已登录账号态。login_completed 需要 Probe 返回 authenticated/loggedIn/isLoggedIn=true、非 anonymous sessionMode，或 user/account 证据；否则请选择 no_account 或继续在手机/模拟器完成登录后重试。"),
+          ...fail("Probe /cookie-check 只证明目标域存在 Cookie，但没有明确登录证据，也没有发现相对 android --setup 时的 Cookie 状态变化。请继续在手机/模拟器完成登录后重试；如果没有账号请选择 no_account。"),
           probeCookieEvidence,
         };
       }
-      state.loginFeatures._loginMethod = "probe";
+      state.loginFeatures._probeCookieBaseline = baseline;
+      state.loginFeatures._loginEvidence = {
+        type: strongEvidence ? "probe_login_signal" : "cookie_delta_user_confirmed",
+        baseline,
+        current: currentCookieFingerprint,
+      };
+      state.loginFeatures._loginMethod = strongEvidence ? "probe" : "probe_cookie_delta";
     } else {
       const cookieShape = validateCookieFileShape(path.join(runDir, "cookies.json"));
       if (!cookieShape.ok) {

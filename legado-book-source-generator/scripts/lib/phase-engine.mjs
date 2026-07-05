@@ -8,6 +8,7 @@ import {
 } from "./facts.mjs";
 import {
   diagnoseAndroid, checkAdb, checkProbeCookies, detectAuthFromAnalysis, hasProbeLoginEvidence,
+  probeCookieFingerprint, probeCookieFingerprintChanged,
 } from "./environment.mjs";
 import { cmdDeliverCheck } from "./deliver-check.mjs";
 import { PHASE_ORDER, currentPhaseIndex, resetPhasesFrom } from "./phase-order.mjs";
@@ -15,7 +16,7 @@ import { PHASE_ORDER, currentPhaseIndex, resetPhasesFrom } from "./phase-order.m
 export {
   checkEnvironment, parseAdbDevicesOutput, diagnoseAndroid, checkAdb,
   cmdAndroidStatus, checkProbeCookies, detectAuthFromAnalysis, hasProbeLoginEvidence,
-  summarizeProbeCookieCheck,
+  summarizeProbeCookieCheck, probeCookieFingerprint, probeCookieFingerprintChanged,
 } from "./environment.mjs";
 export { cmdDeliverCheck } from "./deliver-check.mjs";
 export { PHASE_ORDER, currentPhaseIndex, resetPhasesFrom } from "./phase-order.mjs";
@@ -208,10 +209,16 @@ export function completePhase(phase, state, runDir) {
       } else if (state.userDecisions?.login === "completed") {
         if (adbOk) {
           const probeCookies = checkProbeCookies(state.siteUrl);
-          if (!probeCookies.ok || !hasProbeLoginEvidence(probeCookies.parsed)) {
+          const currentCookieFingerprint = probeCookieFingerprint(probeCookies.parsed);
+          const baseline = state.loginFeatures?._probeCookieBaseline || state.loginFeatures?._loginEvidence?.baseline || null;
+          const strongEvidence = hasProbeLoginEvidence(probeCookies.parsed);
+          const deltaEvidence = state.loginFeatures?._loginMethod === "probe_cookie_delta" &&
+            Boolean(baseline) &&
+            probeCookieFingerprintChanged(baseline, currentCookieFingerprint);
+          if (!probeCookies.ok || (!strongEvidence && !deltaEvidence)) {
             return fail("Android 真机或模拟器在线时，已完成登录状态必须来自 Probe /cookie-check。请重新运行登录流程，不要用 Browser Cookie 或口头确认绕过。");
           }
-          state.loginFeatures._loginMethod = "probe";
+          state.loginFeatures._loginMethod = strongEvidence ? "probe" : "probe_cookie_delta";
         } else {
           const cookieFile = path.join(runDir, "cookies.json");
           const cookieShape = validateCookieFileShape(cookieFile);

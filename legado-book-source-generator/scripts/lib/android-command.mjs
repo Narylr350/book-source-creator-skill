@@ -7,7 +7,7 @@ import {
 } from "./state.mjs";
 import {
   checkProbeCookies, diagnoseAndroid, diagnoseProbe,
-  probeCookieResultDomain, summarizeProbeCookieCheck,
+  probeCookieFingerprint, probeCookieResultDomain, summarizeProbeCookieCheck,
 } from "./environment.mjs";
 import { cmdLogin } from "./login.mjs";
 import { cmdValidate } from "./validate-runner.mjs";
@@ -185,7 +185,7 @@ export function cmdAndroid(args) {
   }
 
   if (args.includes("--setup")) {
-    if (state.loginFeatures?._loginMethod === "probe" && state.loginFeatures?._loginVerified === true) {
+    if (["probe", "probe_cookie_delta"].includes(state.loginFeatures?._loginMethod) && state.loginFeatures?._loginVerified === true) {
       return {
         ok: true,
         via: "android:setup",
@@ -203,12 +203,16 @@ export function cmdAndroid(args) {
         nextCommand: androidCommand(runDir),
       };
     }
+    const baselineCookies = checkProbeCookies(state.siteUrl);
+    const probeCookieBaseline = probeCookieFingerprint(baselineCookies.parsed);
+    state.loginFeatures = state.loginFeatures || {};
+    state.loginFeatures._probeCookieBaseline = probeCookieBaseline;
     const pending = setPendingUserAction(
       state,
       "login_required",
       "android_probe_login",
       "Android Probe 已打开登录页。请在手机或模拟器内完成账号登录和验证码；完成后运行 android --login-completed，由 Probe Cookie 证明登录态。",
-      { android, adbAvailable: true, via: "android:setup" },
+      { android, adbAvailable: true, via: "android:setup", probeCookieBaseline },
     );
     saveRunState(runDir, state);
     return {

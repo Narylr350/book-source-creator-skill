@@ -5,6 +5,8 @@ import {
   buildProbeCookieCheckUrl,
   hasProbeLoginEvidence,
   probeCookieCheckDomains,
+  probeCookieFingerprint,
+  probeCookieFingerprintChanged,
   selectBestProbeCookieResult,
 } from "../scripts/lib/environment.mjs";
 
@@ -59,5 +61,35 @@ describe("Probe login cookie evidence", () => {
     ]);
 
     assert.equal(result.parsed.url, "https://wap.example.com");
+  });
+
+  it("compares cookie fingerprints without storing raw cookie values", () => {
+    const before = probeCookieFingerprint({ hasCookies: false, cookies: "", url: "https://example.com" });
+    const after = probeCookieFingerprint({
+      hasCookies: true,
+      cookies: "opaque_session=abc; route=mobile",
+      url: "https://example.com",
+    });
+
+    assert.equal(after.hasCookies, true);
+    assert.deepEqual(after.cookieNames, ["opaque_session", "route"]);
+    assert.equal(after.cookieHash.length, 16);
+    assert.doesNotMatch(JSON.stringify(after), /abc|mobile/);
+    assert.equal(probeCookieFingerprintChanged(before, after), true);
+  });
+
+  it("does not treat unchanged anonymous cookies as a login delta", () => {
+    const before = probeCookieFingerprint({
+      hasCookies: true,
+      cookies: "sid=abc; route=mobile",
+      url: "https://example.com",
+    });
+    const after = probeCookieFingerprint({
+      hasCookies: true,
+      cookies: "sid=abc; route=mobile",
+      url: "https://example.com",
+    });
+
+    assert.equal(probeCookieFingerprintChanged(before, after), false);
   });
 });
