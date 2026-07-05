@@ -32,13 +32,13 @@
 用户回复完成后，运行 `node "<skill-dir>/scripts/bsg.mjs" android --run <run-dir> --login-completed`。脚本会检查 Probe Cookie 和登录证据；adb 在线时 Browser Cookie 不能替代。
 
 **Browser MCP 提取流程:**
-1. 仅在 Android/Probe 不可用且当前 AI 确实具备 Browser MCP 时使用。用户打开目标站点登录页，在 Browser MCP 中完成登录（账号密码/扫码）
+1. 仅在 Android/Probe 不可用且当前执行环境确实具备 Browser MCP 时使用。用户打开目标站点登录页，在 Browser MCP 中完成登录（账号密码/扫码）
 2. AI 通过 `browser_network_requests` 找到 API 请求的 Cookie 或 Authorization header（注意：HttpOnly cookie 无法通过 `document.cookie` 获取，必须从网络请求头提取）
 3. AI 将凭据保存为 `{"www.example.com": "cookie_string"}` JSON 格式；或保存为 `{"domain":"www.example.com","cookie":"cookie_string"}`
 4. 保存到 `runs/<site-slug>/cookies.json`
 5. 调用 `node "<skill-dir>/scripts/bsg.mjs" validate --run runs/<site-slug>`（自动检测 cookies.json）
 
-如果当前客户端没有 Browser MCP，停止浏览器取证分支。不要编造 DOM、接口、Cookie、Authorization header、渲染正文或登录状态；HTTP/validator 能继续的部分可继续，必须浏览器证据时改用 Android Probe、请用户配置 Browser MCP，或换用支持浏览器工具的 AI 客户端。
+如果当前客户端没有 Browser MCP，停止浏览器取证分支。不要编造 DOM、接口、Cookie、Authorization header、渲染正文或登录状态；HTTP/validator 能继续的部分可继续，必须浏览器证据时改用 Android Probe、请用户配置 Browser MCP，或换用支持浏览器工具的客户端。
 
 ## 风险升级
 

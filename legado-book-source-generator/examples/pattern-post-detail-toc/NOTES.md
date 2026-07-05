@@ -10,5 +10,5 @@
 
 ## 不要做
 
-- **WebView 不能绕过 Cloudflare Turnstile**。AI 经常误以为加 `webView:true` 就能过验证码——实际是两回事。Turnstile 是硬边界，按 validator / record-validation 证据收敛，不能手工标 `needs_app_review`。
+- **WebView 不能绕过 Cloudflare Turnstile**。加 `webView:true` 不等于能通过验证码。Turnstile 是硬边界，按 validator / record-validation 证据收敛，不能手工标 `needs_app_review`。
 - **Browser MCP 里能看到 ≠ validator HTTP 能拿到**。前者走真实 Chrome，后者走 Java HTTP 客户端，反爬规则不同。

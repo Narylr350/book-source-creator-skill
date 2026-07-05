@@ -853,8 +853,8 @@ describe("bsg workflow user-action gates", () => {
   });
 
   it("deliver failure warns that bypassing = guaranteed rework", async () => {
-    // deliver 没通过时必须明确告诉 agent：绕过交付门 = 用户拿到用不了 = 必然返工。
-    // 这是 skill 价值锚点（validator≈阅读App），不能让 agent 觉得"写个总结就算完成"。
+    // deliver 没通过时必须明确提示：绕过交付门 = 用户拿到用不了 = 必然返工。
+    // 这是 skill 价值锚点（validator≈阅读App），不能让总结替代 deliver。
     const runDir = await initRun(tmpDir);
     await writeRequiredDeliverFiles(tmpDir, runDir);
 
@@ -2382,7 +2382,7 @@ describe("bsg workflow user-action gates", () => {
   it("requires loginUrl when hasEnabledCookieJar is set but loginUrl missing", async () => {
     const runDir = await initRun(tmpDir);
     await runToGenerate(tmpDir, runDir);
-    // 模拟 AI 标了登录特征但书源漏写 loginUrl + enabledCookieJar
+    // 模拟登录特征已记录但书源漏写 loginUrl + enabledCookieJar
     await runBsg(["set-login-features", "--run", runDir, "--flags", JSON.stringify({ hasEnabledCookieJar: true })]);
     await fs.writeFile(path.join(tmpDir, "outputs", "example-com", "book-source.json"), JSON.stringify([{
       bookSourceUrl: "https://example.com",
@@ -2520,7 +2520,7 @@ describe("run response fields", () => {
     assert.match(workflow, /references\/android-probe-guide\.md/);
     assert.match(workflow, /references\/policies\.md/);
     assert.doesNotMatch(workflow, /默认执行循环/);
-    assert.doesNotMatch(workflow, /不作为默认 agent 流程/);
+    assert.doesNotMatch(workflow, /不作为默认执行流程/);
   });
 
   it("probe and android references do not claim hidden readNext loading", async () => {
@@ -2917,7 +2917,7 @@ describe("run response fields", () => {
     await fs.rm(tmpDir, { recursive: true, force: true });
   });
 
-  it("run stops at assessment authoring instead of asking the agent to use legacy advance", async () => {
+  it("run stops at assessment authoring instead of suggesting legacy advance", async () => {
     const tmpDir = await makeTmpDir();
     const result = await runBsg(["init", "https://example.com", "--cwd", tmpDir]);
     await runBsg(["run", "--run", result.runDir]);
@@ -2983,7 +2983,7 @@ describe("run response fields", () => {
     await fs.rm(tmpDir, { recursive: true, force: true });
   });
 
-  it("validate command tells the agent to start validator when the report is skipped", async () => {
+  it("validate command returns validator start command when the report is skipped", async () => {
     const tmpDir = await makeTmpDir();
     const runDir = await initRun(tmpDir);
     await runToGenerate(tmpDir, runDir);
@@ -2996,7 +2996,7 @@ describe("run response fields", () => {
     });
 
     assert.equal(result.status, "skipped");
-    assert.ok(result.nextCommand.includes("validator-start"), "skipped validation should tell the agent to start validator");
+    assert.ok(result.nextCommand.includes("validator-start"), "skipped validation should return validator start command");
     assert.ok(!result.nextCommand.includes("--status skipped"), "nextCommand must not suggest an unsupported record-validation status");
     assert.ok(!/验证完成/.test(result.message), "skipped validator should not be described as completed validation");
     assert.equal(result.keyword, "测试");
@@ -3005,7 +3005,7 @@ describe("run response fields", () => {
     await fs.rm(tmpDir, { recursive: true, force: true });
   });
 
-  it("run records an existing validator report instead of waiting for the agent", async () => {
+  it("run records an existing validator report instead of waiting for manual follow-up", async () => {
     const tmpDir = await makeTmpDir();
     const runDir = await initRun(tmpDir);
     await runToGenerate(tmpDir, runDir);

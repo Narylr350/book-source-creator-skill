@@ -4,7 +4,7 @@
 
 ## 必须做
 
-- `--fast` **必须先 HTTP 探 4 条链路再决定**。AI 上来就加 `--fast` 是常见错误——站点可能有重定向、Cloudflare 或 JS 渲染，没探就加等于盲飞。
+- `--fast` **必须先 HTTP 探 4 条链路再决定**。站点可能有重定向、Cloudflare 或 JS 渲染，没探就加等于盲飞。
 - **目录分页和正文分页经常同时出现**。`nextTocUrl`（目录翻页）和 `nextContentUrl`（同章翻页）不要漏。
 - **域名重定向要在 assessment 里告知用户**。如 xbiquge.com → xbiquge.com.cn，不能静默切换。
 - **评估摘要必须展示给用户**（3-6 行：评级 + 风险标签 + 4 条链路状态）。

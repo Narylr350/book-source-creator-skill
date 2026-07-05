@@ -65,7 +65,7 @@ Android、模拟器、登录态、WebView/WebJs、入口反爬复核不要靠命
 
 - 优先稳定 API / JSON。其次稳定 HTML。
 - 若 Browser MCP 已证明章节页本身可稳定渲染正文，而不稳定点只在直连接口，优先考虑 `WebView`。
-- 若当前 AI 没有 Browser MCP，不得声称已观察 DOM、接口、Cookie 或渲染正文。HTTP/validator 足够时继续；必须浏览器证据时改用 Android Probe、让用户配置 Browser MCP，或明确停在能力缺口。
+- 若当前执行环境没有 Browser MCP，不得声称已观察 DOM、接口、Cookie 或渲染正文。HTTP/validator 足够时继续；必须浏览器证据时改用 Android Probe、让用户配置 Browser MCP，或明确停在能力缺口。
 - 只有更简单的规则无法表达站点行为时，才加 JS。
 - 生成时保持以下文档同步打开：
   - `references/official-rule-pack.json`

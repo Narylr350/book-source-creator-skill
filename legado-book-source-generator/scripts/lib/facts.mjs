@@ -653,7 +653,7 @@ export function runOfficialRuleCheck(sources, state, runDir) {
   const warnings = [];
   const checkedRuleIds = [];
   // load site-facts 判断站点是否有登录/反爬 blocker——有则要求书源配 loginUrl +
-  // enabledCookieJar，否则 AI 会漏写登录配置，登录时打开主页而非登录页。
+  // enabledCookieJar，否则登录配置不完整，登录时会打开主页而非登录页。
   const facts = runDir ? readJsonFile(path.join(runDir, "site-facts.json")) : null;
   const hasLoginRiskInFacts = (facts?.links && Object.values(facts.links).some(
     (link) => link?.blocker && /login|captcha|auth|验证码|登录|cloudflare|blocked|vip|付费/i.test(link.blocker)
