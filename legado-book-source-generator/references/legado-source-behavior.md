@@ -18,7 +18,7 @@
 
 完整 UA 模板：`Mozilla/5.0 (Linux; Android 11) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.120 Mobile Safari/537.36`
 
-反爬系统检查 UA 完整性是常见行为。AI 抄示例时容易漏掉 `(KHTML, like Gecko) Chrome/... Safari/...` 后半截，因为看起来"不重要"。
+反爬系统检查 UA 完整性是常见行为。书源 header 不应截断浏览器 UA，必须保留 `(KHTML, like Gecko) Chrome/... Safari/...` 后半截。
 
 ## TLS 指纹
 

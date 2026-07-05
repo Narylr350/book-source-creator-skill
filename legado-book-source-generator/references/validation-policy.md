@@ -20,7 +20,7 @@
 
 以下情况必须停止自动回修，并按 `record-validation` 返回的 `blockedBy` / `requiredUserAction` / `correctiveAction` 收敛；不要手工把不同边界统一改写成 `needs_app_review`：
 
-> 分级标签说明：`[source]` 来自 validator/阅读源码或代码强约束；`[blackbox]` 实测站点/链路观察；`[heuristic]` 启发式判断（有出口、可被用户确认放行）；`[action]` 操作命令。弱模型读到 `[heuristic]` 时不应当作铁律。
+> 分级标签说明：`[source]` 来自 validator/阅读源码或代码强约束；`[blackbox]` 实测站点/链路观察；`[heuristic]` 启发式判断（有出口、可被用户确认放行）；`[action]` 操作命令。`[heuristic]` 只能作为启发式排查线索，不能当作铁律。
 
 1. `[blackbox] [action]` **Cloudflare/Turnstile** — error 或 bodyPreview 含 "Cloudflare" / "Turnstile" / "challenge"。validator 等价于阅读 App，App 也会被 Cloudflare 拦。这是 `failed`，不是 `needs_app_review`。
 2. `[blackbox] [action]` **登录/验证码** — 需要登录态或验证码。App 同样会弹验证码。这是 `failed`，不是 `needs_app_review`。如果书源配了登录态（enabledCookieJar + loginUrl + header cookie 注入）但仍失败，检查登录 cookie 是否落在正确域、UA 是否导致重定向到错误子域。

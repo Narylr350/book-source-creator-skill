@@ -77,7 +77,7 @@ function isModeSwitchNeeded(report) {
 }
 
 // 按卡点指路：不同 blocker 该读不同文档段，不是永远指 validation-policy + validator-integration 这两篇。
-// 弱模型只会读 readNext 列表的前 1-2 项，所以这里把最相关的放最前。
+// readNext 按排查优先级排序，最相关的文档放前面。
 const READ_NEXT_FOR_BLOCKER = {
   content_vip_lock: ["references/validation-policy.md", "references/android-probe-guide.md"],
   hard_rule_error: ["references/official-rule-pack.json", "references/legado-json-structure.md"],
