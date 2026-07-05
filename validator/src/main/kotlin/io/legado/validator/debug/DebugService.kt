@@ -472,6 +472,7 @@ class DebugService {
             )
 
             if (!render.ok) {
+                val captchaMeta = if (render.needsAppReview) ErrorCodeRegistry.get(ErrorCode.CAPTCHA_DETECTED) else null
                 return@withContext DebugStep(
                     phase = "search", status = "error", mode = "browser",
                     request = reqInfo,
@@ -480,13 +481,17 @@ class DebugService {
                     renderedHtmlPreview = render.html?.take(2000),
                     screenshotBase64 = render.screenshot,
                     renderError = render.error,
-                    needsAppReview = render.needsAppReview,
-                    reviewReason = render.reviewReason
+                    errorCode = captchaMeta?.code?.name,
+                    subphase = captchaMeta?.subphase?.name?.lowercase(),
+                    failedField = captchaMeta?.failedField,
+                    allowedFixes = captchaMeta?.allowedFixes ?: emptyList(),
+                    forbiddenFixes = captchaMeta?.forbiddenFixes ?: emptyList()
                 )
             }
 
-            // Cloudflare/验证码检测
+            // Cloudflare/验证码检测。验证码/反爬是明确失败，不是 needs_app_review。
             if (render.needsAppReview) {
+                val captchaMeta = ErrorCodeRegistry.get(ErrorCode.CAPTCHA_DETECTED)
                 return@withContext DebugStep(
                     phase = "search", status = "error", mode = "browser",
                     request = reqInfo,
@@ -494,8 +499,11 @@ class DebugService {
                     finalUrl = render.finalUrl,
                     renderedHtmlPreview = render.html?.take(2000),
                     screenshotBase64 = render.screenshot,
-                    needsAppReview = true,
-                    reviewReason = render.reviewReason
+                    errorCode = ErrorCode.CAPTCHA_DETECTED.name,
+                    subphase = captchaMeta?.subphase?.name?.lowercase(),
+                    failedField = captchaMeta?.failedField,
+                    allowedFixes = captchaMeta?.allowedFixes ?: emptyList(),
+                    forbiddenFixes = captchaMeta?.forbiddenFixes ?: emptyList()
                 )
             }
 
@@ -1223,7 +1231,7 @@ fun determineFinalStatus(steps: List<DebugStep>, source: BookSource? = null): St
         hasProbeUnavailable && hasHardError -> "failed"
         hasProbeUnavailable -> "validator_limitation"
         hasHardSourceRuleError -> "failed"
-        hasAnonymousLoginFailure -> "needs_app_review"
+        hasAnonymousLoginFailure -> "failed"
         allPassed && isAnonymous && hasLoginVertex -> "anonymous_candidate"
         hasUnsupportedFeature && allPassed -> "validator_limitation"
         allPassed -> "passed"

@@ -5,10 +5,10 @@ interface:
     Use $legado-book-source-generator to assess a fiction site and generate a Legado book source JSON.
 
     Before starting, read these files in order:
-    1. SKILL.md - entry point and mandatory sequence
-    2. references/assessment-template.md - output template for site assessment
-    3. references/analysis-workflow.md - fixed analysis structure
-    4. references/policies.md - hard blocking rules and risk judgment
+    1. SKILL.md - entry point and toolbox rules
+    2. references/workflow.md - current toolbox workflow and deliver gate
+    3. references/policies.md - hard blocking rules and risk judgment
+    4. references/validator-integration.md - validation status and record-validation semantics
 
-    Follow bsg.mjs nextAction exactly: init → probe → assessment → record-assessment → analysis → JSON generation → validation.
-    Do not show an assessment summary or ask the user to choose login/no-login until record-assessment passes.
+    Use bsg.mjs toolbox mode: init first, then use toolbox/status/check/source/android/validate according to the current problem. record-assessment and record-validation are mandatory machine-fact convergence gates. deliver is the only final delivery audit.
+    Do not use retired linear-state commands as an internal workflow. Do not show an assessment summary or ask the user to choose login/no-login until record-assessment passes.

@@ -28,24 +28,27 @@ runs/<site-slug>/
 - 单个书源也要用数组包裹：`[ { ... } ]`
 - 可选字段要么填有效值，要么删除，不得保留 `""`
 
-## 可用脚本
+## 当前工具箱入口
 
 ```powershell
-# 创建 outputs/<site-slug>/book-source.json
-npm run scaffold -- .\outputs https://example.com
+# 创建 runs/<site-slug>/ 和 outputs/<site-slug>/book-source.json
+node "<skill-dir>/scripts/bsg.mjs" init https://example.com --cwd .
 
-# 创建 runs/<site-slug>/ 过程文档
-npm run scaffold-run -- .\runs https://example.com
+# 查看当前状态、待人工动作和下一步
+node "<skill-dir>/scripts/bsg.mjs" status --run .\runs\example-com
 
-# JSON 结构校验
-npm run validate -- .\outputs\example-com\book-source.json
-
-# 静态审计（不等于真实验证）
-npm run audit -- .\outputs\example-com\book-source.json --keyword 凡人修仙 --page 1
+# 生成 book-source.json 后，让 run 写入 rule-check.json
+node "<skill-dir>/scripts/bsg.mjs" run --run .\runs\example-com
 
 # 真实链路验证（需 validator 运行中）
 node "<skill-dir>/scripts/bsg.mjs" validate --run .\runs\example-com --mode http
+
+# 将 validator-report.json 收敛为最终状态、能力矩阵和修复上下文
+node "<skill-dir>/scripts/bsg.mjs" record-validation --run .\runs\example-com --status <validator-report.status>
+
+# 最终交付审计
+node "<skill-dir>/scripts/bsg.mjs" deliver --run .\runs\example-com
 ```
 
-`audit-source.mjs` 只做静态审计、占位检测、嵌入式 JS 语法检查和搜索 URL 预览，不能据此判断最终运行可用性。
+旧的 `project-helper.mjs` / `audit-source.mjs` 独立 CLI 已退役；不要用旧脚本创建输出、验证 JSON 或判断可用性。
 `bsg.mjs validate` 自动读取 book-source.json、分析关键词、检测 adb 设备决定 mode，并把结果写入 run 目录下的 `validator-report.json`。不要手写或复制旧报告。

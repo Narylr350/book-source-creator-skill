@@ -4,121 +4,49 @@ import fs from "node:fs";
 import path from "node:path";
 
 const repoRoot = path.resolve(".");
-const skillPath = path.join(
-  repoRoot,
-  "legado-book-source-generator",
-  "SKILL.md",
-);
-const workflowPath = path.join(
-  repoRoot,
-  "legado-book-source-generator",
-  "references",
-  "analysis-workflow.md",
-);
-const patternPath = path.join(
-  repoRoot,
-  "legado-book-source-generator",
-  "references",
-  "reference-source-patterns.md",
-);
-const officialNotesPath = path.join(
-  repoRoot,
-  "legado-book-source-generator",
-  "references",
-  "legado-official-rule-notes.md",
-);
-const jsonStructurePath = path.join(
-  repoRoot,
-  "legado-book-source-generator",
-  "references",
-  "legado-json-structure.md",
-);
+const skillRoot = path.join(repoRoot, "legado-book-source-generator");
 
-test("SKILL requires checking WebView and reference examples before a final negative rating", () => {
-  const skill = fs.readFileSync(skillPath, "utf8");
+function read(relPath) {
+  return fs.readFileSync(path.join(skillRoot, relPath), "utf8");
+}
 
-  assert.match(skill, /WebView/i);
-  assert.match(skill, /P15/);
-  assert.match(skill, /不建议生成/);
-  assert.match(skill, /examples\/README\.md/);
+test("SKILL documents the current toolbox mode and deliver gate", () => {
+  const skill = read("SKILL.md");
+
+  assert.match(skill, /工具箱模式/);
+  assert.match(skill, /toolbox/);
+  assert.match(skill, /record-validation/);
+  assert.match(skill, /deliver/);
+  assert.match(skill, /唯一最终审计/);
+  assert.doesNotMatch(skill, /advance --run/);
 });
 
-test("analysis workflow treats browser-rendered content as a WebView checkpoint", () => {
-  const workflow = fs.readFileSync(workflowPath, "utf8");
+test("workflow uses run as the current rule-check path and marks advance retired", () => {
+  const workflow = read("references/workflow.md");
 
-  assert.match(workflow, /WebView/i);
-  assert.match(workflow, /浏览器|Browser MCP/);
-  assert.match(workflow, /正文/);
+  assert.match(workflow, /工具箱模式/);
+  assert.match(workflow, /当前入口是 `run`/);
+  assert.match(workflow, /`advance` 已退役/);
+  assert.doesNotMatch(workflow, /run\/advance/);
 });
 
-test("SKILL hard-blocks on login-capable sites and points generation back to official Legado rules", () => {
-  const skill = fs.readFileSync(skillPath, "utf8");
+test("outputs docs point to bsg toolbox commands instead of retired helper CLIs", () => {
+  const outputs = read("references/outputs.md");
 
-  assert.match(skill, /登录/);
-  assert.match(skill, /选择登录还是不登录分析/);
-  assert.match(skill, /硬阻断|停止/);
-  assert.match(skill, /legado-official-rule-notes\.md/);
+  assert.match(outputs, /bsg\.mjs" init/);
+  assert.match(outputs, /bsg\.mjs" record-validation/);
+  assert.match(outputs, /bsg\.mjs" deliver/);
+  assert.match(outputs, /独立 CLI 已退役/);
+  assert.doesNotMatch(outputs, /npm run scaffold/);
+  assert.doesNotMatch(outputs, /npm run audit/);
 });
 
-test("reference source patterns keeps a clean sample appendix without noisy user-provided urls", () => {
-  const patterns = fs.readFileSync(patternPath, "utf8");
-  const localSamples = [
-    "legado-book-source-generator/references/reference-sources/jiwangyihao-source-j-legado/masiro.json",
-    "legado-book-source-generator/references/reference-sources/jiwangyihao-source-j-legado/bilinovel.json",
-    "legado-book-source-generator/references/reference-sources/jiwangyihao-source-j-legado/wenku.json",
-    "legado-book-source-generator/references/reference-sources/ZWolken-Light-Novel-Yuedu-Source/ACGZC.json",
-    "legado-book-source-generator/references/reference-sources/ZWolken-Light-Novel-Yuedu-Source/Lofter.json",
-    "legado-book-source-generator/references/reference-sources/ZWolken-Light-Novel-Yuedu-Source/刺猬猫.json",
-  ];
+test("behavior docs have a single canonical source under references", () => {
+  const docsWebView = fs.readFileSync(path.join(repoRoot, "docs", "webview-behavior-matrix.md"), "utf8");
+  const docsBehavior = fs.readFileSync(path.join(repoRoot, "docs", "legado-source-behavior.md"), "utf8");
 
-  assert.match(patterns, /参考书源速查/);
-  assert.match(patterns, /masiro\.json/);
-  assert.match(patterns, /bilinovel\.json/);
-  assert.match(patterns, /wenku\.json/);
-  assert.match(patterns, /ACGZC\.json/);
-  assert.match(patterns, /Lofter\.json/);
-  assert.match(patterns, /刺猬猫\.json/);
-  assert.doesNotMatch(patterns, /用户提供/);
-  assert.doesNotMatch(patterns, /n\.novelia\.cc/);
-  assert.doesNotMatch(patterns, /esjzone/i);
-
-  for (const sample of localSamples) {
-    assert.ok(fs.existsSync(path.join(repoRoot, sample)), sample);
-  }
-});
-
-test("official Legado notes capture the core rule details needed during generation", () => {
-  const notes = fs.readFileSync(officialNotesPath, "utf8");
-
-  assert.match(notes, /webView/i);
-  assert.match(notes, /JSON\.stringify\(\)/);
-  assert.match(notes, /nextTocUrl/);
-  assert.match(notes, /@put|@get/);
-});
-
-test("JSON structure docs require array-wrapped import payloads for Legado", () => {
-  const jsonStructure = fs.readFileSync(jsonStructurePath, "utf8");
-  const skill = fs.readFileSync(skillPath, "utf8");
-
-  assert.match(jsonStructure, /顶层必须是 JSON 数组/);
-  assert.match(jsonStructure, /\[\s*\{/);
-  assert.match(skill, /JSON 数组/);
-});
-
-test("debug docs hard-require switching into the debug workflow before changing rules", () => {
-  const skill = fs.readFileSync(skillPath, "utf8");
-  const debugDoc = fs.readFileSync(
-    path.join(
-      repoRoot,
-      "legado-book-source-generator",
-      "references",
-      "debugging-collaboration.md",
-    ),
-    "utf8",
-  );
-
-  assert.match(skill, /必须立即进入调试协作模式|必须立即切换到调试协作模式/);
-  assert.match(skill, /不得继续分析|不得继续改规则|禁止继续分析|禁止继续改规则/);
-  assert.match(debugDoc, /禁止在未索取最小证据包前直接改规则/);
-  assert.match(debugDoc, /禁止把本地文件推断优先于用户当前 App 内实际规则/);
+  assert.match(docsWebView, /canonical 文档/);
+  assert.match(docsWebView, /legado-book-source-generator\/references\/webview-behavior-matrix\.md/);
+  assert.match(docsBehavior, /canonical 文档/);
+  assert.match(docsBehavior, /legado-book-source-generator\/references\/legado-source-behavior\.md/);
 });

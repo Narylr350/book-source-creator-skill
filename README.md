@@ -181,13 +181,13 @@ http://localhost:1111
 
 如果想了解底层行为边界，可以看：
 
-* [docs/webview-behavior-matrix.md](docs/webview-behavior-matrix.md)
-* [docs/legado-source-behavior.md](docs/legado-source-behavior.md)
+* [legado-book-source-generator/references/webview-behavior-matrix.md](legado-book-source-generator/references/webview-behavior-matrix.md)
+* [legado-book-source-generator/references/legado-source-behavior.md](legado-book-source-generator/references/legado-source-behavior.md)
 
 其中：
 
-* [docs/webview-behavior-matrix.md](docs/webview-behavior-matrix.md)：对比阅读 App、Android Probe、Validator HTTP 模式在 WebView、Cookie、UA、TLS、sourceRegex 等行为上的差异。
-* [docs/legado-source-behavior.md](docs/legado-source-behavior.md)：记录已经从阅读源码或明确实现中确认过的书源规则行为边界。
+* [legado-book-source-generator/references/webview-behavior-matrix.md](legado-book-source-generator/references/webview-behavior-matrix.md)：对比阅读 App、Android Probe、Validator HTTP 模式在 WebView、Cookie、UA、TLS、sourceRegex 等行为上的差异。
+* [legado-book-source-generator/references/legado-source-behavior.md](legado-book-source-generator/references/legado-source-behavior.md)：记录已经从阅读源码或明确实现中确认过的书源规则行为边界。
 
 项目主要目录：
 

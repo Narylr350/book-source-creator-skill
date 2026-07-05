@@ -96,7 +96,7 @@ export function completePhase(phase, state, runDir) {
 
   if (phase === "assess") {
     if (state.phases.assess.recorded !== true) {
-      const correctiveAction = "assessment.md 尚未通过 record-assessment 记录。先运行 record-assessment，通过前不要展示评估摘要，也不要 advance。";
+      const correctiveAction = "assessment.md 尚未通过 record-assessment 记录。先运行 record-assessment，通过前不要展示评估摘要，也不要跳过评估门禁。";
       const nextCommand = `node "<skill-dir>/scripts/bsg.mjs" record-assessment --run ${runDir}`;
       printHint(correctiveAction, nextCommand);
       return {
@@ -439,14 +439,14 @@ export function completePhase(phase, state, runDir) {
     const nextCommand = `node "<skill-dir>/scripts/bsg.mjs" record-validation --run ${runDir} --status <passed|failed|needs_app_review|validator_limitation|degraded>`;
     printHint(correctiveAction, nextCommand);
     return {
-      ...fail("请先运行 record-validation 记录验证结果；不要用 advance 代替验证收敛。"),
+      ...fail("请先运行 record-validation 记录验证结果；不要跳过 record-validation 验证收敛。"),
       correctiveAction,
       nextCommand,
     };
   }
 
   if (phase === "deliver") {
-    return fail("验证产物已具备交付审计条件。请运行 deliver --run <run-dir> 完成交付；不要用 advance 代替 deliver。");
+    return fail("验证产物已具备交付审计条件。请运行 deliver --run <run-dir> 完成交付；不要跳过 deliver。");
   }
 
   return fail(`未知阶段: ${phase}`);

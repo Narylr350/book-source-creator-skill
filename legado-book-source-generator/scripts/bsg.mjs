@@ -9,7 +9,6 @@
  *   node "<skill-dir>/scripts/bsg.mjs" toolbox
  *   node "<skill-dir>/scripts/bsg.mjs" run --run <dir>
  *   node "<skill-dir>/scripts/bsg.mjs" status --run <dir>
- *   node "<skill-dir>/scripts/bsg.mjs" advance --run <dir>
  *   node "<skill-dir>/scripts/bsg.mjs" check --run <dir>
  *   node "<skill-dir>/scripts/bsg.mjs" record-assessment --run <dir>
  *   node "<skill-dir>/scripts/bsg.mjs" set-login-features --run <dir> [--flags <json>]
@@ -54,7 +53,6 @@ function printUsage() {
       "  node \"<skill-dir>/scripts/bsg.mjs\" toolbox",
       "  node \"<skill-dir>/scripts/bsg.mjs\" run --run {dir}",
       "  node \"<skill-dir>/scripts/bsg.mjs\" status --run {dir}",
-      "  node \"<skill-dir>/scripts/bsg.mjs\" advance --run {dir}",
       "  node \"<skill-dir>/scripts/bsg.mjs\" check --run {dir}",
       "  node \"<skill-dir>/scripts/bsg.mjs\" record-assessment --run {dir}",
       "  node \"<skill-dir>/scripts/bsg.mjs\" set-login-features --run {dir} [--flags <json>]",
@@ -143,7 +141,7 @@ async function main(argv) {
       break;
     default:
       result = fail(
-        `未知命令: ${command}。可用: init, toolbox, run, status, advance, check, record-assessment, set-login-features, resolve-user-action, android, android-status, record-validation, deliver, debug-bundle, source, login, validate, validator-start, validator-stop`
+        `未知命令: ${command}。可用: init, toolbox, run, status, check, record-assessment, set-login-features, resolve-user-action, android, android-status, record-validation, deliver, debug-bundle, source, login, validate, validator-start, validator-stop`
       );
   }
 

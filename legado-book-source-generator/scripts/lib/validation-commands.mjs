@@ -64,28 +64,6 @@ function isVipLockFailure(report) {
   return failedStep.errorCode === "CONTENT_IS_VIP_LOCK_PAGE";
 }
 
-// 反爬触发检测：search 类端点被弹到人机验证 / Cloudflare / 验证码页。
-// 这是 server-side 站点行为；任何客户端(curl/validator/Probe/浏览器)请求同一 IP 都计入累积。
-// 自动重跑 validator / 换 mode / 换 keyword 都不能绕过，反而会累积成 IP 风控。
-function isAntiBotTriggered(report) {
-  if (!report) return false;
-  const steps = report.steps || [];
-  for (const step of steps) {
-    const code = step?.errorCode;
-    const finalUrl = String(step?.response?.url || step?.request?.url || "");
-    const hasVerifyUrl = /\/man_machine_verify|\/signup\/(login|man_machine)|challenges\.cloudflare\.com|turnstile/i.test(finalUrl);
-    if (code === "APP_REVIEW_REQUIRED") return true;
-    if (hasVerifyUrl) return true;
-    // HTTP_BLOCKED + needsAppReview 通常是被反爬弹到 verify 页 (303/非200 跟随到验证页)
-    if (code === "HTTP_BLOCKED" && step?.needsAppReview === true) return true;
-    if (step?.needsAppReview === true) {
-      const reason = String(step?.reviewReason || step?.error || step?.message || "");
-      if (/man_machine|人机验证|安全验证|滑块验证|cloudflare|turnstile|just a moment/i.test(reason)) return true;
-    }
-  }
-  return false;
-}
-
 // 模式不匹配检测：webView:true / webJs 在 http 模式抛 WebViewNotSupportedException，
 // 或 POST 搜索在 browser 模式不支持。不是真 needs_app_review——Probe 能处理。
 function isModeSwitchNeeded(report) {
@@ -101,8 +79,6 @@ function isModeSwitchNeeded(report) {
 // 按卡点指路：不同 blocker 该读不同文档段，不是永远指 validation-policy + validator-integration 这两篇。
 // 弱模型只会读 readNext 列表的前 1-2 项，所以这里把最相关的放最前。
 const READ_NEXT_FOR_BLOCKER = {
-  anti_bot_triggered: ["references/failure-diagnosis.md", "references/policies.md"],
-  anti_bot_login_required: ["references/failure-diagnosis.md", "references/android-probe-guide.md", "references/policies.md"],
   content_vip_lock: ["references/validation-policy.md", "references/android-probe-guide.md"],
   hard_rule_error: ["references/official-rule-pack.json", "references/legado-json-structure.md"],
   csr_shell_detected: ["references/webview-behavior-matrix.md", "references/android-probe-guide.md"],

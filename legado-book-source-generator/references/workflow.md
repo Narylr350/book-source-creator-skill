@@ -15,7 +15,7 @@
 | 场景 | 先读 | 工具 |
 |------|------|------|
 | 匿名初探 / site-facts | `references/probe-guide.md`, `references/assessment-template.md` | `status`, `check`, `record-assessment` |
-| 生成规则 | `references/legado-json-structure.md`, `references/official-rule-pack.json`, `references/legado-source-behavior.md` | `source inspect`, `run/advance`（兼容生成 `rule-check.json`） |
+| 生成规则 | `references/legado-json-structure.md`, `references/official-rule-pack.json`, `references/legado-source-behavior.md` | `source inspect`, `run`（生成 `rule-check.json`） |
 | 验证失败回修 | `references/failure-diagnosis.md`, `references/validation-policy.md`, `references/validator-integration.md` | `record-validation`, `status`, `source inspect` |
 | Android / WebView / 登录态 | `references/android-probe-guide.md`, `references/policies.md`, `references/validator-integration.md`, `references/webview-behavior-matrix.md` | `android --run <run-dir>` |
 
@@ -80,7 +80,7 @@ Android、模拟器、登录态、WebView/WebJs、入口反爬复核不要靠命
 
 使用 `references/legado-json-structure.md` 检查最终 JSON。
 
-生成完成后必须产生通过的 `rule-check.json`。当前兼容入口是 `run/advance` 的 official-rule-pack 校验；失败时先修书源，不进入 validator。
+生成完成后必须产生通过的 `rule-check.json`。当前入口是 `run` 的 official-rule-pack 校验；失败时先修书源，不进入 validator。`advance` 已退役，不再作为内部状态推进路径。
 
 ## 5. Validator 验证
 

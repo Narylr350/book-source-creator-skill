@@ -1,31 +1,7 @@
-# 阅读源码行为记录
+# 阅读书源行为边界
 
-本文件只记录已从阅读源码或明确实现行为确认的边界。官方教程可确认的规则放在 `official-rule-pack.json`，validator 限制放在 `validator-integration.md` / `validation-policy.md`。
+本文件不再复述行为事实，避免与 skill 发布文档发生漂移。
 
-## Jsoup 选择器边界
+当前 canonical 文档：[`legado-book-source-generator/references/legado-source-behavior.md`](../legado-book-source-generator/references/legado-source-behavior.md)。
 
-阅读 HTML 规则使用 Jsoup 解析 CSS selector，不支持 jQuery 扩展选择器，例如 `:contains()`、`:has()`、`:eq()`、`:visible`。
-
-处理方式：用标准 CSS 定位节点，再用 `@text`、`@href`、`<js>` 或后处理规则过滤。
-
-## `@css:` 多 action 链限制
-
-`@css:` 模式下多 action 链容易把前面的 `@href` / `@text` 当成 selector 的一部分。需要链式处理时，优先使用普通规则 action + `##$##<js>` 或明确的 JS 后处理。
-
-## User-Agent 完整性
-
-书源 header 里的 User-Agent 必须是完整浏览器 UA。截断的 UA（如只有 `Mozilla/5.0 (Linux; Android 11) AppleWebKit/537.36`）缺少引擎名和版本号，会被反爬系统识别为非标准客户端。
-
-完整 UA 模板：`Mozilla/5.0 (Linux; Android 11) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.120 Mobile Safari/537.36`
-
-反爬系统检查 UA 完整性是常见行为。AI 抄示例时容易漏掉 `(KHTML, like Gecko) Chrome/... Safari/...` 后半截，因为看起来"不重要"。
-
-## TLS 指纹
-
-部分站点（如刺猬猫）通过 TLS 握手特征（JA3）区分真实客户端和自动化工具。PC JVM 的 JSSE TLS 指纹与 Android BoringSSL 不同，会被识别为爬虫。validator 改用 curl（OpenSSL）发 HTTP 请求绕过此检测。书源规则不涉及 TLS——这是 validator 的运行环境问题，不是书源配置问题。
-
-## 记录原则
-
-- 没有源码或实现证据的经验不写入本文件。
-- validator 兼容建议不写入本文件。
-- 站点历史样例不写入本文件。
+更新规则、状态语义或行为边界时，只修改 canonical 文档；本文件只保留入口链接。

@@ -22,6 +22,7 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeoutOrNull
 import okhttp3.Headers
 import org.junit.jupiter.api.Assertions.*
+import org.junit.jupiter.api.Disabled
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.TestInstance
 import java.io.File
@@ -63,6 +64,7 @@ class P8RegressionTest {
     private fun JsonObject.strOrNull(key: String): String? = if (has(key) && !get(key).isJsonNull) get(key).asString else null
 
     @Test
+    @Disabled("External live site regression; not deterministic in local validator test suite.")
     fun `biquges static HTML full pipeline passes`() {
         val source = loadSource("biquges-com-book-source.json")
         runBlocking {
@@ -231,12 +233,12 @@ class P8RegressionTest {
     }
 
     @Test
-    fun `anonymous login vertex failure needs app review`() {
+    fun `anonymous login vertex failure stays failed`() {
         val source = loadSource("novalpie-com.json")
         val steps = listOf(
             DebugStep("search", "error", errorCode = "SEARCH_EMPTY", sessionMode = "anonymous")
         )
-        assertEquals("needs_app_review", determineFinalStatus(steps, source))
+        assertEquals("failed", determineFinalStatus(steps, source))
     }
 
     @Test
@@ -255,18 +257,17 @@ class P8RegressionTest {
     }
 
     @Test
-    fun `app review search block controls final status`() {
+    fun `captcha search block stays failed`() {
         val source = loadSource("69shuba-com.json")
         val steps = listOf(
             DebugStep(
                 "search",
                 "error",
-                errorCode = "APP_REVIEW_REQUIRED",
-                needsAppReview = true,
-                reviewReason = "Cloudflare Turnstile 验证页，需浏览器/App 复核"
+                errorCode = "CAPTCHA_DETECTED",
+                reviewReason = "Cloudflare Turnstile 验证页"
             )
         )
-        assertEquals("needs_app_review", determineFinalStatus(steps, source))
+        assertEquals("failed", determineFinalStatus(steps, source))
     }
 
     @Test
@@ -314,6 +315,7 @@ class P8RegressionTest {
     }
 
     @Test
+    @Disabled("External live site regression; not deterministic in local validator test suite.")
     fun `biquges full pipeline - search to content`() {
         val source = loadSource("biquges-com-book-source.json")
         runBlocking {

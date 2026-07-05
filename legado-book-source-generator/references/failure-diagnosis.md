@@ -131,7 +131,7 @@ validator 返回失败后，按以下顺序检查：
 
 **原因**: `book-source.json` 顶层是单个对象 `{...}` 而非数组 `[{...}]`。Legado 要求顶层为 JSON 数组。
 
-**修复**: 用 `[{...}]` 包裹书源对象。交付前运行 `node scripts/audit-source.mjs <file>` 验证 JSON 结构。
+**修复**: 用 `[{...}]` 包裹书源对象。回到当前 run 后运行 `node "<skill-dir>/scripts/bsg.mjs" run --run <run-dir>` 让工具写入新的 `rule-check.json`，再重新验证。
 
 ## 证据收集
 

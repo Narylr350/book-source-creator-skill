@@ -364,35 +364,8 @@ export function cmdRun(args) {
 }
 
 export function cmdAdvance(args) {
-  const runDir = parseArg(args, "--run");
-  if (!runDir) return fail("用法: node \"<skill-dir>/scripts/bsg.mjs\" advance --run <run-dir>");
-
-  const { state, error } = loadAndVerify(runDir);
-  if (error) return fail(error);
-
-  const pendingBlock = blockForPendingUserAction(state);
-  if (pendingBlock) return pendingBlock;
-
-  const idx = currentPhaseIndex(state);
-  if (idx >= PHASE_ORDER.length) {
-    return {
-      ok: true,
-      message: "所有阶段已完成。运行 deliver 完成交付。",
-      nextAction: "all_done",
-      readNext: PHASE_READ_NEXT.deliver,
-      nextCommand: phaseNextCommand(runDir, "deliver"),
-    };
-  }
-
-  const current = PHASE_ORDER[idx];
-  const currentPhase = state.phases[current];
-
-  if (currentPhase.status === "pending") {
-    return startPhase(current, state, runDir);
-  }
-  if (currentPhase.status === "in_progress") {
-    return completePhase(current, state, runDir);
-  }
-
-  return fail(`阶段 ${current} 状态异常: ${currentPhase.status}`);
+  const runDir = parseArg(args, "--run") || "<run-dir>";
+  return fail(
+    `advance 已退役。请使用工具箱模式：先运行 status --run ${runDir} 查看当前状态，再按 nextCommand 使用 run/source/validate/record-validation/deliver。`
+  );
 }

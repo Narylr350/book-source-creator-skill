@@ -53,7 +53,7 @@ export function determineStatus(result) {
   
   const steps = result.steps || [];
   
-  // 优先使用服务端 finalStatus（P8.5 状态门禁）
+  // 只接受当前 validator 服务端 finalStatus；旧版客户端 fallback 已退役。
   // 但任何顶层结论都不能丢失 step 里的硬错误原因。
   if (result.finalStatus) {
     const hardError = steps.find(s => s.status === 'error' && !s.needsAppReview);
@@ -73,60 +73,11 @@ export function determineStatus(result) {
       warnings: warnings
     };
   }
-  
-  // fallback: 客户端判定（旧版 validator 兼容）
-  const phases = result.phases || {};
 
-  // 记 failIfHardError：如果有不标记 needsAppReview 的步骤真挂了，就返回 failed
-  function failIfHardError() {
-    const hardError = steps.find(s => s.status === 'error' && !s.needsAppReview);
-    if (hardError) return { status: 'failed', reason: `${hardError.phase}: ${hardError.error}` };
-    return null;
-  }
-
-  // 检查 needsAppReview（之前先看有没有硬错误被掩盖）
-  const beforeAppReview = failIfHardError();
-  if (beforeAppReview) return beforeAppReview;
-  for (const step of steps) {
-    if (step.needsAppReview) {
-      return { status: 'needs_app_review', reason: step.reviewReason || step.error };
-    }
-  }
-
-  // 检查 compatibilityWarnings
-  const warnings = result.compatibilityWarnings || [];
-  if (warnings.length > 0 && Object.values(phases).every(s => s === 'success')) {
-    return { status: 'validator_limitation', reason: warnings.map(w => w.description).join('; '), warnings };
-  }
-
-  // 全部成功
-  if (Object.values(phases).every(s => s === 'success')) {
-    return { status: 'passed', reason: null };
-  }
-
-  // 检查 Cloudflare/验证码（仅检查失败步骤，不扫描成功步的页面文字）
-  // "登录" 在中文站页面中极其常见，不在此处检测；由服务端 hasAnonymousLoginFailure 处理
-  const beforeCloudflare = failIfHardError();
-  if (beforeCloudflare) return beforeCloudflare;
-  for (const step of steps) {
-    if (step.status !== 'error') continue;
-    const err = step.error || '';
-    const rawStep = (result.steps || []).find(s => s.phase === step.phase);
-    const rawBody = rawStep?.response?.bodyPreview || '';
-    if (/Cloudflare|Turnstile|challenge|captcha|验证码|极验|geetest/i.test(err + rawBody)) {
-      const match = (err + rawBody).match(/Cloudflare|Turnstile|challenge|captcha|验证码|极验|geetest/i);
-      return { status: 'needs_app_review', reason: match ? match[0] + ' 检测' : err };
-    }
-  }
-
-  // 有失败
-  for (const step of steps) {
-    if (step.status === 'error') {
-      return { status: 'failed', reason: step.error, phase: step.phase, ruleHits: step.ruleHits };
-    }
-  }
-
-  return { status: 'failed', reason: 'Unknown failure' };
+  return {
+    status: 'failed',
+    reason: 'validator response missing finalStatus; update/restart validator and rerun validation',
+  };
 }
 
 export function extractSummary(result) {

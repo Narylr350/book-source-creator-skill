@@ -99,8 +99,8 @@
 生成 book-source.json 后，交付前运行：
 
 ```bash
-# 结构验证
-node scripts/audit-source.mjs outputs/<site-slug>/book-source.json
+# 规则结构检查（写入 rule-check.json）
+node "<skill-dir>/scripts/bsg.mjs" run --run runs/<site-slug>/
 
 # 全链路验证（需要 validator 运行中）
 node "<skill-dir>/scripts/bsg.mjs" validate --run runs/<site-slug>/

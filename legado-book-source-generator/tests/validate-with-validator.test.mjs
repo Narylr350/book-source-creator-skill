@@ -114,4 +114,15 @@ describe("validate-with-validator status", () => {
     assert.equal(result.status, "failed");
     assert.equal(result.reason, "content: 正文为空");
   });
+
+  it("rejects validator responses without finalStatus instead of using legacy client fallback", () => {
+    const result = determineStatus({
+      ok: true,
+      phases: { search: "success", detail: "success", toc: "success", content: "success" },
+      steps: [],
+    });
+
+    assert.equal(result.status, "failed");
+    assert.match(result.reason, /missing finalStatus/);
+  });
 });

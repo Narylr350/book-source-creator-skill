@@ -15,6 +15,7 @@ const noDeviceEnv = {
   ...process.env,
   BSG_TEST_ADB_DEVICES_OUTPUT: "List of devices attached\n",
 };
+const MIN_ANALYSIS = "# 网站分析\n\n- 页面入口或触发方式: https://example.com\n";
 
 async function fakeAndroidToolEnv(tmpDir, extraEnv = {}) {
   const toolsDir = path.join(tmpDir, "fake-android-tools");
@@ -81,8 +82,8 @@ async function runBsgBlocked(args, options = {}) {
 
 async function initRun(tmpDir, options = {}) {
   const init = await runBsg(["init", "https://example.com", "--cwd", tmpDir], options);
-  await runBsg(["advance", "--run", init.runDir]);
-  await runBsg(["advance", "--run", init.runDir]);
+  await runBsg(["run", "--run", init.runDir]);
+  await runBsg(["run", "--run", init.runDir]);
   return init.runDir;
 }
 
@@ -90,11 +91,12 @@ async function writeRequiredDeliverFiles(tmpDir, runDir) {
   await writeSiteFacts(runDir);
   await fs.writeFile(path.join(runDir, "assessment.md"), assessmentContent(["- 四链路已记录 evidence:search-1 evidence:detail-1 evidence:toc-1 evidence:content-1"]), "utf8");
   await runBsg(["record-assessment", "--run", runDir]);
-  await runBsg(["advance", "--run", runDir]);
-  await fs.writeFile(path.join(runDir, "analysis.md"), "# 网站分析\n", "utf8");
-  await runBsg(["advance", "--run", runDir]);
+  await runBsg(["run", "--run", runDir]);
+  await fs.writeFile(path.join(runDir, "analysis.md"), MIN_ANALYSIS, "utf8");
+  await runBsg(["run", "--run", runDir]);
+  await runBsg(["run", "--run", runDir]);
   await writeValidSource(tmpDir);
-  await runBsg(["advance", "--run", runDir]);
+  await runBsg(["run", "--run", runDir]);
   await fs.writeFile(path.join(runDir, "validation-checklist.md"), "# 清单\n", "utf8");
   await writeGeneratedValidatorReport(runDir, { status: "needs_app_review" });
   await fs.writeFile(path.join(runDir, "validator-summary.md"), "# summary\n", "utf8");
@@ -143,21 +145,22 @@ async function writeRuleCheckForCurrentSource(runDir) {
   }), "utf8");
 }
 
-async function advanceToGenerate(tmpDir, runDir) {
+async function runToGenerate(tmpDir, runDir) {
   await writeAssessmentAndRecord(runDir);
-  await runBsg(["advance", "--run", runDir]);
-  await fs.writeFile(path.join(runDir, "analysis.md"), "# 网站分析\n", "utf8");
-  await runBsg(["advance", "--run", runDir]);
+  await runBsg(["run", "--run", runDir]);
+  await fs.writeFile(path.join(runDir, "analysis.md"), MIN_ANALYSIS, "utf8");
+  await runBsg(["run", "--run", runDir]);
   await fs.mkdir(path.join(tmpDir, "outputs", "example-com"), { recursive: true });
+  await runBsg(["run", "--run", runDir]);
 }
 
-async function advanceToValidateWithWebViewSource(tmpDir, runDir) {
-  await advanceToGenerate(tmpDir, runDir);
+async function runToValidateWithWebViewSource(tmpDir, runDir) {
+  await runToGenerate(tmpDir, runDir);
   await writeValidSource(tmpDir, {
     ruleToc: { chapterList: "$.chapters", chapterName: "$.title", chapterUrl: "{{$.url}},{\"webView\":true}" },
     respondTime: 180000,
   });
-  await runBsg(["advance", "--run", runDir]);
+  await runBsg(["run", "--run", runDir]);
 }
 
 function assessmentContent(evidenceLines = [], remarkLines = []) {
@@ -255,7 +258,7 @@ describe("bsg workflow user-action gates", () => {
     await fs.rm(tmpDir, { recursive: true, force: true });
   });
 
-  it("refuses to advance assessment before record-assessment passes", async () => {
+  it("keeps assessment in authoring mode before record-assessment passes", async () => {
     const runDir = await initRun(tmpDir);
     await fs.writeFile(path.join(runDir, "assessment.md"), [
       "- 评级: 可生成",
@@ -263,14 +266,10 @@ describe("bsg workflow user-action gates", () => {
       "- 风险标签: 无风险",
     ].join("\n"), "utf8");
 
-    await assert.rejects(
-      () => execFileAsync("node", [BSG, "advance", "--run", runDir], { encoding: "utf8" }),
-      (err) => {
-        const result = JSON.parse(err.stdout);
-        assert.match(result.error, /record-assessment/);
-        return true;
-      },
-    );
+    const result = await runBsg(["run", "--run", runDir]);
+    assert.equal(result.currentPhase, "assess");
+    assert.equal(result.nextAction, "write_assessment");
+    assert.match(result.nextCommand, /bsg\.mjs" run/);
   });
 
   it("record-assessment generates AUTO summary from site facts", async () => {
@@ -367,7 +366,7 @@ describe("bsg workflow user-action gates", () => {
     const runDir = await initRun(tmpDir);
     await writeAssessmentAndRecord(runDir, ["- 评级: 可生成", "- 风险标签: WebView 依赖"]);
 
-    const result = await runBsg(["advance", "--run", runDir], {
+    const result = await runBsg(["run", "--run", runDir], {
       env: {
         ...process.env,
         BSG_TEST_ADB_DEVICES_OUTPUT: "List of devices attached\n",
@@ -384,7 +383,7 @@ describe("bsg workflow user-action gates", () => {
     const runDir = await initRun(tmpDir);
     await writeAssessmentAndRecord(runDir, [], searchCaptchaFacts());
 
-    const result = await runBsg(["advance", "--run", runDir], {
+    const result = await runBsg(["run", "--run", runDir], {
       env: {
         ...process.env,
         BSG_TEST_ADB_DEVICES_OUTPUT: "List of devices attached\n",
@@ -400,7 +399,7 @@ describe("bsg workflow user-action gates", () => {
     const runDir = await initRun(tmpDir);
     await writeAssessmentAndRecord(runDir, [], searchCaptchaFacts());
 
-    const result = await runBsg(["advance", "--run", runDir], {
+    const result = await runBsg(["run", "--run", runDir], {
       env: {
         ...process.env,
         BSG_TEST_ADB_DEVICES_OUTPUT: "List of devices attached\nABC123\tdevice\n",
@@ -416,7 +415,7 @@ describe("bsg workflow user-action gates", () => {
     const runDir = await initRun(tmpDir);
     await writeAssessmentAndRecord(runDir, [], searchCaptchaFacts());
 
-    await runBsg(["advance", "--run", runDir], {
+    await runBsg(["run", "--run", runDir], {
       env: {
         ...process.env,
         BSG_TEST_ADB_DEVICES_OUTPUT: "List of devices attached\n",
@@ -450,7 +449,7 @@ describe("bsg workflow user-action gates", () => {
   it("blocks record-validation while android user action is pending", async () => {
     const runDir = await initRun(tmpDir);
     await writeAssessmentAndRecord(runDir, ["- 评级: 可生成", "- 风险标签: WebView 依赖"]);
-    await runBsg(["advance", "--run", runDir], {
+    await runBsg(["run", "--run", runDir], {
       env: {
         ...process.env,
         BSG_TEST_ADB_DEVICES_OUTPUT: "List of devices attached\n",
@@ -470,7 +469,7 @@ describe("bsg workflow user-action gates", () => {
   it("allows assessment to continue after user confirms Android is unavailable", async () => {
     const runDir = await initRun(tmpDir);
     await writeAssessmentAndRecord(runDir, ["- 评级: 可生成", "- 风险标签: WebView 依赖"]);
-    await runBsg(["advance", "--run", runDir], {
+    await runBsg(["run", "--run", runDir], {
       env: {
         ...process.env,
         BSG_TEST_ADB_DEVICES_OUTPUT: "List of devices attached\n",
@@ -478,7 +477,7 @@ describe("bsg workflow user-action gates", () => {
     });
 
     const resolved = await runBsg(["resolve-user-action", "--run", runDir, "--action", "android_device_unavailable"], { env: noDeviceEnv });
-    const advanced = await runBsg(["advance", "--run", runDir], {
+    const advanced = await runBsg(["run", "--run", runDir], {
       env: {
         ...process.env,
         BSG_TEST_ADB_DEVICES_OUTPUT: "List of devices attached\n",
@@ -619,7 +618,7 @@ describe("bsg workflow user-action gates", () => {
       "- 会员限制: VIP章节需订阅",
     ]);
 
-    const result = await runBsg(["advance", "--run", runDir], {
+    const result = await runBsg(["run", "--run", runDir], {
       env: {
         ...process.env,
         BSG_TEST_ADB_DEVICES_OUTPUT: "List of devices attached\n",
@@ -640,7 +639,7 @@ describe("bsg workflow user-action gates", () => {
       "- 风险标签: 需登录态",
       "- 会员限制: VIP章节需订阅",
     ]);
-    await runBsg(["advance", "--run", runDir], {
+    await runBsg(["run", "--run", runDir], {
       env: {
         ...process.env,
         BSG_TEST_ADB_DEVICES_OUTPUT: "List of devices attached\n",
@@ -648,7 +647,7 @@ describe("bsg workflow user-action gates", () => {
     });
     await runBsg(["resolve-user-action", "--run", runDir, "--action", "android_device_unavailable"], { env: noDeviceEnv });
 
-    const result = await runBsg(["advance", "--run", runDir], {
+    const result = await runBsg(["run", "--run", runDir], {
       env: {
         ...process.env,
         BSG_TEST_ADB_DEVICES_OUTPUT: "List of devices attached\n",
@@ -673,7 +672,7 @@ describe("bsg workflow user-action gates", () => {
       "www.example.com": "a=b; c=d",
     }), "utf8");
 
-    const result = await runBsg(["advance", "--run", runDir], {
+    const result = await runBsg(["run", "--run", runDir], {
       env: {
         ...process.env,
         BSG_TEST_ADB_DEVICES_OUTPUT: "List of devices attached\nABC123\tdevice\n",
@@ -697,7 +696,7 @@ describe("bsg workflow user-action gates", () => {
       "www.example.com": "a=b; c=d",
     }), "utf8");
 
-    const result = await runBsg(["advance", "--run", runDir], {
+    const result = await runBsg(["run", "--run", runDir], {
       env: {
         ...process.env,
         BSG_TEST_ADB_DEVICES_OUTPUT: "List of devices attached\n",
@@ -717,14 +716,14 @@ describe("bsg workflow user-action gates", () => {
       "- 当前分析会话: 匿名 / 已登录 / 登录失败",
       "- 风险标签: 需登录态",
     ]);
-    await runBsg(["advance", "--run", runDir], {
+    await runBsg(["run", "--run", runDir], {
       env: {
         ...process.env,
         BSG_TEST_ADB_DEVICES_OUTPUT: "List of devices attached\n",
       },
     });
     await runBsg(["resolve-user-action", "--run", runDir, "--action", "android_device_unavailable"], { env: noDeviceEnv });
-    await runBsg(["advance", "--run", runDir], {
+    await runBsg(["run", "--run", runDir], {
       env: {
         ...process.env,
         BSG_TEST_ADB_DEVICES_OUTPUT: "List of devices attached\n",
@@ -756,7 +755,7 @@ describe("bsg workflow user-action gates", () => {
       "- 当前分析会话: 匿名 / 已登录 / 登录失败",
       "- 风险标签: 需登录态",
     ]);
-    await runBsg(["advance", "--run", runDir], {
+    await runBsg(["run", "--run", runDir], {
       env: {
         ...process.env,
         BSG_TEST_ADB_DEVICES_OUTPUT: "List of devices attached\nABC123\tdevice\n",
@@ -789,7 +788,7 @@ describe("bsg workflow user-action gates", () => {
       "- 当前分析会话: 匿名 / 已登录 / 登录失败",
       "- 风险标签: 需登录态",
     ]);
-    await runBsg(["advance", "--run", runDir], {
+    await runBsg(["run", "--run", runDir], {
       env: {
         ...process.env,
         BSG_TEST_ADB_DEVICES_OUTPUT: "List of devices attached\nABC123\tdevice\n",
@@ -820,7 +819,7 @@ describe("bsg workflow user-action gates", () => {
   it("clears current pending action after resolving it", async () => {
     const runDir = await initRun(tmpDir);
     await writeAssessmentAndRecord(runDir, [], searchCaptchaFacts());
-    await runBsg(["advance", "--run", runDir], {
+    await runBsg(["run", "--run", runDir], {
       env: {
         ...process.env,
         BSG_TEST_ADB_DEVICES_OUTPUT: "List of devices attached\nABC123\tdevice\n",
@@ -892,9 +891,9 @@ describe("bsg workflow user-action gates", () => {
 
   it("rejects record-validation status that rewrites the validator report status", async () => {
     const runDir = await initRun(tmpDir);
-    await advanceToGenerate(tmpDir, runDir);
+    await runToGenerate(tmpDir, runDir);
     await writeValidSource(tmpDir);
-    await runBsg(["advance", "--run", runDir]);
+    await runBsg(["run", "--run", runDir]);
     await writeGeneratedValidatorReport(runDir, {
       status: "failed",
       mode: "android",
@@ -921,9 +920,9 @@ describe("bsg workflow user-action gates", () => {
 
   it("moves back to generate after validator failed so the source can be repaired", async () => {
     const runDir = await initRun(tmpDir);
-    await advanceToGenerate(tmpDir, runDir);
+    await runToGenerate(tmpDir, runDir);
     await writeValidSource(tmpDir);
-    await runBsg(["advance", "--run", runDir]);
+    await runBsg(["run", "--run", runDir]);
     await writeGeneratedValidatorReport(runDir, {
       status: "failed",
       phases: { search: "success", detail: "success", toc: "success", content: "error" },
@@ -957,7 +956,7 @@ describe("bsg workflow user-action gates", () => {
     ]);
     assert.equal(changed.phase, "generate");
 
-    const advanced = await runBsg(["advance", "--run", runDir]);
+    const advanced = await runBsg(["run", "--run", runDir]);
     assert.equal(advanced.nextAction, "run_validator");
     const repairedState = JSON.parse(await fs.readFile(path.join(runDir, "run-state.json"), "utf8"));
     assert.equal(repairedState.repairContext, undefined);
@@ -965,9 +964,9 @@ describe("bsg workflow user-action gates", () => {
 
   it("preserves repeated validator failure counts across generate repair rounds", async () => {
     const runDir = await initRun(tmpDir);
-    await advanceToGenerate(tmpDir, runDir);
+    await runToGenerate(tmpDir, runDir);
     await writeValidSource(tmpDir);
-    await runBsg(["advance", "--run", runDir]);
+    await runBsg(["run", "--run", runDir]);
 
     async function recordSameFailure() {
       await writeGeneratedValidatorReport(runDir, {
@@ -987,7 +986,7 @@ describe("bsg workflow user-action gates", () => {
 
     const first = await recordSameFailure();
     assert.equal(first.consecutiveSame, 1);
-    await runBsg(["advance", "--run", runDir]);
+    await runBsg(["run", "--run", runDir]);
 
     const second = await recordSameFailure();
     assert.equal(second.consecutiveSame, 2);
@@ -1000,7 +999,7 @@ describe("bsg workflow user-action gates", () => {
   it("records validation from matching artifacts before validate phase is active", async () => {
     const runDir = await initRun(tmpDir);
     await writeAssessmentAndRecord(runDir);
-    await fs.writeFile(path.join(runDir, "analysis.md"), "# 网站分析\n", "utf8");
+    await fs.writeFile(path.join(runDir, "analysis.md"), MIN_ANALYSIS, "utf8");
     await writeValidSource(tmpDir);
     await writeRuleCheckForCurrentSource(runDir);
     await writeGeneratedValidatorReport(runDir, {
@@ -1265,7 +1264,7 @@ describe("bsg workflow user-action gates", () => {
 
   it("blocks passed HTTP validation when generated source contains WebView and Android is available", async () => {
     const runDir = await initRun(tmpDir);
-    await advanceToValidateWithWebViewSource(tmpDir, runDir);
+    await runToValidateWithWebViewSource(tmpDir, runDir);
     await writeGeneratedValidatorReport(runDir, {
       mode: "http",
       phases: { search: "success", detail: "success", toc: "success", content: "success" },
@@ -1353,7 +1352,7 @@ describe("bsg workflow user-action gates", () => {
       BSG_TEST_ADB_DEVICES_OUTPUT: "List of devices attached\n",
     };
     const runDir = await initRun(tmpDir, { env: noAndroidEnv });
-    await advanceToValidateWithWebViewSource(tmpDir, runDir);
+    await runToValidateWithWebViewSource(tmpDir, runDir);
     await writeGeneratedValidatorReport(runDir, {
       mode: "http",
       phases: { search: "success", detail: "success", toc: "success", content: "success" },
@@ -1379,7 +1378,7 @@ describe("bsg workflow user-action gates", () => {
     assert.equal(recorded.status, "validator_limitation");
     assert.match(recorded.androidWarning, /Android Probe 不可用|WebView 正文/);
 
-    await runBsg(["advance", "--run", runDir]);
+    await runBsg(["run", "--run", runDir]);
     const delivered = await runBsg(["deliver", "--run", runDir]);
     assert.equal(delivered.finalStatus, "validator_limitation");
     assert.match(delivered.message, /不能标可用|App\/WebView/);
@@ -1402,13 +1401,13 @@ describe("bsg workflow user-action gates", () => {
 
   it("accepts Probe-injected cookies in android reports without requiring cookies.json", async () => {
     const runDir = await initRun(tmpDir);
-    await advanceToGenerate(tmpDir, runDir);
+    await runToGenerate(tmpDir, runDir);
     await writeValidSource(tmpDir, {
       enabledCookieJar: true,
       loginUrl: "https://example.com/login",
       header: "<js>JSON.stringify({'Cookie': java.getCookie('https://example.com') || ''})</js>",
     });
-    await runBsg(["advance", "--run", runDir]);
+    await runBsg(["run", "--run", runDir]);
     await runBsg(["set-login-features", "--run", runDir, "--flags", JSON.stringify({
       hasEnabledCookieJar: true,
       _loginMethod: "probe",
@@ -1439,13 +1438,13 @@ describe("bsg workflow user-action gates", () => {
 
   it("blocks Probe login when android report only used PC HTTP transport", async () => {
     const runDir = await initRun(tmpDir);
-    await advanceToGenerate(tmpDir, runDir);
+    await runToGenerate(tmpDir, runDir);
     await writeValidSource(tmpDir, {
       enabledCookieJar: true,
       loginUrl: "https://example.com/login",
       header: "<js>JSON.stringify({'Cookie': java.getCookie('https://example.com') || ''})</js>",
     });
-    await runBsg(["advance", "--run", runDir]);
+    await runBsg(["run", "--run", runDir]);
     await runBsg(["set-login-features", "--run", runDir, "--flags", JSON.stringify({
       hasEnabledCookieJar: true,
       _loginMethod: "probe",
@@ -1515,9 +1514,9 @@ describe("bsg workflow user-action gates", () => {
 
   it("blocks record-validation when site facts changed after record-assessment", async () => {
     const runDir = await initRun(tmpDir);
-    await advanceToGenerate(tmpDir, runDir);
+    await runToGenerate(tmpDir, runDir);
     await writeValidSource(tmpDir);
-    await runBsg(["advance", "--run", runDir]);
+    await runBsg(["run", "--run", runDir]);
     await writeSiteFacts(runDir, { links: { content: { render: "csr" } } });
     await writeGeneratedValidatorReport(runDir, {
       mode: "http",
@@ -1541,9 +1540,9 @@ describe("bsg workflow user-action gates", () => {
 
   it("blocks record-validation when book-source changed after generate checks", async () => {
     const runDir = await initRun(tmpDir);
-    await advanceToGenerate(tmpDir, runDir);
+    await runToGenerate(tmpDir, runDir);
     await writeValidSource(tmpDir);
-    await runBsg(["advance", "--run", runDir]);
+    await runBsg(["run", "--run", runDir]);
     await writeValidSource(tmpDir, { bookSourceName: "Changed After Generate" });
     await writeGeneratedValidatorReport(runDir, {
       mode: "http",
@@ -1585,7 +1584,7 @@ describe("bsg workflow user-action gates", () => {
 
   it("blocks Probe login plus webView source when android report has no WebView render evidence", async () => {
     const runDir = await initRun(tmpDir);
-    await advanceToValidateWithWebViewSource(tmpDir, runDir);
+    await runToValidateWithWebViewSource(tmpDir, runDir);
     await writeGeneratedValidatorReport(runDir, {
       mode: "android",
       phases: { search: "success", detail: "success", toc: "success", content: "success" },
@@ -1613,7 +1612,7 @@ describe("bsg workflow user-action gates", () => {
       BSG_TEST_ADB_DEVICES_OUTPUT: "List of devices attached\nABC123\tdevice\n",
     };
     const runDir = await initRun(tmpDir, { env: adbEnv });
-    await advanceToValidateWithWebViewSource(tmpDir, runDir);
+    await runToValidateWithWebViewSource(tmpDir, runDir);
     await fs.writeFile(path.join(runDir, "validation-checklist.md"), "# 清单\n", "utf8");
     await writeGeneratedValidatorReport(runDir, {
       mode: "android",
@@ -1639,9 +1638,9 @@ describe("bsg workflow user-action gates", () => {
 
   it("does not count probe_unavailable as Android Probe evidence", async () => {
     const runDir = await initRun(tmpDir);
-    await advanceToGenerate(tmpDir, runDir);
+    await runToGenerate(tmpDir, runDir);
     await writeValidSource(tmpDir);
-    await runBsg(["advance", "--run", runDir]);
+    await runBsg(["run", "--run", runDir]);
     await fs.writeFile(path.join(runDir, "validation-checklist.md"), "# 清单\n", "utf8");
     await writeGeneratedValidatorReport(runDir, {
       mode: "android",
@@ -1669,7 +1668,7 @@ describe("bsg workflow user-action gates", () => {
 
   it("blocks Android WebView validation without extracted content evidence", async () => {
     const runDir = await initRun(tmpDir);
-    await advanceToValidateWithWebViewSource(tmpDir, runDir);
+    await runToValidateWithWebViewSource(tmpDir, runDir);
     await writeGeneratedValidatorReport(runDir, {
       mode: "android",
       phases: { search: "success", detail: "success", toc: "success", content: "success" },
@@ -1703,7 +1702,7 @@ describe("bsg workflow user-action gates", () => {
       BSG_TEST_ADB_DEVICES_OUTPUT: "List of devices attached\nABC123\tdevice\n",
     };
     const runDir = await initRun(tmpDir, { env: adbEnv });
-    await advanceToValidateWithWebViewSource(tmpDir, runDir);
+    await runToValidateWithWebViewSource(tmpDir, runDir);
     await writeGeneratedValidatorReport(runDir, {
       mode: "android",
       phases: { search: "success", detail: "success", toc: "success", content: "success" },
@@ -1917,7 +1916,7 @@ describe("bsg workflow user-action gates", () => {
       BSG_TEST_ADB_DEVICES_OUTPUT: "List of devices attached\nABC123\tdevice\n",
     };
     const runDir = await initRun(tmpDir, { env: adbEnv });
-    await advanceToValidateWithWebViewSource(tmpDir, runDir);
+    await runToValidateWithWebViewSource(tmpDir, runDir);
     await writeGeneratedValidatorReport(runDir, {
       mode: "android",
       phases: { search: "success", detail: "success", toc: "success", content: "error" },
@@ -1960,7 +1959,7 @@ describe("bsg workflow user-action gates", () => {
       BSG_TEST_ADB_DEVICES_OUTPUT: "List of devices attached\nABC123\tdevice\n",
     };
     const runDir = await initRun(tmpDir, { env: adbEnv });
-    await advanceToValidateWithWebViewSource(tmpDir, runDir);
+    await runToValidateWithWebViewSource(tmpDir, runDir);
     const preview = "这是一段从 Android WebView DOM 中提取出的章节正文。".repeat(8);
     await writeGeneratedValidatorReport(runDir, {
       status: "failed",
@@ -2035,7 +2034,7 @@ describe("bsg workflow user-action gates", () => {
       BSG_TEST_ADB_DEVICES_OUTPUT: "List of devices attached\nABC123\tdevice\n",
     };
     const runDir = await initRun(tmpDir, { env: adbEnv });
-    await advanceToValidateWithWebViewSource(tmpDir, runDir);
+    await runToValidateWithWebViewSource(tmpDir, runDir);
     await writeGeneratedValidatorReport(runDir, {
       status: "failed",
       mode: "android",
@@ -2089,7 +2088,7 @@ describe("bsg workflow user-action gates", () => {
       BSG_TEST_ADB_DEVICES_OUTPUT: "List of devices attached\nABC123\tdevice\n",
     };
     const runDir = await initRun(tmpDir, { env: adbEnv });
-    await advanceToValidateWithWebViewSource(tmpDir, runDir);
+    await runToValidateWithWebViewSource(tmpDir, runDir);
     await writeGeneratedValidatorReport(runDir, {
       status: "needs_app_review",
       mode: "http",
@@ -2129,7 +2128,7 @@ describe("bsg workflow user-action gates", () => {
       BSG_TEST_ADB_DEVICES_OUTPUT: "List of devices attached\nABC123\tdevice\n",
     };
     const runDir = await initRun(tmpDir, { env: adbEnv });
-    await advanceToValidateWithWebViewSource(tmpDir, runDir);
+    await runToValidateWithWebViewSource(tmpDir, runDir);
     await writeGeneratedValidatorReport(runDir, {
       status: "failed",
       mode: "android",
@@ -2162,7 +2161,7 @@ describe("bsg workflow user-action gates", () => {
 
   it("anti-bot failure stays failed, does not converge to needs_app_review", async () => {
     const runDir = await initRun(tmpDir, { env: noDeviceEnv });
-    await advanceToValidateWithWebViewSource(tmpDir, runDir);
+    await runToValidateWithWebViewSource(tmpDir, runDir);
     await runBsg(["set-login-features", "--run", runDir, "--flags", JSON.stringify({ hasWebView: true, _loginVerified: true })]);
     await writeGeneratedValidatorReport(runDir, {
       status: "failed",
@@ -2192,7 +2191,7 @@ describe("bsg workflow user-action gates", () => {
 
   it("intercepts WebViewNotSupportedException in http mode and suggests android mode", async () => {
     const runDir = await initRun(tmpDir, { env: noDeviceEnv });
-    await advanceToValidateWithWebViewSource(tmpDir, runDir);
+    await runToValidateWithWebViewSource(tmpDir, runDir);
     await writeGeneratedValidatorReport(runDir, {
       status: "needs_app_review",
       mode: "http",
@@ -2221,9 +2220,9 @@ describe("bsg workflow user-action gates", () => {
 
   it("intercepts POST search in browser mode and suggests http mode", async () => {
     const runDir = await initRun(tmpDir, { env: noDeviceEnv });
-    await advanceToGenerate(tmpDir, runDir);
+    await runToGenerate(tmpDir, runDir);
     await writeValidSource(tmpDir);
-    await runBsg(["advance", "--run", runDir]);
+    await runBsg(["run", "--run", runDir]);
     await writeGeneratedValidatorReport(runDir, {
       status: "needs_app_review",
       mode: "browser",
@@ -2251,9 +2250,9 @@ describe("bsg workflow user-action gates", () => {
 
   it("asks for Android availability before accepting non-Android passed validation", async () => {
     const runDir = await initRun(tmpDir, { env: noDeviceEnv });
-    await advanceToGenerate(tmpDir, runDir);
+    await runToGenerate(tmpDir, runDir);
     await writeValidSource(tmpDir);
-    await runBsg(["advance", "--run", runDir]);
+    await runBsg(["run", "--run", runDir]);
     await writeGeneratedValidatorReport(runDir, {
       status: "passed",
       mode: "http",
@@ -2356,7 +2355,7 @@ describe("bsg workflow user-action gates", () => {
 
   it("rejects ruleBookInfo.summary before leaving generate phase", async () => {
     const runDir = await initRun(tmpDir);
-    await advanceToGenerate(tmpDir, runDir);
+    await runToGenerate(tmpDir, runDir);
     await fs.writeFile(path.join(tmpDir, "outputs", "example-com", "book-source.json"), JSON.stringify([{
       bookSourceUrl: "https://example.com",
       bookSourceName: "Example",
@@ -2368,7 +2367,7 @@ describe("bsg workflow user-action gates", () => {
     }]), "utf8");
 
     await assert.rejects(
-      () => execFileAsync("node", [BSG, "advance", "--run", runDir], { encoding: "utf8" }),
+      () => execFileAsync("node", [BSG, "run", "--run", runDir], { encoding: "utf8" }),
       (err) => {
         const result = JSON.parse(err.stdout);
         assert.match(result.error, /official-rule-pack|ruleBookInfo\.summary|intro/);
@@ -2382,7 +2381,7 @@ describe("bsg workflow user-action gates", () => {
 
   it("requires loginUrl when hasEnabledCookieJar is set but loginUrl missing", async () => {
     const runDir = await initRun(tmpDir);
-    await advanceToGenerate(tmpDir, runDir);
+    await runToGenerate(tmpDir, runDir);
     // 模拟 AI 标了登录特征但书源漏写 loginUrl + enabledCookieJar
     await runBsg(["set-login-features", "--run", runDir, "--flags", JSON.stringify({ hasEnabledCookieJar: true })]);
     await fs.writeFile(path.join(tmpDir, "outputs", "example-com", "book-source.json"), JSON.stringify([{
@@ -2396,7 +2395,7 @@ describe("bsg workflow user-action gates", () => {
     }]), "utf8");
 
     await assert.rejects(
-      () => execFileAsync("node", [BSG, "advance", "--run", runDir], { encoding: "utf8" }),
+      () => execFileAsync("node", [BSG, "run", "--run", runDir], { encoding: "utf8" }),
       (err) => {
         const result = JSON.parse(err.stdout);
         assert.match(result.error, /loginUrl/);
@@ -2408,7 +2407,7 @@ describe("bsg workflow user-action gates", () => {
 
   it("rejects empty searchUrl and ruleSearch before validate", async () => {
     const runDir = await initRun(tmpDir);
-    await advanceToGenerate(tmpDir, runDir);
+    await runToGenerate(tmpDir, runDir);
     await fs.writeFile(path.join(tmpDir, "outputs", "example-com", "book-source.json"), JSON.stringify([{
       bookSourceUrl: "https://example.com",
       bookSourceName: "Example",
@@ -2422,7 +2421,7 @@ describe("bsg workflow user-action gates", () => {
     }]), "utf8");
 
     await assert.rejects(
-      () => execFileAsync("node", [BSG, "advance", "--run", runDir], { encoding: "utf8" }),
+      () => execFileAsync("node", [BSG, "run", "--run", runDir], { encoding: "utf8" }),
       (err) => {
         const result = JSON.parse(err.stdout);
         assert.match(result.error, /searchUrl|ruleSearch|搜索入口/);
@@ -2441,18 +2440,16 @@ describe("printHint stderr output", () => {
     await fs.rm(tmpDir, { recursive: true, force: true });
   });
 
-  it("advance stderr contains ## 下一步 on wrong-phase error", async () => {
+  it("run keeps assessment authoring explicit before record-assessment", async () => {
     const tmpDir = await makeTmpDir();
     const init = await runBsg(["init", "https://example.com", "--cwd", tmpDir]);
-    await runBsg(["advance", "--run", init.runDir]);
-    await runBsg(["advance", "--run", init.runDir]);
+    await runBsg(["run", "--run", init.runDir]);
+    await runBsg(["run", "--run", init.runDir]);
 
     try {
-      await execFileAsync("node", [BSG, "advance", "--run", init.runDir], { encoding: "utf8" });
-      assert.fail("should have failed");
-    } catch (err) {
-      assert.ok(err.stderr.includes("## 下一步"), "stderr should contain ## 下一步");
-      assert.ok(err.stderr.includes("运行："), "stderr should contain 运行：");
+      const result = await runBsg(["run", "--run", init.runDir]);
+      assert.equal(result.currentPhase, "assess");
+      assert.equal(result.nextAction, "write_assessment");
     } finally {
       await fs.rm(tmpDir, { recursive: true, force: true });
     }
@@ -2470,7 +2467,7 @@ describe("printHint stderr output", () => {
   });
 });
 
-describe("advance response fields", () => {
+describe("run response fields", () => {
   it("SKILL main workflow presents tools and final audit", async () => {
     const skill = await fs.readFile(path.join(ROOT, "SKILL.md"), "utf8");
 
@@ -2642,7 +2639,7 @@ describe("advance response fields", () => {
       "- 登录需求: 是",
       "- 风险标签: 需登录态",
     ]);
-    await runBsg(["advance", "--run", runDir], {
+    await runBsg(["run", "--run", runDir], {
       env: {
         ...process.env,
         BSG_TEST_ADB_DEVICES_OUTPUT: "List of devices attached\nABC123\tdevice\n",
@@ -2685,7 +2682,7 @@ describe("advance response fields", () => {
       "- 登录需求: 是",
       "- 风险标签: 需登录态",
     ]);
-    await runBsg(["advance", "--run", runDir], {
+    await runBsg(["run", "--run", runDir], {
       env: {
         ...process.env,
         BSG_TEST_ADB_DEVICES_OUTPUT: "List of devices attached\nemulator-5554\tdevice\n",
@@ -2801,7 +2798,7 @@ describe("advance response fields", () => {
     const tmpDir = await makeTmpDir();
     const runDir = await initRun(tmpDir, { env: noDeviceEnv });
     await writeAssessmentAndRecord(runDir, ["- 评级: 可生成", "- 风险标签: WebView 依赖"]);
-    await runBsg(["advance", "--run", runDir], { env: noDeviceEnv });
+    await runBsg(["run", "--run", runDir], { env: noDeviceEnv });
 
     const result = await runBsg(["android", "--run", runDir], {
       env: {
@@ -2828,7 +2825,7 @@ describe("advance response fields", () => {
       "- 登录需求: 是",
       "- 风险标签: 需登录态",
     ]);
-    await runBsg(["advance", "--run", runDir], {
+    await runBsg(["run", "--run", runDir], {
       env: {
         ...process.env,
         BSG_TEST_ADB_DEVICES_OUTPUT: "List of devices attached\nemulator-5554\tdevice\n",
@@ -2857,9 +2854,9 @@ describe("advance response fields", () => {
     const runDir = await initRun(tmpDir, {
       env: { ...process.env, BSG_TEST_ADB_DEVICES_OUTPUT: "List of devices attached\nemulator-5554\tdevice\n" },
     });
-    await advanceToGenerate(tmpDir, runDir);
+    await runToGenerate(tmpDir, runDir);
     await writeValidSource(tmpDir);
-    await runBsg(["advance", "--run", runDir]);
+    await runBsg(["run", "--run", runDir]);
     await writeGeneratedValidatorReport(runDir, {
       status: "passed",
       mode: "android",
@@ -2890,10 +2887,10 @@ describe("advance response fields", () => {
     const runDir = await initRun(tmpDir, {
       env: { ...process.env, BSG_TEST_ADB_DEVICES_OUTPUT: "List of devices attached\nemulator-5554\tdevice\n" },
     });
-    await advanceToGenerate(tmpDir, runDir);
+    await runToGenerate(tmpDir, runDir);
     await fs.writeFile(path.join(runDir, "analysis.md"), "# test\n", "utf8");
     await writeValidSource(tmpDir);
-    await runBsg(["advance", "--run", runDir]);
+    await runBsg(["run", "--run", runDir]);
     await writeGeneratedValidatorReport(runDir, {
       status: "passed",
       mode: "http",
@@ -2920,7 +2917,7 @@ describe("advance response fields", () => {
     await fs.rm(tmpDir, { recursive: true, force: true });
   });
 
-  it("run stops at assessment authoring instead of asking the agent to advance", async () => {
+  it("run stops at assessment authoring instead of asking the agent to use legacy advance", async () => {
     const tmpDir = await makeTmpDir();
     const result = await runBsg(["init", "https://example.com", "--cwd", tmpDir]);
     await runBsg(["run", "--run", result.runDir]);
@@ -2939,7 +2936,7 @@ describe("advance response fields", () => {
     const tmpDir = await makeTmpDir();
     const runDir = await initRun(tmpDir);
     await writeAssessmentAndRecord(runDir, ["- 评级: 可生成", "- 风险标签: WebView 依赖"]);
-    await runBsg(["advance", "--run", runDir], {
+    await runBsg(["run", "--run", runDir], {
       env: { ...process.env, BSG_TEST_ADB_DEVICES_OUTPUT: "List of devices attached\n" },
     });
 
@@ -2960,11 +2957,11 @@ describe("advance response fields", () => {
     await fs.rm(tmpDir, { recursive: true, force: true });
   });
 
-  it("advance probe to assess response has readNext and nextCommand", async () => {
+  it("run probe to assess response has readNext and nextCommand", async () => {
     const tmpDir = await makeTmpDir();
     const init = await runBsg(["init", "https://example.com", "--cwd", tmpDir]);
-    await runBsg(["advance", "--run", init.runDir]);
-    const result = await runBsg(["advance", "--run", init.runDir]);
+    await runBsg(["run", "--run", init.runDir]);
+    const result = await runBsg(["run", "--run", init.runDir]);
 
     assert.ok(Array.isArray(result.readNext), "readNext should be array");
     assert.ok(result.readNext.length > 0, "readNext should not be empty for assess");
@@ -2972,12 +2969,12 @@ describe("advance response fields", () => {
     await fs.rm(tmpDir, { recursive: true, force: true });
   });
 
-  it("advance generate to validate response has readNext", async () => {
+  it("run generate to validate response has readNext", async () => {
     const tmpDir = await makeTmpDir();
     const runDir = await initRun(tmpDir);
-    await advanceToGenerate(tmpDir, runDir);
+    await runToGenerate(tmpDir, runDir);
     await writeValidSource(tmpDir);
-    const result = await runBsg(["advance", "--run", runDir]);
+    const result = await runBsg(["run", "--run", runDir]);
 
     assert.ok(Array.isArray(result.readNext), "readNext should be array for validate");
     assert.ok(result.readNext.some((f) => f.includes("validator")), "readNext should include validator reference");
@@ -2989,12 +2986,12 @@ describe("advance response fields", () => {
   it("validate command tells the agent to start validator when the report is skipped", async () => {
     const tmpDir = await makeTmpDir();
     const runDir = await initRun(tmpDir);
-    await advanceToGenerate(tmpDir, runDir);
-    await fs.writeFile(path.join(runDir, "analysis.md"), "# example-com\n", "utf8");
+    await runToGenerate(tmpDir, runDir);
+    await fs.writeFile(path.join(runDir, "analysis.md"), MIN_ANALYSIS, "utf8");
     await writeValidSource(tmpDir);
-    await runBsg(["advance", "--run", runDir]);
+    await runBsg(["run", "--run", runDir]);
 
-    const result = await runBsg(["validate", "--run", runDir], {
+    const result = await runBsg(["validate", "--run", runDir, "--keyword", "测试"], {
       env: { ...process.env, VALIDATOR_URL: "http://127.0.0.1:1" },
     });
 
@@ -3002,7 +2999,7 @@ describe("advance response fields", () => {
     assert.ok(result.nextCommand.includes("validator-start"), "skipped validation should tell the agent to start validator");
     assert.ok(!result.nextCommand.includes("--status skipped"), "nextCommand must not suggest an unsupported record-validation status");
     assert.ok(!/验证完成/.test(result.message), "skipped validator should not be described as completed validation");
-    assert.equal(result.keyword, "example-com");
+    assert.equal(result.keyword, "测试");
     const report = JSON.parse(await fs.readFile(path.join(runDir, "validator-report.json"), "utf8"));
     assert.doesNotMatch(report.reason, /\bnode scripts\/bsg\.mjs\b/);
     await fs.rm(tmpDir, { recursive: true, force: true });
@@ -3011,9 +3008,9 @@ describe("advance response fields", () => {
   it("run records an existing validator report instead of waiting for the agent", async () => {
     const tmpDir = await makeTmpDir();
     const runDir = await initRun(tmpDir);
-    await advanceToGenerate(tmpDir, runDir);
+    await runToGenerate(tmpDir, runDir);
     await writeValidSource(tmpDir);
-    await runBsg(["advance", "--run", runDir]);
+    await runBsg(["run", "--run", runDir]);
     await writeGeneratedValidatorReport(runDir, {
       status: "passed",
       mode: "android",
@@ -3042,9 +3039,9 @@ describe("correctiveAction on hash mismatch", () => {
   it("record-validation returns correctiveAction when source changed", async () => {
     const tmpDir = await makeTmpDir();
     const runDir = await initRun(tmpDir);
-    await advanceToGenerate(tmpDir, runDir);
+    await runToGenerate(tmpDir, runDir);
     await writeValidSource(tmpDir);
-    await runBsg(["advance", "--run", runDir]);
+    await runBsg(["run", "--run", runDir]);
     await writeValidSource(tmpDir, { bookSourceName: "Changed After Generate" });
     await writeGeneratedValidatorReport(runDir, {
       mode: "http",
@@ -3068,22 +3065,18 @@ describe("correctiveAction on hash mismatch", () => {
 });
 
 describe("correctiveAction on command ordering errors", () => {
-  it("advance in validate in_progress returns correctiveAction", async () => {
+  it("run in validate in_progress points to validate command", async () => {
     const tmpDir = await makeTmpDir();
     const runDir = await initRun(tmpDir);
-    await advanceToGenerate(tmpDir, runDir);
+    await runToGenerate(tmpDir, runDir);
     await writeValidSource(tmpDir);
-    await runBsg(["advance", "--run", runDir]);
+    await runBsg(["run", "--run", runDir]);
 
     try {
-      await execFileAsync("node", [BSG, "advance", "--run", runDir], { encoding: "utf8" });
-      assert.fail("should fail");
-    } catch (err) {
-      const result = JSON.parse(err.stdout);
-      assert.ok(result.correctiveAction, "should have correctiveAction");
+      const result = await runBsg(["run", "--run", runDir]);
+      assert.equal(result.currentPhase, "validate");
       assert.ok(result.nextCommand, "should have nextCommand");
-      assert.ok(result.nextCommand.includes("record-validation"), "nextCommand should suggest record-validation");
-      assert.ok(err.stderr.includes("## 下一步"));
+      assert.ok(result.nextCommand.includes("validate"), "nextCommand should suggest validate");
     } finally {
       await fs.rm(tmpDir, { recursive: true, force: true });
     }
