@@ -5,7 +5,7 @@
  * bsg.mjs ― Legado 书源生成工具箱 CLI
  *
  * 用法:
- *   node "<skill-dir>/scripts/bsg.mjs" init <url> [--fast]
+ *   node "<skill-dir>/scripts/bsg.mjs" init <url> [--cwd <dir>]
  *   node "<skill-dir>/scripts/bsg.mjs" toolbox
  *   node "<skill-dir>/scripts/bsg.mjs" run --run <dir>
  *   node "<skill-dir>/scripts/bsg.mjs" status --run <dir>
@@ -49,7 +49,7 @@ function printUsage() {
   console.error(
     [
       "用法:",
-      "  node \"<skill-dir>/scripts/bsg.mjs\" init <site-url> [--fast]",
+      "  node \"<skill-dir>/scripts/bsg.mjs\" init <site-url> [--cwd <dir>]",
       "  node \"<skill-dir>/scripts/bsg.mjs\" toolbox",
       "  node \"<skill-dir>/scripts/bsg.mjs\" run --run {dir}",
       "  node \"<skill-dir>/scripts/bsg.mjs\" status --run {dir}",

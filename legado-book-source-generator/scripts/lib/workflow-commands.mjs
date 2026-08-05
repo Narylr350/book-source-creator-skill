@@ -15,11 +15,18 @@ import { cmdRecordValidation } from "./validation-commands.mjs";
 
 export function cmdInit(args) {
   if (args.length < 1) {
-    return fail("用法: node \"<skill-dir>/scripts/bsg.mjs\" init <site-url> [--fast] [--cwd {dir}]");
+    return fail("用法: node \"<skill-dir>/scripts/bsg.mjs\" init <site-url> [--cwd {dir}]");
   }
 
   const siteUrl = args[0];
-  const fastMode = args.includes("--fast");
+  for (let i = 1; i < args.length; i += 1) {
+    if (args[i] === "--cwd") {
+      if (!args[i + 1] || args[i + 1].startsWith("--")) return fail("--cwd 需要目录参数");
+      i += 1;
+      continue;
+    }
+    return fail(`init 不支持参数: ${args[i]}`);
+  }
   const cwdIdx = args.indexOf("--cwd");
   const cwd = cwdIdx >= 0 ? path.resolve(args[cwdIdx + 1]) : process.cwd();
 
@@ -38,14 +45,16 @@ export function cmdInit(args) {
   const runsRoot = path.join(cwd, "runs");
   const runDir = initializeRunBundle(runsRoot, siteUrl);
 
-  const state = freshRunState(siteUrl, siteSlug, fastMode ? "fast" : "full", cwd);
+  const state = freshRunState(siteUrl, siteSlug, "full", cwd);
   state.adbDetected = checkAdb();
+  state.phases.assess.status = "in_progress";
   saveRunState(runDir, state);
   ensureRunArtifacts(runDir, state);
 
   return {
     ok: true,
-    nextAction: "probe_site",
+    currentPhase: "assess",
+    nextAction: "open_site_with_browser_mcp",
     runDir,
     siteSlug,
     mode: state.mode,
@@ -57,20 +66,21 @@ export function cmdInit(args) {
     warnSkillDir: inSkillDir
       ? `当前在 skill 安装目录下运行。输出将写入 ${cwd}，建议切换到项目目录并用 --cwd 指定。`
       : null,
-    message: fastMode
-      ? "快速路径已启用。跳过 Browser MCP，直接进入网络分析。"
-      : "完整路径。先匿名初探 4 条链路，判断站点结构和反爬。",
-    hint: fastMode
-      ? "用 HTTP fetch 匿名探索 search/detail/toc/content 链路，记录发现到 analysis.md。"
-      : "用 Browser MCP 或 HTTP fetch 匿名探索 search/detail/toc/content 链路。检测登录入口、反爬、WebView 需求。",
+    message: "Browser MCP 是站点分析前置能力。先用浏览器打开目标站点并观察 search/detail/toc/content 链路，再填写 site-facts.json 和 assessment.md。",
+    hint: "如果当前没有 Browser MCP，先由执行者安装或配置；只有授权、客户端重启或更换客户端需要本人操作时才暂停。配置完成后用 Browser MCP 打开目标 URL 并完成四链路取证。",
+    requiredCapability: {
+      name: "browser_mcp",
+      required: true,
+      missingAction: "install_or_configure_browser_mcp",
+    },
     outputs: {
       runsRoot,
       runDir,
       stateFile: path.join(runDir, "run-state.json"),
       bookSourceDir: path.join(cwd, "outputs", siteSlug),
     },
-    readNext: PHASE_READ_NEXT.probe,
-    nextCommand: phaseNextCommand(runDir, "probe"),
+    readNext: PHASE_READ_NEXT.assess,
+    nextCommand: `node "<skill-dir>/scripts/bsg.mjs" run --run ${runDir}`,
   };
 }
 
@@ -102,7 +112,7 @@ export function cmdStatus(args) {
       : next === "generate" ? "generate_json"
       : next === "validate" ? "run_validator"
       : next === "deliver" ? "deliver"
-      : "probe_site";
+      : "write_assessment";
   }
 
   return {
@@ -143,6 +153,16 @@ export function cmdToolbox() {
       { command: "node \"<skill-dir>/scripts/bsg.mjs\" run --run <run-dir>", use: "可选状态助手：启动下一阶段，或把已有 validator-report.json 自动收敛。" },
     ],
     scenarios: [
+      {
+        name: "site_inspection",
+        when: "初始化后观察目标站点并填写 site-facts.json。",
+        requiredCapability: { name: "browser_mcp", required: true, missingAction: "install_or_configure_browser_mcp" },
+        readFirst: [
+          "references/site-inspection.md",
+          "references/assessment-template.md",
+        ],
+        firstAction: "用 Browser MCP 打开用户提供的目标 URL。",
+      },
       {
         name: "android_webview_or_login",
         when: "需要登录态、WebView/WebJs、入口反爬复核，或桌面 HTTP/Browser 不能代表阅读 App 行为。",
@@ -238,10 +258,15 @@ function instructionForPhase(current, state, runDir) {
     return {
       ok: true,
       currentPhase: "assess",
-      nextAction: "write_assessment",
+      nextAction: "open_site_with_browser_mcp",
       writeTarget: path.join(runDir, "assessment.md"),
       readNext: PHASE_READ_NEXT.assess,
-      message: "填写 site-facts.json 和 assessment.md 的证据说明区；完成后继续运行 bsg run。",
+      message: "先用 Browser MCP 打开目标站点并完成四链路取证，再填写 site-facts.json 和 assessment.md。",
+      requiredCapability: {
+        name: "browser_mcp",
+        required: true,
+        missingAction: "install_or_configure_browser_mcp",
+      },
       nextCommand: runAgainCommand(runDir),
     };
   }
@@ -351,13 +376,6 @@ export function cmdRun(args) {
 
   if (currentPhase.status !== "in_progress") {
     return fail(`阶段 ${current} 状态异常: ${currentPhase.status}`);
-  }
-
-  if (current === "probe") {
-    const moved = completePhase(current, state, runDir);
-    if (!moved.ok) return moved;
-    const next = moved.currentPhase || "assess";
-    return instructionForPhase(next, state, runDir);
   }
 
   return instructionForPhase(current, state, runDir);

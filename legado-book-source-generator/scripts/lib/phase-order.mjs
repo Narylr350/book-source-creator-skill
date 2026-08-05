@@ -1,6 +1,6 @@
 // ── phase ordering ─────────────────────────────────────────────────────────
 
-export const PHASE_ORDER = ["probe", "assess", "analyze", "generate", "validate", "deliver"];
+export const PHASE_ORDER = ["assess", "analyze", "generate", "validate", "deliver"];
 
 export function currentPhaseIndex(state) {
   for (let i = 0; i < PHASE_ORDER.length; i++) {

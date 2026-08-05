@@ -2,16 +2,17 @@
 /* eslint-env node */
 
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
 
 function usage() {
   return [
     "用法:",
-    "  node \"<skill-dir>/scripts/export-opencode-session.mjs\" [work-dir] [--out <file-or-dir>]",
-    "  node \"<skill-dir>/scripts/export-opencode-session.mjs\" [--cwd <work-dir>] [--out <file-or-dir>]",
-    "  node \"<skill-dir>/scripts/export-opencode-session.mjs\" --session <session-id> [--out <file-or-dir>]",
-    "  node \"<skill-dir>/scripts/export-opencode-session.mjs\" --clean-only <export-json>",
+    "  node \"<repo>/tools/export-opencode-session.mjs\" [work-dir] [--out <file-or-dir>]",
+    "  node \"<repo>/tools/export-opencode-session.mjs\" [--cwd <work-dir>] [--out <file-or-dir>]",
+    "  node \"<repo>/tools/export-opencode-session.mjs\" --session <session-id> [--out <file-or-dir>]",
+    "  node \"<repo>/tools/export-opencode-session.mjs\" --clean-only <export-json>",
     "",
     "选项:",
     "  --cwd <dir>          选择该工作目录下最新的 opencode session，默认当前目录",
@@ -122,14 +123,18 @@ function findLatestSession(opencode, cwd, maxCount) {
   return matches[0];
 }
 
-function resolveOutPath(outArg, cwd) {
+function resolveOutPath(outArg) {
   const defaultFile = "opencode-session-export.json";
-  if (!outArg) return path.join(cwd, defaultFile);
+  if (!outArg) return path.join(os.tmpdir(), defaultFile);
   const resolved = path.resolve(outArg);
-  if (fs.existsSync(resolved) && fs.statSync(resolved).isDirectory()) {
+  const isDirectory = (fs.existsSync(resolved) && fs.statSync(resolved).isDirectory())
+    || outArg.endsWith("/")
+    || outArg.endsWith("\\")
+    || path.extname(resolved) === "";
+  if (isDirectory) {
+    fs.mkdirSync(resolved, { recursive: true });
     return path.join(resolved, defaultFile);
   }
-  if (outArg.endsWith("/") || outArg.endsWith("\\")) return path.join(resolved, defaultFile);
   return resolved;
 }
 
@@ -295,7 +300,7 @@ function main(argv) {
   const session = args.session
     ? { id: args.session, directory: null, title: null, updated: null }
     : findLatestSession(opencode, cwd, maxCount);
-  const outPath = resolveOutPath(args.out, cwd, session.id);
+  const outPath = resolveOutPath(args.out);
   fs.mkdirSync(path.dirname(outPath), { recursive: true });
 
   const exportArgs = ["export", session.id];

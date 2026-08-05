@@ -7,6 +7,8 @@ import os from "node:os";
 import path from "node:path";
 import { createHash } from "node:crypto";
 
+import { saveRunState } from "../scripts/lib/state.mjs";
+
 const execFileAsync = promisify(execFile);
 
 const ROOT = path.resolve(import.meta.dirname, "..");
@@ -82,8 +84,6 @@ async function runBsgBlocked(args, options = {}) {
 
 async function initRun(tmpDir, options = {}) {
   const init = await runBsg(["init", "https://example.com", "--cwd", tmpDir], options);
-  await runBsg(["run", "--run", init.runDir]);
-  await runBsg(["run", "--run", init.runDir]);
   return init.runDir;
 }
 
@@ -268,7 +268,7 @@ describe("bsg workflow user-action gates", () => {
 
     const result = await runBsg(["run", "--run", runDir]);
     assert.equal(result.currentPhase, "assess");
-    assert.equal(result.nextAction, "write_assessment");
+    assert.equal(result.nextAction, "open_site_with_browser_mcp");
     assert.match(result.nextCommand, /bsg\.mjs" run/);
   });
 
@@ -1283,7 +1283,7 @@ describe("bsg workflow user-action gates", () => {
     assert.equal(result.forbiddenActions.includes("deliver"), true);
     assert.equal(result.forbiddenActions.includes("validate_http"), true);
     assert.equal(result.forbiddenActions.includes("record_needs_app_review"), true);
-    assert.match(result.correctiveAction, /禁止.*deliver|禁止.*交付/);
+    assert.match(result.correctiveAction, /取得 Android Probe 证据并完成 record-validation 后，才能进入 deliver/);
     assert.match(result.correctiveAction, /android --run/);
     assert.doesNotMatch(result.correctiveAction, /validate --run .* --mode android/);
   });
@@ -2449,7 +2449,7 @@ describe("printHint stderr output", () => {
     try {
       const result = await runBsg(["run", "--run", init.runDir]);
       assert.equal(result.currentPhase, "assess");
-      assert.equal(result.nextAction, "write_assessment");
+      assert.equal(result.nextAction, "open_site_with_browser_mcp");
     } finally {
       await fs.rm(tmpDir, { recursive: true, force: true });
     }
@@ -2479,16 +2479,17 @@ describe("run response fields", () => {
     assert.doesNotMatch(skill, /默认只运行 run/);
   });
 
-  it("run starts the next pending phase after init", async () => {
+  it("init enters assessment with Browser MCP as a required capability", async () => {
     const tmpDir = await makeTmpDir();
     const result = await runBsg(["init", "https://example.com", "--cwd", tmpDir]);
 
-    const run = await runBsg(["run", "--run", result.runDir]);
-
-    assert.equal(run.ok, true);
-    assert.equal(run.nextAction, "probe_site");
-    assert.ok(Array.isArray(run.readNext));
-    assert.ok(run.nextCommand.includes("run"));
+    assert.equal(result.ok, true);
+    assert.equal(result.currentPhase, "assess");
+    assert.equal(result.nextAction, "open_site_with_browser_mcp");
+    assert.equal(result.requiredCapability.name, "browser_mcp");
+    assert.equal(result.requiredCapability.required, true);
+    assert.ok(result.readNext.some((item) => item.includes("site-inspection")));
+    assert.match(result.hint, /用 Browser MCP 打开目标 URL 并完成四链路取证/);
     await fs.rm(tmpDir, { recursive: true, force: true });
   });
 
@@ -2498,6 +2499,11 @@ describe("run response fields", () => {
     assert.equal(result.ok, true);
     assert.ok(result.tools.some((tool) => tool.command.includes("status")));
     assert.ok(result.tools.some((tool) => tool.command.includes("validate")));
+    const inspection = result.scenarios.find((scenario) => scenario.name === "site_inspection");
+    assert.equal(inspection.requiredCapability.name, "browser_mcp");
+    assert.equal(inspection.requiredCapability.required, true);
+    assert.match(inspection.firstAction, /Browser MCP/);
+    assert.ok(inspection.readFirst.includes("references/site-inspection.md"));
     assert.ok(result.scenarios.some((scenario) => scenario.name === "android_webview_or_login"));
     const android = result.scenarios.find((scenario) => scenario.name === "android_webview_or_login");
     assert.ok(android.readFirst.includes("references/android-probe-guide.md"));
@@ -2523,13 +2529,15 @@ describe("run response fields", () => {
     assert.doesNotMatch(workflow, /不作为默认执行流程/);
   });
 
-  it("probe and android references do not claim hidden readNext loading", async () => {
-    const probe = await fs.readFile(path.join(ROOT, "references", "probe-guide.md"), "utf8");
+  it("site inspection requires Browser MCP and documents its evidence flow", async () => {
+    const inspection = await fs.readFile(path.join(ROOT, "references", "site-inspection.md"), "utf8");
     const android = await fs.readFile(path.join(ROOT, "references", "android-probe-guide.md"), "utf8");
     const validator = await fs.readFile(path.join(ROOT, "references", "validator-integration.md"), "utf8");
 
-    assert.doesNotMatch(probe, /readNext|nextAction/);
-    assert.doesNotMatch(probe, /必须用 Browser MCP/);
+    assert.doesNotMatch(inspection, /readNext|nextAction/);
+    assert.match(inspection, /Browser MCP 是书源生成任务的必需能力/);
+    assert.match(inspection, /Browser MCP 可用前不进入站点分析/);
+    assert.match(inspection, /用 Browser MCP 打开用户提供的目标 URL/);
     assert.doesNotMatch(android, /readNext|nextAction/);
     assert.doesNotMatch(validator, /advance（进入 validate）/);
     assert.match(android, /工具箱|场景/);
@@ -2969,14 +2977,14 @@ describe("run response fields", () => {
     await fs.rm(tmpDir, { recursive: true, force: true });
   });
 
-  it("run stops at assessment authoring instead of suggesting legacy advance", async () => {
+  it("run stays on Browser MCP evidence collection before assessment recording", async () => {
     const tmpDir = await makeTmpDir();
     const result = await runBsg(["init", "https://example.com", "--cwd", tmpDir]);
     await runBsg(["run", "--run", result.runDir]);
 
     const run = await runBsg(["run", "--run", result.runDir]);
 
-    assert.equal(run.nextAction, "write_assessment");
+    assert.equal(run.nextAction, "open_site_with_browser_mcp");
     assert.ok(run.writeTarget.endsWith(path.join("runs", "example-com", "assessment.md")));
     assert.ok(run.readNext.some((p) => p.includes("assessment-template")));
     assert.ok(run.nextCommand.includes("run"));
@@ -3009,14 +3017,14 @@ describe("run response fields", () => {
     await fs.rm(tmpDir, { recursive: true, force: true });
   });
 
-  it("run probe to assess response has readNext and nextCommand", async () => {
+  it("run keeps assessment on the Browser MCP evidence step", async () => {
     const tmpDir = await makeTmpDir();
     const init = await runBsg(["init", "https://example.com", "--cwd", tmpDir]);
-    await runBsg(["run", "--run", init.runDir]);
     const result = await runBsg(["run", "--run", init.runDir]);
 
-    assert.ok(Array.isArray(result.readNext), "readNext should be array");
-    assert.ok(result.readNext.length > 0, "readNext should not be empty for assess");
+    assert.equal(result.nextAction, "open_site_with_browser_mcp");
+    assert.equal(result.requiredCapability.name, "browser_mcp");
+    assert.ok(result.readNext.some((item) => item.includes("site-inspection")));
     assert.ok(result.nextCommand, "nextCommand should exist");
     await fs.rm(tmpDir, { recursive: true, force: true });
   });
@@ -3134,20 +3142,38 @@ describe("correctiveAction on command ordering errors", () => {
     }
   });
 
-  it("record-assessment in probe phase returns correctiveAction", async () => {
+  it("init rejects unsupported options without creating another workflow mode", async () => {
+    const tmpDir = await makeTmpDir();
+
+    await assert.rejects(
+      runBsg(["init", "https://example.com", "--unsupported", "--cwd", tmpDir]),
+      (error) => {
+        const result = JSON.parse(error.stdout);
+        assert.match(result.error, /init 不支持参数/);
+        return true;
+      },
+    );
+    await assert.rejects(fs.access(path.join(tmpDir, "runs", "example-com", "run-state.json")));
+    await fs.rm(tmpDir, { recursive: true, force: true });
+  });
+
+  it("rejects incompatible run-state versions instead of migrating them", async () => {
     const tmpDir = await makeTmpDir();
     const init = await runBsg(["init", "https://example.com", "--cwd", tmpDir]);
+    const statePath = path.join(init.runDir, "run-state.json");
+    const state = JSON.parse(await fs.readFile(statePath, "utf8"));
+    state.version = "1.0";
+    saveRunState(init.runDir, state);
 
-    try {
-      await execFileAsync("node", [BSG, "record-assessment", "--run", init.runDir], { encoding: "utf8" });
-      assert.fail("should fail");
-    } catch (err) {
-      const result = JSON.parse(err.stdout);
-      assert.ok(result.correctiveAction, "should have correctiveAction");
-      assert.ok(err.stderr.includes("## 下一步"));
-    } finally {
-      await fs.rm(tmpDir, { recursive: true, force: true });
-    }
+    await assert.rejects(
+      runBsg(["status", "--run", init.runDir]),
+      (error) => {
+        const result = JSON.parse(error.stdout);
+        assert.match(result.error, /与当前工作流不兼容/);
+        return true;
+      },
+    );
+    await fs.rm(tmpDir, { recursive: true, force: true });
   });
 });
 

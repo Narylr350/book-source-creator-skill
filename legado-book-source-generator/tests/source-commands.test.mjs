@@ -15,7 +15,7 @@ function makeRun(phase = "generate") {
   fs.mkdirSync(outputDir, { recursive: true });
 
   const state = freshRunState("https://example.test", "example", "normal", root);
-  for (const name of ["probe", "assess", "analyze", "generate", "validate", "deliver"]) {
+  for (const name of ["assess", "analyze", "generate", "validate", "deliver"]) {
     state.phases[name].status = name === phase ? "in_progress" : "pending";
   }
   saveRunState(runDir, state);

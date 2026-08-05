@@ -1,4 +1,18 @@
-# Validator 与 Android Probe 环境配置
+# Browser MCP、Validator 与 Android Probe 环境配置
+
+## Browser MCP（必需）
+
+书源生成开始前必须具备可导航网页、获取页面快照并执行交互的 Browser MCP。它负责首轮站点观察和 search/detail/toc/content 链路取证。
+
+执行者应先检查当前客户端的 MCP 配置并完成安装或连接。只有以下步骤需要本人参与：
+
+- 批准 MCP 安装或权限请求
+- 按客户端要求重启或重新加载
+- 当前客户端不支持浏览器工具时，选择支持 Browser MCP 的客户端
+
+配置完成后先打开用户提供的目标 URL，确认导航、snapshot 和页面交互均可用，再开始 search/detail/toc/content 链路取证。
+
+---
 
 ## validator（HTTP / Browser 验证）
 

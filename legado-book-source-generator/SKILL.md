@@ -16,7 +16,7 @@ node "<skill-dir>/scripts/bsg.mjs" status --run <run-dir>
 ## 先读哪些 reference
 
 - 常规流程：读 `references/workflow.md`。
-- 匿名初探 / site-facts：读 `references/probe-guide.md` 和 `references/assessment-template.md`。
+- 站点观察 / site-facts：读 `references/site-inspection.md` 和 `references/assessment-template.md`。
 - 生成规则：读 `references/legado-json-structure.md`、`references/official-rule-pack.json`、`references/legado-source-behavior.md`。
 - 验证失败回修：读 `references/failure-diagnosis.md`、`references/validation-policy.md`、`references/validator-integration.md`。
 - Android、模拟器、登录态、WebView/WebJs、入口反爬复核：必须先读 `references/android-probe-guide.md` 和 `references/policies.md`；需要判断 Probe 与阅读 App 差异时再读 `references/webview-behavior-matrix.md`。
@@ -40,7 +40,6 @@ node "<skill-dir>/scripts/bsg.mjs" status --run <run-dir>
 
 ## 常见坑
 
-- 用 `curl.exe` 调 HTTP，不要用 `curl`；PowerShell 里的 `curl` 可能是 `Invoke-WebRequest` 别名。
 - 优先写一行命令。不要混用 bash 的 `\`、cmd 的 `^`、PowerShell 的反引号续行。
 - JSON 请求体优先用单引号包住：`-d '{"url":"https://example.com","timeout":60000}'`。复杂 JSON 用 `$body = @{ ... } | ConvertTo-Json -Depth 8`。
 - 路径必须加双引号，尤其是中文路径、空格路径和 `<skill-dir>`：`node "D:/.../scripts/bsg.mjs" ...`。
@@ -54,7 +53,7 @@ node "<skill-dir>/scripts/bsg.mjs" status --run <run-dir>
 - **UA 完整性**：书源 `header` 的 UA 必须完整（含引擎名+版本号）。截断的 UA 会被反爬识别。详见 `references/legado-source-behavior.md`。
 - **验证码与登录态**：验证码触发时，如果站点有登录功能，先走登录路径再重试验证。只有登录后仍被拦才判定为站点固有限制。搜索仍被阻塞时用 `validate --book-url <url>` 跳过搜索验证后续链路。详见 `references/policies.md`。
 - **TLS 指纹**：validator 用 curl 发 HTTP 请求（非 OkHttp），避免 PC JVM 的 TLS 指纹被反爬识别。详见 `references/legado-source-behavior.md`。
-- **Browser MCP 缺失**：当需要浏览器分析、登录 Cookie 或前端渲染页面时，先确认当前执行环境是否具备浏览器工具。如果没有，不要假装已经看过页面，也不要编造 DOM、接口或 Cookie。先用 HTTP/validator 能力继续分析；若该站点必须浏览器能力才能判断，明确提示用户配置 Browser MCP、使用 Android Probe，或换用支持浏览器工具的客户端。
+- **Browser MCP 前置**：生成任务开始前必须确认 Browser MCP 可用，并把浏览器打开目标站点作为第一项站点操作。未配置时，执行者先安装或配置；只有授权、客户端重启或更换支持浏览器工具的客户端需要本人操作时才暂停。通过页面、交互和网络请求完成四链路取证后，再填写站点事实并进入规则分析。
 
 ## Android / WebView 快速配方
 
@@ -108,7 +107,7 @@ node "<skill-dir>/scripts/bsg.mjs" deliver --run <run-dir>
 > 常见违反（举例，不限于）：必需链路失败就改用未验证的替代入口继续；`mode=android` 跑过但 `probe_unavailable`，仍当成 Android Probe 证据；规则错误或验证器缺证据，标成 `needs_app_review` / `validator_limitation` 蒙混。
 
 **B. 书源最终在阅读 App 跑，最高权威证据来自 Android / 真机。** 有该环境必须用它取证；没有就如实降级标注，不用低权威环境的"通过"冒充交付结论。
-> 常见违反（举例，不限于）：桌面浏览器或 HTTP 能看到内容，就断言 Android WebView / 阅读 App 一定可用；Android 在线却先用 HTTP 验证就交付；没插手机 / 没开模拟器，就直接按 PC passed 交付。
+> 常见违反（举例，不限于）：桌面浏览器能看到内容，就断言 Android WebView / 阅读 App 一定可用；Android 在线却未取得 Probe 证据就交付；没插手机 / 没开模拟器，就直接按 PC passed 交付。
 
 **C. 判定站点性质要用对证据类型，且探测动作本身可能改变站点状态。** 判 SSR/CSR 看 HTTP 原始响应（浏览器看到的是渲染后 DOM，会把 CSR 误判成 SSR）；反复探测同一反爬端点会累积触发风控，探测后才出现的验证码可能是探测副作用、不是站点固有行为。
 > 常见违反（举例，不限于）：为判断 SSR/CSR，默认用浏览器 evaluate / JS 自动探测搜索页或登录页；JS / 反复探测后出现验证码，就断言该站天然有验证码。

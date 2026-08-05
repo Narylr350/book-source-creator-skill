@@ -160,8 +160,8 @@ function androidProbeNotUsedBlock(runDir, state, message) {
   const nextCommand = `node "<skill-dir>/scripts/bsg.mjs" android --run "${runDir}"`;
   const nextStep = `下一步默认运行: ${nextCommand}，按它返回的 requiredUserAction 或 nextCommand 继续；底层诊断只用于定位环境问题，最终仍要回到 android / record-validation 收敛。`;
   const correctiveAction = [
-    "禁止 deliver，禁止改记 needs_app_review，禁止退回 HTTP 验证。",
     "当前书源含 webView:true 或 webJs，且检测到 Android 真机或模拟器；必须使用 Android Probe 产生验证证据。",
+    "取得 Android Probe 证据并完成 record-validation 后，才能进入 deliver。",
     nextStep,
   ].join("\n");
   return {
@@ -460,7 +460,7 @@ export function cmdRecordValidation(args) {
         "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
         "⚠️  Probe 登录后 Android 真机或模拟器已断开",
         "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
-        "本轮登录态来自 Android Probe，但现在 adb 找不到真机或模拟器，不能退回 HTTP+Cookie 验证。",
+        "本轮登录态来自 Android Probe，但现在 adb 找不到真机或模拟器，必须恢复 Android 设备后继续验证。",
         "请重新连接真机并确认 USB 调试授权，或启动模拟器并确认 adb devices 可见。",
         "然后运行: node \"<skill-dir>/scripts/bsg.mjs\" android --run <dir>。",
         "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
@@ -471,7 +471,7 @@ export function cmdRecordValidation(args) {
         "⛔ Probe 登录后未用 Android 验证",
         "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
         "run-state 记录登录态来自 Android Probe，但 validator-report.json 没有 Android Probe 证据。",
-        "当前未检测到可用 Android 真机或模拟器，不能把 Probe 登录后的验证退回 HTTP 或直接交付。",
+        "当前未检测到可用 Android 真机或模拟器，必须连接设备并取得 Android Probe 验证证据后再交付。",
         "请连接真机或启动模拟器后重新运行 Android mode 验证。",
         "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
       ].join("\n");
@@ -638,7 +638,7 @@ export function cmdRecordValidation(args) {
         saveRunState(runDir, state);
         writeCapabilityMatrix(runDir, reportPathForMode, "blocked:android_probe_not_used");
         writeValidatorSummary(runDir, status, "blocked:android_probe_not_used", reportPathForMode);
-        const correctiveAction = "run-state 记录登录来自 Android Probe，但 validator-report.json 没有 Android Probe 证据。必须重新运行 Android Probe 验证，不能退回 HTTP 或直接交付。";
+        const correctiveAction = "run-state 记录登录来自 Android Probe，但 validator-report.json 没有 Android Probe 证据。必须重新运行 Android Probe 验证并完成 record-validation 后再交付。";
         const nextCommand = `node "<skill-dir>/scripts/bsg.mjs" android --run "${runDir}"`;
         printHint(correctiveAction, nextCommand);
         return {

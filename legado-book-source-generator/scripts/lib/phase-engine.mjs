@@ -24,8 +24,7 @@ export { PHASE_ORDER, currentPhaseIndex, resetPhasesFrom } from "./phase-order.m
 // ── phase state machine ────────────────────────────────────────────────────
 
 export const PHASE_READ_NEXT = {
-  probe: ["references/probe-guide.md", "references/assessment-template.md"],
-  assess: ["references/assessment-template.md"],
+  assess: ["references/site-inspection.md", "references/assessment-template.md"],
   analyze: ["references/analysis-workflow.md"],
   generate: [
     "references/official-rule-pack.json",
@@ -42,7 +41,6 @@ export const PHASE_READ_NEXT = {
 
 export function phaseNextCommand(runDir, phase) {
   const commands = {
-    probe: `node "<skill-dir>/scripts/bsg.mjs" run --run ${runDir}`,
     assess: `node "<skill-dir>/scripts/bsg.mjs" record-assessment --run ${runDir}`,
     analyze: `node "<skill-dir>/scripts/bsg.mjs" run --run ${runDir}`,
     generate: `node "<skill-dir>/scripts/bsg.mjs" run --run ${runDir}`,
@@ -60,23 +58,15 @@ function phaseHints(runDir, phase) {
 }
 
 export function startPhase(phase, state, runDir) {
-  if (phase === "probe") {
-    state.phases.probe.status = "in_progress";
-    saveRunState(runDir, state);
-    return {
-      ok: true,
-      nextAction: "probe_site",
-      message: "匿名初探：用 HTTP fetch 或 Browser MCP 探索 search/detail/toc/content 四条链路。",
-      requiredUserAction: null,
-      ...phaseHints(runDir, "probe"),
-    };
-  }
-
   state.phases[phase].status = "in_progress";
   saveRunState(runDir, state);
 
   const actions = {
-    assess:  { nextAction: "record_assessment", message: "写 assessment.md 后必须先运行 record-assessment。record-assessment 通过前不要展示评估摘要，也不要进入下一步。" },
+    assess:  {
+      nextAction: "open_site_with_browser_mcp",
+      message: "先按 site-inspection.md 用 Browser MCP 打开目标站点并完成四链路取证，再填写 site-facts.json 与 assessment.md。",
+      requiredCapability: { name: "browser_mcp", required: true, missingAction: "install_or_configure_browser_mcp" },
+    },
     analyze: { nextAction: "write_analysis",   message: "按 search→detail→toc→content 顺序分析，写 analysis.md。完成后运行 run。" },
     generate:{ nextAction: "generate_json",     message: "生成 book-source.json 到 outputs/<slug>/。完成后运行 run 做规则审计。" },
     validate:{ nextAction: "run_validator",     message: "运行 bsg.mjs validate --run {dir}，让它写入 validator-report.json。完成后 record-validation。" },
@@ -88,13 +78,6 @@ export function startPhase(phase, state, runDir) {
 }
 
 export function completePhase(phase, state, runDir) {
-  if (phase === "probe") {
-    state.phases.probe.status = "completed";
-    state.phases.probe.completedAt = new Date().toISOString();
-    saveRunState(runDir, state);
-    return moveToNext(phase, state, runDir);
-  }
-
   if (phase === "assess") {
     if (state.phases.assess.recorded !== true) {
       const correctiveAction = "assessment.md 尚未通过 record-assessment 记录。先运行 record-assessment，通过前不要展示评估摘要，也不要跳过评估门禁。";
@@ -522,7 +505,7 @@ export function moveToNext(fromPhase, state, runDir) {
       "🔑 登录态验证 — 必须先注入 Cookie",
       "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
       loggedInViaProbe
-        ? "用户已通过 Android Probe 登录 → validate 阶段必须用 mode=android，不要退回 HTTP+Cookie。"
+        ? "用户已通过 Android Probe 登录 → validate 阶段必须用 mode=android 取得 Probe 证据。"
         : "Android/Probe 不可用时，必须先让用户完成 Browser 登录并提取 Cookie 注入 validator，否则正文鉴权失败。",
       "",
       loggedInViaProbe
@@ -532,7 +515,7 @@ export function moveToNext(fromPhase, state, runDir) {
         ? "2. 按 android 命令返回的 requiredUserAction 或 nextCommand 继续"
         : "2. 保存为 runs/<slug>/cookies.json: {\"www.example.com\": \"full_cookie_string\"}",
       loggedInViaProbe
-        ? "3. 不要退回 HTTP+Cookie 或手工拼 validate/record-validation"
+        ? "3. 按 android 命令返回结果进入 record-validation"
         : "3. bsg.mjs validate 自动检测 cookies.json 并注入",
       "",
       "未注入 Cookie 的验证结果不能标 passed，只能标 anonymous_candidate。",

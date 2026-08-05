@@ -8,7 +8,7 @@ outputs/<site-slug>/
 
 runs/<site-slug>/
   assessment.md             # 可生成性评估（AUTO 结论 + AI 证据说明）
-  site-facts.json           # probe/assessment 阶段机器事实
+  site-facts.json           # Browser MCP 站点观察与 assessment 机器事实
   analysis.md               # 网站分析（过程记录）
   validation-checklist.md   # 验收清单（过程记录）
   validator-report.json     # validator 验证报告

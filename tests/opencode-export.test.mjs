@@ -8,7 +8,7 @@ import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
 const ROOT = path.resolve(import.meta.dirname, "..");
-const SCRIPT = path.join(ROOT, "scripts", "export-opencode-session.mjs");
+const SCRIPT = path.join(ROOT, "tools", "export-opencode-session.mjs");
 
 async function makeTmpDir() {
   return fs.mkdtemp(path.join(os.tmpdir(), "opencode-export-"));
@@ -111,7 +111,7 @@ describe("export-opencode-session", () => {
 
   it("defaults to current directory and writes a fixed export filename", async () => {
     const tmpDir = await makeTmpDir();
-    const defaultOut = path.join(tmpDir, "opencode-session-export.json");
+    const defaultOut = path.join(os.tmpdir(), "opencode-session-export.json");
     const fakeOpencode = await writeFakeOpencode(tmpDir, [
       {
         id: "ses_current",
@@ -130,7 +130,7 @@ describe("export-opencode-session", () => {
     assert.equal(parsed.ok, true);
     assert.equal(parsed.sessionId, "ses_current");
     assert.equal(parsed.outPath, defaultOut);
-    assert.equal(parsed.cleanPath, path.join(tmpDir, "opencode-session-export.clean.md"));
+    assert.equal(parsed.cleanPath, path.join(os.tmpdir(), "opencode-session-export.clean.md"));
     assert.equal(await fs.readFile(defaultOut, "utf8"), "{\"exported\":\"ses_current\"}\n");
   });
 
@@ -156,7 +156,30 @@ describe("export-opencode-session", () => {
     const parsed = JSON.parse(result.stdout);
     assert.equal(parsed.ok, true);
     assert.equal(parsed.sessionId, "ses_positional");
-    assert.equal(parsed.outPath, path.join(workDir, "opencode-session-export.json"));
+    assert.equal(parsed.outPath, path.join(os.tmpdir(), "opencode-session-export.json"));
+  });
+
+  it("treats a nonexistent extensionless --out path as a directory", async () => {
+    const tmpDir = await makeTmpDir();
+    const outDir = path.join(tmpDir, "audit-output");
+    const fakeOpencode = await writeFakeOpencode(tmpDir, [{
+      id: "ses_directory_out",
+      title: "目录输出",
+      updated: 10,
+      directory: tmpDir,
+    }]);
+
+    const result = await execFileAsync("node", [
+      SCRIPT,
+      "--cwd", tmpDir,
+      "--out", outDir,
+      "--opencode", fakeOpencode,
+    ], { encoding: "utf8" });
+
+    const parsed = JSON.parse(result.stdout);
+    assert.equal(parsed.outPath, path.join(outDir, "opencode-session-export.json"));
+    assert.equal(parsed.cleanPath, path.join(outDir, "opencode-session-export.clean.md"));
+    assert.equal(await fs.readFile(parsed.outPath, "utf8"), "{\"exported\":\"ses_directory_out\"}\n");
   });
 
   it("cleans an existing opencode export without invoking opencode", async () => {

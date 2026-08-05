@@ -2,7 +2,7 @@
 
 ## 登录处理
 
-1. 先匿名初探判断站点结构和反爬。
+1. 先用 Browser MCP 打开目标 URL，观察站点结构、正常交互路径和反爬表现。
 2. 只要站点有 `loginUrl` / `enabledCookieJar` / `Authorization` / `webJs` / `webView` 任一项，最终验证优先登录态。
 3. 如果登录需要扫码、验证码、短信或其他人工确认，立即请求用户协助，不要猜。
 
@@ -38,7 +38,7 @@
 4. 保存到 `runs/<site-slug>/cookies.json`
 5. 调用 `node "<skill-dir>/scripts/bsg.mjs" validate --run runs/<site-slug>`（自动检测 cookies.json）
 
-如果当前客户端没有 Browser MCP，停止浏览器取证分支。不要编造 DOM、接口、Cookie、Authorization header、渲染正文或登录状态；HTTP/validator 能继续的部分可继续，必须浏览器证据时改用 Android Probe、请用户配置 Browser MCP，或换用支持浏览器工具的客户端。
+如果当前客户端没有 Browser MCP，执行者先安装或配置；只有授权、客户端重启或更换支持浏览器工具的客户端需要本人操作时才暂停。配置完成后，从目标 URL 开始页面观察、规则生成和登录取证。
 
 ## 风险升级
 
@@ -48,13 +48,13 @@
 ## 实测优先
 
 - 如果 Browser MCP 与模型推断冲突，以实测为准，并写明修正原因。
-- 如果没有 Browser MCP 实测，不能把模型推断写成页面事实；只能写成待验证假设或能力缺口。
+- 没有 Browser MCP 实测时不得继续生成任务；先补齐浏览器能力。
 
 ## WebView 回退
 
 - 如果正文接口带签名、返回密文，或阅读页只有 CSR 空壳，但 Browser MCP 已能稳定看到渲染后的正文，先按 `可生成但高风险` 处理，优先评估 WebView 方案。
 - 不能直接判 `不建议生成`。
-- 如果没有 Browser MCP 或 Android Probe 证据，不要声称 WebView 方案已被证明可行；只能说明需要渲染端复核。
+- 没有 Browser MCP 证据时先补齐浏览器能力；没有 Android Probe 证据时不得声称 Android WebView 方案已被证明可行。
 - 如果准备给出 `不建议生成`，必须先排除更低复杂度的回退路径，尤其是 WebView 和直接提取方案。参考 `examples/pattern-api-webview-auth/` 的 CSR + WebView 混合模式。
 
 ## 调试模式触发

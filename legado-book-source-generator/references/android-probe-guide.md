@@ -6,7 +6,7 @@
 
 - 正文页是 CSR（`__nuxt` / `__next` / `<div id="app">`）
 - 正文需要 WebView 渲染
-- HTTP fetch 只返回 JS 空壳
+- 正文依赖 Android WebView 执行脚本后渲染
 - 站点需要登录态，且真机或模拟器在线
 - 搜索、详情、目录入口在桌面 HTTP/Browser 下触发验证码或人机验证，需要阅读 App 环境复核
 

@@ -7,7 +7,7 @@ Legado 书源生成与验证工具
 
 本目录是一个 **Claude Code / Codex Skill**。主要使用方式是让 AI 读取 `SKILL.md`，AI 会自主完成：
 
-  匿名初探 → 登录判定 → 可生成性评估 → 网站分析 → 生成 JSON → validator 验证 → 自动回修 → 交付
+  Browser MCP 站点观察 → 登录判定 → 可生成性评估 → 网站分析 → 生成 JSON → validator 验证 → 自动回修 → 交付
 
 人类只需对 AI 说一句：**"帮我给 https://xxx.com 生成书源"**。
 

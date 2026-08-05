@@ -231,7 +231,7 @@ export function cmdAndroid(args) {
       nextAction: "setup_android_probe",
       android,
       probe,
-      message: "Android 设备已就绪，但 Probe 未运行。常规流程运行 Android 单入口的 setup 模式启动 Probe；如 setup 失败再展开底层 adb/Probe 诊断，不能直接退回 HTTP 交付。",
+      message: "Android 设备已就绪，但 Probe 未运行。常规流程运行 Android 单入口的 setup 模式启动 Probe；如 setup 失败再展开底层 adb/Probe 诊断，取得 Probe 证据后继续交付流程。",
       nextCommand: androidCommand(runDir, " --setup"),
     };
   }

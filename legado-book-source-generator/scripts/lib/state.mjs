@@ -125,14 +125,13 @@ export function saveRunState(runDir, state) {
 
 export function freshRunState(siteUrl, siteSlug, mode, workingDir) {
   return {
-    version: "1.0",
+    version: "2.0",
     siteUrl,
     siteSlug,
     mode,
     workingDir,
     isSkillInstallDir: isInSkillInstallDir(workingDir),
     phases: {
-      probe:   { status: "pending" },
       assess:  { status: "pending", rating: null },
       analyze: { status: "pending" },
       generate:{ status: "pending" },
@@ -204,6 +203,9 @@ export function loadAndVerify(runDir) {
   if (!state) return { state: null, error: `未找到 run-state.json: ${runDir}` };
   if (state._tampered) {
     return { state: null, error: "⛔ run-state.json 被手动编辑过。所有修改必须通过 bsg.mjs 命令。删除 runs/<slug>/ 重新 init。" };
+  }
+  if (state.version !== "2.0") {
+    return { state: null, error: "run-state.json 与当前工作流不兼容。删除对应 runs/<slug>/ 后重新 init。" };
   }
   ensureRunArtifacts(runDir, state);
   return { state, error: null };

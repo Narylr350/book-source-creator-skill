@@ -4,28 +4,31 @@
 
 ## 工具箱模式
 
-1. 先运行 `init` 创建 run 目录。
-2. 运行 `toolbox` 查看场景路由和可用工具。
-3. 运行 `status --run <run-dir>` 查看当前状态、`pendingUserAction`、`repairContext`。
-4. 按当前问题选择工具；`run --run <run-dir>` 只是可选助手，不是唯一主流程。
-5. 交付前必须运行 `deliver --run <run-dir>`。
+1. 确认 Browser MCP 可用；未配置时先由执行者安装或配置。
+2. 运行 `init` 创建 run 目录。
+3. 用 Browser MCP 打开目标站点并完成四链路取证。
+4. 运行 `toolbox` 或 `status --run <run-dir>` 查看当前状态和可用工具。
+5. 按当前问题选择工具；`run --run <run-dir>` 只是可选助手，不是唯一主流程。
+6. 交付前必须运行 `deliver --run <run-dir>`。
 
 常见场景路由：
 
 | 场景 | 先读 | 工具 |
 |------|------|------|
-| 匿名初探 / site-facts | `references/probe-guide.md`, `references/assessment-template.md` | `status`, `check`, `record-assessment` |
+| Browser MCP 站点观察 / site-facts | `references/site-inspection.md`, `references/assessment-template.md` | `status`, `check`, `record-assessment` |
 | 生成规则 | `references/legado-json-structure.md`, `references/official-rule-pack.json`, `references/legado-source-behavior.md` | `source inspect`, `run`（生成 `rule-check.json`） |
 | 验证失败回修 | `references/failure-diagnosis.md`, `references/validation-policy.md`, `references/validator-integration.md` | `record-validation`, `status`, `source inspect` |
 | Android / WebView / 登录态 | `references/android-probe-guide.md`, `references/policies.md`, `references/validator-integration.md`, `references/webview-behavior-matrix.md` | `android --run <run-dir>` |
 
 Android、模拟器、登录态、WebView/WebJs、入口反爬复核不要靠命令名自己拼；先读 `references/android-probe-guide.md` 和 `references/policies.md`，再运行 `android --run <run-dir>`。
 
-## 1. 匿名初探 / 登录判定
+## 1. Browser MCP 站点观察 / 登录判定
 
-- 先匿名访问 search/detail/toc/content 四条链路，只判断站点结构、接口路径、是否有反爬、是否需要 WebView。
-- 检查登录入口、会员限制、匿名降级、登录后能力变化。
-- 如果站点需要登录态且 Android 真机或模拟器在线，先读 `references/android-probe-guide.md`，再使用 Probe 原生登录；Android 不可用时才使用 Browser MCP Cookie 路径。
+- Browser MCP 是前置能力。未配置时先安装或配置；只有授权、客户端重启或更换客户端需要本人操作时才暂停。
+- 第一项站点操作必须是用 Browser MCP 打开用户提供的 URL，并取得页面 snapshot。
+- 通过浏览器可见入口观察 search/detail/toc/content 四条链路，记录站点结构、接口路径、反爬、渲染和 WebView 风险。
+- 检查登录入口、会员限制和登录后能力变化。
+- 如果站点需要登录态且 Android 真机或模拟器在线，先读 `references/android-probe-guide.md`，再使用 Probe 原生登录；Android 不可用时使用 Browser MCP Cookie 路径。
 - 如果搜索/详情/目录入口链路出现验证码、Cloudflare、极验或人机验证，必须写入 `site-facts.json` blocker。脚本会要求用户确认 Android/App 复核或接受入口不完整；不要自行用排行榜/书库替代搜索继续。
 
 ## 2. 可生成性评估
@@ -65,7 +68,7 @@ Android、模拟器、登录态、WebView/WebJs、入口反爬复核不要靠命
 
 - 优先稳定 API / JSON。其次稳定 HTML。
 - 若 Browser MCP 已证明章节页本身可稳定渲染正文，而不稳定点只在直连接口，优先考虑 `WebView`。
-- 若当前执行环境没有 Browser MCP，不得声称已观察 DOM、接口、Cookie 或渲染正文。HTTP/validator 足够时继续；必须浏览器证据时改用 Android Probe、让用户配置 Browser MCP，或明确停在能力缺口。
+- 若当前执行环境没有 Browser MCP，先安装或配置；可用后从目标 URL 开始站点观察和规则分析。
 - 只有更简单的规则无法表达站点行为时，才加 JS。
 - 生成时保持以下文档同步打开：
   - `references/official-rule-pack.json`

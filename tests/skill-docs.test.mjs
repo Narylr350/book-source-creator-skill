@@ -18,6 +18,8 @@ test("SKILL documents the current toolbox mode and deliver gate", () => {
   assert.match(skill, /record-validation/);
   assert.match(skill, /deliver/);
   assert.match(skill, /唯一最终审计/);
+  assert.match(skill, /Browser MCP 前置/);
+  assert.match(skill, /references\/site-inspection\.md/);
   assert.doesNotMatch(skill, /advance --run/);
 });
 
@@ -27,6 +29,7 @@ test("workflow uses run as the current rule-check path and marks advance retired
   assert.match(workflow, /工具箱模式/);
   assert.match(workflow, /当前入口是 `run`/);
   assert.match(workflow, /`advance` 已退役/);
+  assert.match(workflow, /第一项站点操作必须是用 Browser MCP/);
   assert.doesNotMatch(workflow, /run\/advance/);
 });
 

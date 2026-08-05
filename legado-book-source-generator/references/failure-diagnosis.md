@@ -90,7 +90,7 @@ validator 返回失败后，按以下顺序检查：
 
 实测推翻：浏览器 MCP 用 Playwright，已做 `navigator.webdriver=false` 反检测；`evaluate` 提取 DOM、跑大量选择器都不会触发 verify。**真正的触发源是 `navigate` 反爬端点本身**——浏览器和 curl/Probe 表现完全一致（已实测）。
 
-`[action]` probe 阶段拿站点信息时，先 `navigate` 主页、不要把搜索/登录类反爬端点作为首个 navigate 目标。需要看搜索响应时用 `mcp__fetch__fetch` 取原始 HTML 离线解析，或在浏览器内**用户手动**操作搜索流程（用户过验证）。
+`[action]` 站点观察从 Browser MCP 打开用户提供的 URL 开始。需要看搜索响应时，在浏览器内执行正常搜索并检查该次浏览器网络请求。
 
 ### 登录态怎么解除反爬：跨子域 cookie 与 eTLD+1 归一
 
