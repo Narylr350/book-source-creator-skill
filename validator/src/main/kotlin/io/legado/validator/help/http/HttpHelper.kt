@@ -136,8 +136,7 @@ object HttpHelper {
         val meta = raw.substring(metaIdx + metaMarker.length).trim().split("\n")
         val code = meta.getOrNull(0)?.toIntOrNull() ?: 200
         val effectiveUrl = meta.getOrNull(1) ?: url
-        val cs = charset ?: detectCharset(bodyStr.toByteArray(), null)
-        val finalBody = if (cs != "UTF-8") String(bodyStr.toByteArray(Charsets.ISO_8859_1), Charset.forName(cs)) else bodyStr
+        val finalBody = decodeBody(bodyStr, charset)
         return StrResponse(effectiveUrl, finalBody, okhttp3.Headers.headersOf(), code)
     }
 
@@ -153,6 +152,15 @@ object HttpHelper {
         headers.forEach { (k, v) -> builder.addHeader(k, v) }
         val response = client.newCall(builder.build()).execute()
         return response.body?.byteStream() ?: ByteArrayInputStream(ByteArray(0))
+    }
+
+    internal fun decodeBody(body: String, charset: String?): String {
+        val resolvedCharset = charset ?: detectCharset(body.toByteArray(), null)
+        return if (resolvedCharset.equals("UTF-8", ignoreCase = true)) {
+            body
+        } else {
+            String(body.toByteArray(Charsets.ISO_8859_1), Charset.forName(resolvedCharset))
+        }
     }
 
     private fun detectCharset(bytes: ByteArray, hint: String?): String {
