@@ -101,6 +101,12 @@ export function cmdDeliverCheck(state, runDir) {
   if (v.status !== "completed") {
     return deliverFail("验证未完成。上次 record-validation 返回 blocked/重试动作时不能交付，请按 blockedBy 修复后重新记录验证。");
   }
+  const completedValidationStatuses = ["passed", "degraded", "needs_app_review", "validator_limitation"];
+  const generate = state.phases.generate || {};
+  if (completedValidationStatuses.includes(v.lastStatus)
+    && (generate.status !== "completed" || generate.repairContext || state.repairContext)) {
+    return deliverFail("验证状态与生成修复状态不一致。请重新运行 record-validation，让当前 validator-report.json 清除旧 repairContext 后再交付。");
+  }
 
   const ruleCheck = readJsonFile(path.join(runDir, "rule-check.json"));
   if (!ruleCheck || ruleCheck.status !== "passed") {

@@ -962,6 +962,80 @@ describe("bsg workflow user-action gates", () => {
     assert.equal(repairedState.repairContext, undefined);
   });
 
+  it("clears an earlier repair context when the current validator report passes", async () => {
+    const runDir = await initRun(tmpDir);
+    await runToGenerate(tmpDir, runDir);
+    await writeValidSource(tmpDir);
+    await runBsg(["run", "--run", runDir]);
+    await writeGeneratedValidatorReport(runDir, {
+      status: "failed",
+      mode: "android",
+      phases: { search: "error", detail: "unknown", toc: "unknown", content: "unknown" },
+      steps: [{
+        phase: "search",
+        status: "error",
+        mode: "android",
+        errorCode: "SEARCH_SELECTOR_EMPTY",
+        failedField: "ruleSearch.bookList",
+        error: "搜索结果为空",
+        request: { url: "https://example.com/search?q=bad" },
+      }],
+    });
+    await runBsg(["record-validation", "--run", runDir, "--status", "failed"]);
+
+    await writeGeneratedValidatorReport(runDir, {
+      status: "passed",
+      mode: "android",
+      phases: { search: "success", detail: "success", toc: "success", content: "success" },
+      steps: [
+        { phase: "search", status: "success", mode: "android", extracted: { resultCount: 1 } },
+        { phase: "detail", status: "success", mode: "android", extracted: { name: "Example" } },
+        { phase: "toc", status: "success", mode: "android", extracted: { chapterCount: 20 } },
+        { phase: "content", status: "success", mode: "android", extracted: { contentLength: 80, contentPreview: "正文内容示例".repeat(8) } },
+      ],
+    });
+    const recorded = await runBsg(["record-validation", "--run", runDir, "--status", "passed"]);
+
+    assert.equal(recorded.repairContext, null);
+    const state = JSON.parse(await fs.readFile(path.join(runDir, "run-state.json"), "utf8"));
+    assert.equal(state.phases.generate.status, "completed");
+    assert.equal(state.phases.generate.repairContext, undefined);
+    assert.equal(state.repairContext, undefined);
+
+    const delivered = await runBsg(["deliver", "--run", runDir]);
+    assert.equal(delivered.finalStatus, "passed");
+  });
+
+  it("rejects deliver when a completed validation still carries generate repair state", async () => {
+    const runDir = await initRun(tmpDir);
+    await writeRequiredDeliverFiles(tmpDir, runDir);
+    await writeGeneratedValidatorReport(runDir, {
+      mode: "android",
+      phases: { search: "success", detail: "success", toc: "success", content: "success" },
+      steps: [
+        { phase: "search", status: "success", mode: "android", extracted: { resultCount: 1 } },
+        { phase: "detail", status: "success", mode: "android", extracted: { name: "Example" } },
+        { phase: "toc", status: "success", mode: "android", extracted: { chapterCount: 20 } },
+        { phase: "content", status: "success", mode: "android", extracted: { contentLength: 80, contentPreview: "正文内容示例".repeat(8) } },
+      ],
+    });
+    await runBsg(["record-validation", "--run", runDir, "--status", "passed"]);
+
+    const state = JSON.parse(await fs.readFile(path.join(runDir, "run-state.json"), "utf8"));
+    state.phases.generate.status = "in_progress";
+    state.repairContext = { reason: "stale_failure" };
+    saveRunState(runDir, state);
+
+    await assert.rejects(
+      () => execFileAsync("node", [BSG, "deliver", "--run", runDir], { encoding: "utf8" }),
+      (err) => {
+        const result = JSON.parse(err.stdout);
+        assert.match(result.error, /验证状态与生成修复状态不一致|repairContext/);
+        return true;
+      },
+    );
+  });
+
   it("preserves repeated validator failure counts across generate repair rounds", async () => {
     const runDir = await initRun(tmpDir);
     await runToGenerate(tmpDir, runDir);

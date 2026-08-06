@@ -156,6 +156,14 @@ function enterGenerateRepair(state, repairContext) {
   state.repairContext = repairContext;
 }
 
+function completeGenerateRepair(state) {
+  // 当前报告已经通过 source hash、rule-check 和 provenance 校验；验证收敛后旧失败上下文必须失效。
+  state.phases.generate.status = "completed";
+  state.phases.generate.completedAt = new Date().toISOString();
+  delete state.phases.generate.repairContext;
+  delete state.repairContext;
+}
+
 function androidProbeNotUsedBlock(runDir, state, message) {
   const nextCommand = `node "<skill-dir>/scripts/bsg.mjs" android --run "${runDir}"`;
   const nextStep = `下一步默认运行: ${nextCommand}，按它返回的 requiredUserAction 或 nextCommand 继续；底层诊断只用于定位环境问题，最终仍要回到 android / record-validation 收敛。`;
@@ -919,6 +927,10 @@ export function cmdRecordValidation(args) {
   } else if (status === "validator_limitation") {
     finalStatus = "validator_limitation";
     v.status = "completed";
+  }
+
+  if (["passed", "anonymous_candidate", "degraded", "needs_app_review", "validator_limitation"].includes(finalStatus)) {
+    completeGenerateRepair(state);
   }
 
   v.recordedAt = new Date().toISOString();
