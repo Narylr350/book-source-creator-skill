@@ -32,4 +32,5 @@ docs/                            # 项目文档（行为矩阵、环境配置）
 
 1. `validator/`：`.\gradlew.bat jar` → 产物部署到 `legado-book-source-generator/validator/app/`
 2. `android-probe/`：`.\gradlew.bat assembleDebug` → APK 复制到同目录
-3. `release/`：`package-release.ps1` 打包 zip
+3. `release/`：`package-release.ps1` 从 Skill `package.json` 读取默认版本并打包 zip
+4. `.github/workflows/release.yml`：手动触发只构建测试 artifact；推送匹配 `v*` 的 tag 时，读取 `release-notes/<tag>.md` 自动创建 GitHub Release

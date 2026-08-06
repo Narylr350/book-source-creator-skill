@@ -1,0 +1,113 @@
+name: Build and publish release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to build, for example v2.2.0; defaults to package.json"
+        required: false
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+
+      - name: Set up Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: gradle
+
+      - name: Resolve release metadata
+        id: metadata
+        shell: pwsh
+        run: |
+          $package = Get-Content "legado-book-source-generator/package.json" -Raw | ConvertFrom-Json
+
+          if ($env:GITHUB_EVENT_NAME -eq "push") {
+            $tag = $env:GITHUB_REF_NAME
+          } else {
+            $tag = "${{ inputs.version }}"
+            if ([string]::IsNullOrWhiteSpace($tag)) {
+              $tag = "v$($package.version)"
+            }
+          }
+
+          if ($tag -notmatch '^v\d+\.\d+\.\d+$') {
+            throw "Invalid release version: $tag"
+          }
+
+          if ("v$($package.version)" -ne $tag) {
+            throw "Tag $tag does not match package version v$($package.version)"
+          }
+
+          $notes = "release-notes/$tag.md"
+          if (-not (Test-Path -LiteralPath $notes)) {
+            throw "Release notes not found: $notes"
+          }
+
+          $archive = "release/legado-book-source-generator-$tag.zip"
+          "tag=$tag" >> $env:GITHUB_OUTPUT
+          "notes=$notes" >> $env:GITHUB_OUTPUT
+          "archive=$archive" >> $env:GITHUB_OUTPUT
+
+      - name: Test repository tools
+        shell: pwsh
+        run: node --test tests/*.test.mjs
+
+      - name: Test Skill scripts
+        shell: pwsh
+        working-directory: legado-book-source-generator
+        run: npm test
+
+      - name: Test and build validator
+        shell: pwsh
+        working-directory: validator
+        run: .\gradlew.bat test jar --console=plain --no-daemon
+
+      - name: Deploy validator jar into Skill
+        shell: pwsh
+        run: Copy-Item "validator/build/libs/legado-source-validator.jar" "legado-book-source-generator/validator/app/legado-source-validator.jar" -Force
+
+      - name: Build Android Probe
+        shell: pwsh
+        working-directory: android-probe
+        run: .\gradlew.bat assembleDebug --console=plain --no-daemon
+
+      - name: Package release archive
+        shell: pwsh
+        run: .\validator\package-release.ps1 -Version "${{ steps.metadata.outputs.tag }}"
+
+      - name: Upload testable archive
+        uses: actions/upload-artifact@v5
+        with:
+          name: legado-book-source-generator-${{ steps.metadata.outputs.tag }}
+          path: ${{ steps.metadata.outputs.archive }}
+          if-no-files-found: error
+
+      - name: Publish GitHub Release
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ steps.metadata.outputs.tag }}" `
+            "${{ steps.metadata.outputs.archive }}" `
+            --verify-tag `
+            --title "${{ steps.metadata.outputs.tag }}" `
+            --notes-file "${{ steps.metadata.outputs.notes }}"

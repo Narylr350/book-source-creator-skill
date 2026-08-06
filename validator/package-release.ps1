@@ -3,12 +3,22 @@
 # 用法: powershell -ExecutionPolicy Bypass -File package-release.ps1
 
 param(
-    [string]$Version = "v2.1.1"
+    [string]$Version
 )
 
 $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $MyInvocation.MyCommand.Path
 $projectRoot = Split-Path -Parent $root
+
+if ([string]::IsNullOrWhiteSpace($Version)) {
+    $packageJson = Get-Content "$projectRoot\legado-book-source-generator\package.json" -Raw | ConvertFrom-Json
+    $Version = "v$($packageJson.version)"
+}
+
+if ($Version -notmatch '^v\d+\.\d+\.\d+$') {
+    throw "Invalid release version: $Version"
+}
+
 $releaseDir = "$projectRoot\release"
 $stagingDir = "$releaseDir\legado-book-source-generator"
 $zipFile = "$releaseDir\legado-book-source-generator-$Version.zip"
