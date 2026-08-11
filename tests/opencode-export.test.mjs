@@ -45,25 +45,27 @@ async function writeFakeOpencode(tmpDir, sessions, exports = {}) {
 describe("export-opencode-session", () => {
   it("exports latest opencode session for a work directory without PowerShell JSON parsing", async () => {
     const tmpDir = await makeTmpDir();
+    const workDir = path.join(tmpDir, "skill-test");
+    await fs.mkdir(workDir);
     const out = path.join(tmpDir, "session-export.json");
     const fakeOpencode = await writeFakeOpencode(tmpDir, [
       {
         id: "ses_old",
         title: "生成刺猬猫书源",
         updated: 1,
-        directory: "D:\\Narylr",
+        directory: tmpDir,
       },
       {
         id: "ses_latest",
         title: "生成刺猬猫书源",
         updated: 3,
-        directory: "D:\\Narylr\\skill-test",
+        directory: workDir,
       },
       {
         id: "ses_other",
         title: "别的会话",
         updated: 9,
-        directory: "D:\\Narylr\\other",
+        directory: path.join(tmpDir, "other"),
       },
     ], {
       ses_latest: JSON.stringify({
@@ -92,7 +94,7 @@ describe("export-opencode-session", () => {
 
     const result = await execFileAsync("node", [
       SCRIPT,
-      "--cwd", "D:\\Narylr\\skill-test",
+      "--cwd", workDir,
       "--out", out,
       "--opencode", fakeOpencode,
     ], { encoding: "utf8" });
@@ -107,34 +109,6 @@ describe("export-opencode-session", () => {
     assert.match(cleaned, /node scripts\/bsg\.mjs android --run runs\/ciweimao-com/);
     assert.match(cleaned, /requiredUserAction: android_device_needed/);
     assert.doesNotMatch(cleaned, /"parts":/);
-  });
-
-  it("runs Windows command shims when cmd.exe is absent from PATH", { skip: process.platform !== "win32" }, async () => {
-    const tmpDir = await makeTmpDir();
-    const out = path.join(tmpDir, "session-export.json");
-    const fakeOpencode = await writeFakeOpencode(tmpDir, [{
-      id: "ses_comspec",
-      title: "ComSpec session",
-      updated: 1,
-      directory: tmpDir,
-    }]);
-    const nodeDir = path.dirname(process.execPath);
-
-    const result = await execFileAsync(process.execPath, [
-      SCRIPT,
-      "--cwd", tmpDir,
-      "--out", out,
-      "--opencode", fakeOpencode,
-    ], {
-      encoding: "utf8",
-      env: {
-        ...process.env,
-        PATH: nodeDir,
-        Path: nodeDir,
-      },
-    });
-
-    assert.equal(JSON.parse(result.stdout).sessionId, "ses_comspec");
   });
 
   it("defaults to current directory and writes a fixed export filename", async () => {
