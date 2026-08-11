@@ -109,6 +109,34 @@ describe("export-opencode-session", () => {
     assert.doesNotMatch(cleaned, /"parts":/);
   });
 
+  it("runs Windows command shims when cmd.exe is absent from PATH", { skip: process.platform !== "win32" }, async () => {
+    const tmpDir = await makeTmpDir();
+    const out = path.join(tmpDir, "session-export.json");
+    const fakeOpencode = await writeFakeOpencode(tmpDir, [{
+      id: "ses_comspec",
+      title: "ComSpec session",
+      updated: 1,
+      directory: tmpDir,
+    }]);
+    const nodeDir = path.dirname(process.execPath);
+
+    const result = await execFileAsync(process.execPath, [
+      SCRIPT,
+      "--cwd", tmpDir,
+      "--out", out,
+      "--opencode", fakeOpencode,
+    ], {
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        PATH: nodeDir,
+        Path: nodeDir,
+      },
+    });
+
+    assert.equal(JSON.parse(result.stdout).sessionId, "ses_comspec");
+  });
+
   it("defaults to current directory and writes a fixed export filename", async () => {
     const tmpDir = await makeTmpDir();
     const defaultOut = path.join(os.tmpdir(), "opencode-session-export.json");

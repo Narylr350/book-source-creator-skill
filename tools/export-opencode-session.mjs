@@ -47,11 +47,23 @@ function parseArgs(argv) {
   return args;
 }
 
+function windowsCommandProcessor() {
+  const configured = process.env.ComSpec || process.env.COMSPEC;
+  if (configured && fs.existsSync(configured)) return configured;
+
+  const systemRoot = process.env.SystemRoot || process.env.SYSTEMROOT;
+  if (systemRoot) {
+    const candidate = path.join(systemRoot, "System32", "cmd.exe");
+    if (fs.existsSync(candidate)) return candidate;
+  }
+  return "cmd.exe";
+}
+
 function runCommand(command, args, options = {}) {
   if (process.platform === "win32") {
     const resolved = resolveWindowsCommand(command);
     if (/\.(cmd|bat)$/i.test(resolved)) {
-      return execFileSync("cmd.exe", ["/d", "/c", "call", resolved, ...args], {
+      return execFileSync(windowsCommandProcessor(), ["/d", "/c", "call", resolved, ...args], {
         encoding: "utf8",
         cwd: options.cwd,
         windowsHide: true,
