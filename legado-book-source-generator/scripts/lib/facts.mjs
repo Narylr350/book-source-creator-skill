@@ -6,6 +6,7 @@ import {
   fileExists, readJsonFile, writeJsonFile, fileSha256, emptyLinks,
   normalizeLinkStatus, getEvidenceIds, LINK_PHASES, OFFICIAL_RULE_PACK_PATH,
 } from "./state.mjs";
+import { resolveValidatorUrl } from "./validator-runtime.mjs";
 
 // ── cookie / report helpers ────────────────────────────────────────────────
 
@@ -754,10 +755,12 @@ export function runOfficialRuleCheck(sources, state, runDir) {
 }
 
 function runDryRunValidation(sources) {
+  const validatorUrl = resolveValidatorUrl();
+  if (!validatorUrl) return [];
   try {
     const result = execFileSync("curl.exe", [
       "-s", "--max-time", "5",
-      "-X", "POST", "http://127.0.0.1:1111/api/validate-rules",
+      "-X", "POST", `${validatorUrl}/api/validate-rules`,
       "-H", "Content-Type: application/json",
       "-d", JSON.stringify(sources),
     ], { encoding: "utf8", windowsHide: true, timeout: 8000 });

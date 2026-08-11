@@ -13,6 +13,7 @@ import { cmdLogin } from "./login.mjs";
 import { cmdValidate } from "./validate-runner.mjs";
 import { cmdRecordValidation } from "./validation-commands.mjs";
 import { cmdResolveUserAction } from "./assessment-commands.mjs";
+import { checkProbeNetwork, ensureAndroidProxy } from "./android-network.mjs";
 
 function androidCommand(runDir, extra = "") {
   return `node "<skill-dir>/scripts/bsg.mjs" android --run "${runDir}"${extra}`;
@@ -22,6 +23,13 @@ function currentSourceHash(state) {
   const sourcePath = path.join(state.workingDir, "outputs", state.siteSlug, "book-source.json");
   if (!fileExists(sourcePath)) return null;
   return createHash("sha256").update(fs.readFileSync(sourcePath)).digest("hex");
+}
+
+function loginRequired(state) {
+  const features = state.loginFeatures || {};
+  return features.hasLoginUrl === true
+    || features.hasEnabledCookieJar === true
+    || features.hasAuthorization === true;
 }
 
 function reportForRun(runDir, state) {
@@ -86,7 +94,7 @@ function dumpProbeCookie(state, dumpPath) {
   };
 }
 
-export function cmdAndroid(args) {
+export async function cmdAndroid(args) {
   const runDir = parseArg(args, "--run");
   if (!runDir) return fail("用法: node \"<skill-dir>/scripts/bsg.mjs\" android --run <run-dir> [--setup]");
 
@@ -184,6 +192,18 @@ export function cmdAndroid(args) {
     };
   }
 
+  const proxy = ensureAndroidProxy(android);
+  if (!proxy.ok) {
+    return {
+      ...fail(`Android 与电脑的网络代理环境不一致，不能把后续超时归因到目标站点。${proxy.error ? ` ${proxy.error}` : ""}`),
+      blockedBy: "android_network_environment",
+      requiredUserAction: proxy.requiredUserAction,
+      android,
+      proxy,
+      nextCommand: androidCommand(runDir),
+    };
+  }
+
   if (args.includes("--setup")) {
     if (["probe", "probe_cookie_delta"].includes(state.loginFeatures?._loginMethod) && state.loginFeatures?._loginVerified === true) {
       return {
@@ -195,11 +215,25 @@ export function cmdAndroid(args) {
         nextCommand: androidCommand(runDir),
       };
     }
-    const result = cmdLogin(["--run", runDir, ...(args.includes("--verbose") ? ["--verbose"] : [])]);
+    const needsLogin = loginRequired(state);
+    const result = cmdLogin([
+      "--run", runDir,
+      ...(!needsLogin ? ["--probe-only"] : []),
+      ...(args.includes("--verbose") ? ["--verbose"] : []),
+    ]);
     if (!result.ok) {
       return {
         ...result,
         via: "android:setup",
+        nextCommand: androidCommand(runDir),
+      };
+    }
+    if (!needsLogin) {
+      return {
+        ...result,
+        via: "android:setup",
+        nextAction: "run_android_validation",
+        android,
         nextCommand: androidCommand(runDir),
       };
     }
@@ -236,6 +270,20 @@ export function cmdAndroid(args) {
     };
   }
 
+  const network = await checkProbeNetwork();
+  if (!network.ok) {
+    return {
+      ...fail(`Android Probe 无法加载中性 HTTPS 页面，当前失败属于设备网络/代理环境，不能归因到目标站点: ${network.error || network.state}`),
+      blockedBy: "android_network_environment",
+      requiredUserAction: "configure_android_network",
+      android,
+      probe,
+      proxy,
+      network,
+      nextCommand: androidCommand(runDir),
+    };
+  }
+
   const report = reportForRun(runDir, state);
   if (report) {
     const recorded = cmdRecordValidation(["--run", runDir, "--status", report.status]);
@@ -244,11 +292,18 @@ export function cmdAndroid(args) {
       via: "record-validation",
       android,
       probe,
+      proxy,
+      network,
       nextCommand: recorded.nextCommand || `node "<skill-dir>/scripts/bsg.mjs" run --run ${runDir}`,
     };
   }
 
-  const validated = cmdValidate(["--run", runDir, "--mode", "android"]);
+  const validateArgs = ["--run", runDir, "--mode", "android"];
+  for (const flag of ["--keyword", "--book-url"]) {
+    const value = parseArg(args, flag);
+    if (value) validateArgs.push(flag, value);
+  }
+  const validated = cmdValidate(validateArgs);
   if (!validated.ok) return validated;
   if (validated.status === "skipped") {
     return {

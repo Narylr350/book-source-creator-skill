@@ -11,7 +11,7 @@ Legado 书源生成与验证工具
 
 人类只需对 AI 说一句：**"帮我给 https://xxx.com 生成书源"**。
 
-内置的 validator (http://localhost:1111) 和 CLI 脚本是供人类调试/演示/手动验证的辅助入口。
+内置的 validator 和 CLI 脚本是供人类调试、演示和手动验证的辅助入口。validator 启动时自动选择可用的本机端口。
 
 ## 给 AI 用（主要）
 
@@ -20,8 +20,8 @@ Legado 书源生成与验证工具
 ## 给人类用（调试/手动验证）
 
 1. 解压本 zip
-2. 运行 `node scripts\bsg.mjs validator-start`，等待窗口显示服务地址
-3. 浏览器打开 http://localhost:1111
+2. 运行 `node scripts\bsg.mjs validator-start`
+3. 浏览器打开启动结果中的 `url`
 4. 导入 book-source.json，输入关键词，选择 HTTP / Browser / Android / Auto 模式后运行
 5. 生成的书源在 `outputs\<站点>\book-source.json`
 
@@ -29,12 +29,12 @@ Legado 书源生成与验证工具
 
 必需：
 
+- Node.js 18+
 - Java 17+
 - 能访问目标网站的网络环境
 
 可选：
 
-- Node.js 18+：运行 scripts\ 里的辅助脚本时需要
 - adb / Android SDK Platform Tools：使用 Android WebView Probe 时需要；运行 node scripts\bsg.mjs login 自动下载
 
 Windows 常见 adb 路径：
@@ -95,7 +95,7 @@ validator 支持导入和管理 Cookie，用于验证需要登录态或 CookieJa
 
 浏览器界面：
 
-- 打开 http://localhost:1111
+- 打开 `validator-start` 输出的 `url`
 - 在 Cookie 区域填入域名和 Cookie
 - 再运行 HTTP / Android / Auto 验证
 

@@ -2,7 +2,7 @@
 
 ## 概述
 
-Validator 是本地书源预验证工具，运行在 `http://localhost:1111`。Skill 生成书源后，先跑 validator 验证，再决定交付或回修。生命周期管理由 `bsg.mjs validator-start/stop` 统一处理。
+Validator 是本地书源预验证工具。Skill 生成书源后，先跑 validator 验证，再决定交付或回修。生命周期管理由 `bsg.mjs validator-start/stop` 统一处理，启动时自动选择可用的本机端口。
 
 ## 内置运行包
 
@@ -16,7 +16,7 @@ validator/
 
 启动: `node "<skill-dir>/scripts/bsg.mjs" validator-start`。停止: `node "<skill-dir>/scripts/bsg.mjs" validator-stop`。
 
-启动后打开 `http://localhost:1111` 可使用浏览器调试台。
+启动结果中的 `url` 是本次 validator 地址，浏览器调试台和手工 API 调用都使用该地址。
 
 ## API 接口
 
@@ -47,6 +47,8 @@ validator/
 如果手工调用 API，不要把 `sourceJson` 写成 `"<书源JSON>"` 占位字符串。PowerShell 下用下面的方式从真实文件构造请求体：
 
 ```powershell
+$validator = node "<skill-dir>/scripts/bsg.mjs" validator-start | ConvertFrom-Json
+$validatorUrl = $validator.url
 $sourceJson = Get-Content -Raw "outputs/<slug>/book-source.json"
 $body = @{
   sourceJson = $sourceJson
@@ -55,7 +57,7 @@ $body = @{
   mode = "http"
   debugDir = "runs/<slug>/debug"
 } | ConvertTo-Json -Depth 8
-curl.exe -s -X POST http://localhost:1111/api/debug/run -H "Content-Type: application/json" --data-binary $body
+curl.exe -s -X POST "$validatorUrl/api/debug/run" -H "Content-Type: application/json" --data-binary $body
 ```
 
 `debugDir` 必须预先存在；不存在时 validator 会忽略该目录，不会写调试产物。
@@ -330,11 +332,14 @@ else:
 如果 `bsg.mjs validate` 不可用，直接 curl API：
 
 ```powershell
+$validator = node "<skill-dir>/scripts/bsg.mjs" validator-start | ConvertFrom-Json
+$validatorUrl = $validator.url
+
 # 导入书源
-curl.exe -X POST http://localhost:1111/api/source/import -H "Content-Type: application/json" --data-binary "@outputs/<slug>/book-source.json"
+curl.exe -X POST "$validatorUrl/api/source/import" -H "Content-Type: application/json" --data-binary "@outputs/<slug>/book-source.json"
 
 # 运行验证（含 debug 产物）
-curl.exe -X POST http://localhost:1111/api/debug/run -H "Content-Type: application/json" -d '{"sourceUrl":"https://example.com","keyword":"关键词","mode":"http","debugDir":"runs/<slug>/debug"}'
+curl.exe -X POST "$validatorUrl/api/debug/run" -H "Content-Type: application/json" -d '{"sourceUrl":"https://example.com","keyword":"关键词","mode":"http","debugDir":"runs/<slug>/debug"}'
 ```
 
 直接调用 `/api/debug/run` 有两种合法方式：
@@ -353,10 +358,10 @@ node "<skill-dir>/scripts/bsg.mjs" android --run runs/<slug> --dump-cookie "runs
 该命令会检查目标域、`wap.`、`m.` 和根域，选择最佳 Probe Cookie，写成 validator 可读的 JSON。命令输出只显示域名和 Cookie 名；原始 Cookie 只在指定文件里。该文件用于 validator 调试，不得写死进 `book-source.json`。
 
 ```powershell
-curl.exe -s -X POST http://localhost:1111/api/cookie/set -H "Content-Type: application/json" -d '{"domain":"www.example.com","cookie":"a=b; c=d"}'
-curl.exe -s "http://localhost:1111/api/cookie/get?domain=www.example.com"
-curl.exe -s -X POST http://localhost:1111/api/cookie/clear -H "Content-Type: application/json" -d '{"domain":"www.example.com"}'
-curl.exe -s -X POST http://localhost:1111/api/cookie/clear -H "Content-Type: application/json" -d '{"all":true}'
+curl.exe -s -X POST "$validatorUrl/api/cookie/set" -H "Content-Type: application/json" -d '{"domain":"www.example.com","cookie":"a=b; c=d"}'
+curl.exe -s "$validatorUrl/api/cookie/get?domain=www.example.com"
+curl.exe -s -X POST "$validatorUrl/api/cookie/clear" -H "Content-Type: application/json" -d '{"domain":"www.example.com"}'
+curl.exe -s -X POST "$validatorUrl/api/cookie/clear" -H "Content-Type: application/json" -d '{"all":true}'
 ```
 
 这里的 `/api/cookie/clear` 清理 validator CookieStore；Probe WebView Cookie 要用 `http://127.0.0.1:18888/cookie-clear`。
@@ -364,7 +369,8 @@ curl.exe -s -X POST http://localhost:1111/api/cookie/clear -H "Content-Type: app
 ## 前置检查
 
 ```powershell
-if ((curl.exe -s --max-time 3 http://localhost:1111/api/sources 2>$null) -match "^\[") { "Running" } else { "Not running" }
+$validator = node "<skill-dir>/scripts/bsg.mjs" validator-start | ConvertFrom-Json
+if ((curl.exe -s --max-time 3 "$($validator.url)/api/sources" 2>$null) -match "^\[") { "Running" } else { "Not running" }
 ```
 
 **禁止用 `/health` 探测（该端点不存在，返回 404）。只用 `/api/sources`。**
@@ -374,6 +380,8 @@ if ((curl.exe -s --max-time 3 http://localhost:1111/api/sources 2>$null) -match 
 使用 `mode=android` 处理 `webView:true` / `webJs`，或复用 Android Probe 登录态时，需要 adb 和已在线的 Android 真机或模拟器。
 
 - 安装、启动 Probe、登录和 Android 验证：运行 `node "<skill-dir>/scripts/bsg.mjs" android --run <run-dir>`
+- Android 单入口会核对电脑与设备的代理环境。本机 HTTP 代理和带可用 HTTP/mixed 监听端口的 TUN 可自动同步到 Android 模拟器；真机、带凭据代理、SOCKS 或无法映射的 TUN 会明确停止在网络配置步骤。
+- 目标站验证前，Probe 会先加载中性 HTTPS 页面。该检查失败时结论是设备网络/代理环境异常，不得记录为目标站反爬、Cloudflare 或 Android 不兼容。
 - `bsg.mjs android` 是 Android 场景默认收敛入口：检测 adb/设备/Probe，必要时启动 Probe，按返回的 `requiredUserAction` 或 `nextCommand` 继续
 - 如果脚本失败，停止并向用户报告脚本输出。常规流程继续使用 `android --run` 的返回命令；只有脚本错误指向环境/Probe/设备问题，或用户要求调试时，才展开底层 adb、Probe API 或 validator 子步骤
 - 底层诊断只能用于定位问题，不能用局部成功替代 `android --run` / `record-validation` 的最终收敛

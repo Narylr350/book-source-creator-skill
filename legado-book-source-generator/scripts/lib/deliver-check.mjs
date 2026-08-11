@@ -5,6 +5,7 @@ import {
   getPendingUserAction, printHint,
 } from "./state.mjs";
 import { resetPhasesFrom } from "./phase-order.mjs";
+import { readValidatorRuntime } from "./validator-runtime.mjs";
 import {
   loadBookSource, validateBookSourceStructure, ensureAssessmentFactsFresh,
   ensureRuleCheckSourceFresh,
@@ -149,12 +150,10 @@ export function cmdDeliverCheck(state, runDir) {
   state.phases.deliver.status = "completed";
   saveRunState(runDir, state);
 
-  const pidFile = path.join(SKILL_ROOT, ".validator-pid");
-  let cleanupReminder = null;
-  if (fileExists(pidFile)) {
-    const vPid = fs.readFileSync(pidFile, "utf-8").trim();
-    cleanupReminder = `⚠ 别忘了关 validator: node "<skill-dir>/scripts/bsg.mjs" validator-stop (PID: ${vPid})`;
-  }
+  const validatorRuntime = readValidatorRuntime();
+  const cleanupReminder = validatorRuntime
+    ? `⚠ 别忘了关 validator: node "<skill-dir>/scripts/bsg.mjs" validator-stop (PID: ${validatorRuntime.pid})`
+    : null;
 
   return {
     ok: true,

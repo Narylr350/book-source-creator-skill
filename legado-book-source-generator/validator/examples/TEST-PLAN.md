@@ -50,14 +50,15 @@ Legado 书源验证器 — 测试样例
 
 ### 浏览器测试
 1. 启动 `node "<skill-dir>/scripts/bsg.mjs" validator-start`
-2. 打开 `http://localhost:1111`
+2. 打开启动结果中的 `url`
 3. 粘贴书源 JSON，点"导入"
 4. 输入关键词，点"运行"
 
 ### API 测试（AI 用）
-```bash
-curl -X POST http://localhost:1111/api/debug/run \
-  -H "Content-Type: application/json" \
+```powershell
+$validatorUrl = (node "<skill-dir>/scripts/bsg.mjs" validator-start | ConvertFrom-Json).url
+curl.exe -X POST "$validatorUrl/api/debug/run" `
+  -H "Content-Type: application/json" `
   -d '{"sourceJson": [...], "sourceUrl": "https://...", "keyword": "..."}'
 ```
 

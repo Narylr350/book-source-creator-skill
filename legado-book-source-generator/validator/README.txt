@@ -2,10 +2,11 @@ Legado 书源验证器 v1.0
 ========================
 
 启动方式：
-  node "<skill-dir>/scripts/bsg.mjs" validator-start，或命令行执行 java -jar app\legado-source-validator.jar
-  打开浏览器访问 http://localhost:1111
+  node "<skill-dir>/scripts/bsg.mjs" validator-start
+  启动结果会输出本次服务地址，浏览器打开其中的 url
 
 需要：
+  - Node.js 18 或更高版本
   - Java 17 或更高版本
   - Android WebView Probe 可选需要 adb；运行 node "<skill-dir>/scripts/bsg.mjs" android --run <run-dir> 走单入口
 
@@ -31,7 +32,7 @@ Android Probe：
   - Probe info：http://127.0.0.1:18888/info
   - Probe Cookie：http://127.0.0.1:18888/cookie-check?domain=<目标域名>
   - Probe render：POST http://127.0.0.1:18888/render 必须带 JSON 字段 timeout，例如 {"url":"https://example.com","timeout":60000,"screenshot":false}
-  - Validator API：http://localhost:1111/api/debug/run
+  - Validator API：使用 validator-start 输出的 url，加上 /api/debug/run
 
 调试原则：
   - adb、Probe API、curl 可以用于定位问题，但不能替代 bsg.mjs android / record-validation 的最终收敛
@@ -42,7 +43,7 @@ Android Probe：
 如本机无 adb，Android 入口会提示安装/配置 Platform-Tools；工具解压到
 validator\tools\platform-tools，不写入系统目录。
 
-停止 Probe：
+停止 Validator：
   node "<skill-dir>/scripts/bsg.mjs" validator-stop
 
 样例书源：

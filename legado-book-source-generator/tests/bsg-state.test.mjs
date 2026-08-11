@@ -55,6 +55,8 @@ async function fakeAndroidToolEnv(tmpDir, extraEnv = {}) {
     ...process.env,
     [pathKey]: `${toolsDir}${path.delimiter}${process.env[pathKey] || ""}`,
     BSG_TEST_ADB_DEVICES_OUTPUT: "List of devices attached\nemulator-5554\tdevice\n",
+    BSG_TEST_PC_PROXY: "",
+    BSG_TEST_ANDROID_PROXY: "null",
     ...extraEnv,
   };
 }
@@ -2683,6 +2685,7 @@ describe("run response fields", () => {
   it("android setup persists login pending action so login-completed can resolve it", async () => {
     const tmpDir = await makeTmpDir();
     const init = await runBsg(["init", "https://example.com", "--cwd", tmpDir]);
+    await runBsg(["set-login-features", "--run", init.runDir, "--flags", JSON.stringify({ hasLoginUrl: true, hasEnabledCookieJar: true })]);
     const setupEnv = await fakeAndroidToolEnv(tmpDir);
 
     const setup = await runBsg(["android", "--run", init.runDir, "--setup"], { env: setupEnv });
@@ -2716,6 +2719,7 @@ describe("run response fields", () => {
   it("accepts user-confirmed Probe login when cookies changed after setup", async () => {
     const tmpDir = await makeTmpDir();
     const init = await runBsg(["init", "https://example.com", "--cwd", tmpDir]);
+    await runBsg(["set-login-features", "--run", init.runDir, "--flags", JSON.stringify({ hasLoginUrl: true, hasEnabledCookieJar: true })]);
 
     await runBsg(["android", "--run", init.runDir, "--setup"], { env: await fakeAndroidToolEnv(tmpDir) });
     const stateAfterSetup = JSON.parse(await fs.readFile(path.join(init.runDir, "run-state.json"), "utf8"));
@@ -2744,6 +2748,7 @@ describe("run response fields", () => {
   it("rejects user-confirmed Probe login when anonymous cookies did not change", async () => {
     const tmpDir = await makeTmpDir();
     const init = await runBsg(["init", "https://example.com", "--cwd", tmpDir]);
+    await runBsg(["set-login-features", "--run", init.runDir, "--flags", JSON.stringify({ hasLoginUrl: true, hasEnabledCookieJar: true })]);
     const env = await fakeAndroidToolEnv(tmpDir, {
       BSG_TEST_PROBE_COOKIE_CHECK: JSON.stringify({
         hasCookies: true,
@@ -2762,6 +2767,24 @@ describe("run response fields", () => {
         return true;
       },
     );
+    await fs.rm(tmpDir, { recursive: true, force: true });
+  });
+
+  it("android setup prepares anonymous validation without creating a login action", async () => {
+    const tmpDir = await makeTmpDir();
+    const init = await runBsg(["init", "https://example.com", "--cwd", tmpDir]);
+
+    const setup = await runBsg(["android", "--run", init.runDir, "--setup"], {
+      env: await fakeAndroidToolEnv(tmpDir),
+    });
+    const stateAfterSetup = JSON.parse(await fs.readFile(path.join(init.runDir, "run-state.json"), "utf8"));
+
+    assert.equal(setup.nextAction, "run_android_validation");
+    assert.equal(setup.requiredUserAction, undefined);
+    assert.match(setup.message, /匿名 Android 验证/);
+    assert.doesNotMatch(setup.message, /完成登录|login-completed/);
+    assert.equal(stateAfterSetup.pendingUserAction, null);
+    assert.equal(stateAfterSetup.loginFeatures._loginVerified, undefined);
     await fs.rm(tmpDir, { recursive: true, force: true });
   });
 
@@ -2913,7 +2936,7 @@ describe("run response fields", () => {
     await fs.writeFile(path.join(runDir, "analysis.md"), "# test\n", "utf8");
     await writeValidSource(tmpDir);
 
-    const result = await runBsg(["android", "--run", runDir], {
+    const result = await runBsg(["android", "--run", runDir, "--keyword", "explicit-query"], {
       env: {
         ...process.env,
         BSG_TEST_ADB_DEVICES_OUTPUT: "List of devices attached\nemulator-5554\tdevice\n",
@@ -2923,8 +2946,40 @@ describe("run response fields", () => {
 
     assert.equal(result.via, "validate");
     assert.equal(result.mode, "android");
+    assert.equal(result.keyword, "explicit-query");
     assert.notEqual(result.nextAction, "prepare_validate_phase");
     assert.doesNotMatch(result.message || "", /进入 validate 阶段|推进到 validate/);
+    await fs.rm(tmpDir, { recursive: true, force: true });
+  });
+
+  it("android command classifies a neutral Probe timeout as device network failure", async () => {
+    const tmpDir = await makeTmpDir();
+    const runDir = await initRun(tmpDir);
+    await fs.writeFile(path.join(runDir, "analysis.md"), "# test\n", "utf8");
+    await writeValidSource(tmpDir);
+
+    await assert.rejects(
+      () => runBsg(["android", "--run", runDir], {
+        env: {
+          ...process.env,
+          BSG_TEST_ADB_DEVICES_OUTPUT: "List of devices attached\nemulator-5554\tdevice\n",
+          BSG_TEST_PROBE_INFO: JSON.stringify({ ok: true, api: ["/render"] }),
+          BSG_TEST_PROBE_NETWORK_RESULT: JSON.stringify({
+            ok: false,
+            state: "neutral_page_failed",
+            error: "Timeout after 10000ms",
+          }),
+        },
+      }),
+      (error) => {
+        const result = JSON.parse(error.stdout);
+        assert.equal(result.blockedBy, "android_network_environment");
+        assert.match(result.error, /设备网络\/代理环境/);
+        assert.doesNotMatch(result.error, /反爬|Cloudflare|目标站不兼容/);
+        return true;
+      },
+    );
+    assert.equal(await fs.access(path.join(runDir, "validator-report.json")).then(() => true, () => false), false);
     await fs.rm(tmpDir, { recursive: true, force: true });
   });
 

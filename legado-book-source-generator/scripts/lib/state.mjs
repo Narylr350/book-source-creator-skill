@@ -6,7 +6,6 @@ import { fileURLToPath } from "node:url";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export const SKILL_ROOT = path.resolve(__dirname, "..", "..");
 // noinspection JSUnresolvedReference
-export const VALIDATOR_URL = process.env.VALIDATOR_URL || "http://localhost:1111";
 export const OFFICIAL_RULE_PACK_PATH = path.join(SKILL_ROOT, "references", "official-rule-pack.json");
 export const LINK_PHASES = ["search", "detail", "toc", "content"];
 

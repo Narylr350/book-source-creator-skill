@@ -52,6 +52,16 @@ curl.exe -s "http://127.0.0.1:18888/cookie-check?domain=<目标域名>"
 
 只读诊断命令可以帮助定位问题，但不能替代 `android --run` 的最终结果。
 
+### 网络与代理一致性
+
+`android --run` 会在 Probe 操作前核对电脑和 Android 的代理状态：
+
+- 电脑使用本机 HTTP/HTTPS 代理时，Android 模拟器自动改用 `10.0.2.2:<port>` 访问宿主机代理。
+- 检测到 TUN 网卡时，会探测本机常用 HTTP/mixed 监听端口；确认可用后按同样方式同步到模拟器。
+- 电脑未使用代理时，自动清除模拟器残留的全局 HTTP 代理。
+- 真机、带账号密码的代理、SOCKS，或没有可映射 HTTP/mixed 端口的 TUN 环境不自动改设备设置；命令会停在 `android_network_environment`，要求先统一网络环境。
+- 目标站验证前先由 Probe 加载中性 HTTPS 页面。中性页失败表示设备网络或代理环境异常，不能据此写成目标站反爬、Cloudflare 或 Android 不兼容。
+
 ### Cookie 可见性和手动导出
 
 默认输出只显示安全摘要，不显示原始 Cookie：

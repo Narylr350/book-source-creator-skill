@@ -113,7 +113,7 @@ async function main(argv) {
       result = cmdAndroidStatus();
       break;
     case "android":
-      result = cmdAndroid(args);
+      result = await cmdAndroid(args);
       break;
     case "record-validation":
       result = cmdRecordValidation(args);

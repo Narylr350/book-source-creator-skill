@@ -103,13 +103,7 @@ outputs/<网站名>/book-source.json
 validator/run.bat
 ```
 
-启动后打开：
-
-```text
-http://localhost:1111
-```
-
-然后导入书源，输入关键词，运行检查。
+启动命令会输出本次使用的本机地址。打开输出中的 `url`，然后导入书源、输入关键词并运行检查。端口由工具自动选择，避免与 Windows 保留端口或其他本机服务冲突。
 
 ## 需要 Android 手机/模拟器吗？
 

@@ -18,6 +18,7 @@
 
 必需：
 
+- Node.js 18+
 - Java 17+
 - 可访问目标网站的网络环境
 
@@ -28,7 +29,7 @@ cd .\legado-book-source-generator\validator
 .\run.bat
 ```
 
-浏览器打开 `http://localhost:1111`。
+启动命令会输出本次 validator 的 `url`。浏览器打开该地址；端口由工具自动选择。
 
 停止：
 
@@ -56,6 +57,8 @@ Android Probe 解决的就是这个 gap——它是一个轻量的 Android APK�
 - **阅读 App**：最终人工验收——书源导入后正常搜索、阅读，确认体验正常
 
 Probe 运行在真实 Android WebView 上，比桌面 Browser 模式更接近阅读 App WebView 环境，但仍不等于阅读 App 100% 通过。
+
+`android --run` 会先统一电脑和模拟器的代理状态，并用中性 HTTPS 页面检查设备网络。本机 HTTP/HTTPS 代理和带可用 HTTP/mixed 监听端口的 TUN 可自动映射到模拟器；真机、SOCKS、带凭据代理或无法映射的 TUN 会明确停在网络配置步骤，不会把超时误判成目标站问题。
 
 需要：
 

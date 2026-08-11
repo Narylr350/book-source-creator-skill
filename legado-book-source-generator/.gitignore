@@ -7,7 +7,7 @@ debug-bundles/
 .outputs/
 
 # validator lifecycle
-.validator-pid
+.validator-runtime.json
 validator-cookies.json
 
 # local credentials and validator reports

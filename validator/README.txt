@@ -2,10 +2,11 @@ Legado 书源验证器 v1.0
 ========================
 
 启动方式：
-  双击 run.bat，或命令行执行 java -jar app\legado-source-validator.jar
-  打开浏览器访问 http://localhost:1111
+  双击 run.bat；停止时双击 stop.bat
+  启动结果会输出本次服务地址，浏览器打开其中的 url
 
 需要：
+  - Node.js 18 或更高版本
   - Java 17 或更高版本
   - Android WebView Probe 可选需要 adb；可双击 setup-adb.bat 自动下载到 tools\platform-tools
 

@@ -48,7 +48,7 @@ check*.py
 *.temp
 *.log
 *.pid
-.validator-pid
+.validator-runtime.json
 validator-cookies.json
 cookies.json
 

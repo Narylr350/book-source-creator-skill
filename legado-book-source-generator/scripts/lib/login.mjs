@@ -3,6 +3,7 @@ import path from "node:path";
 import os from "node:os";
 import { execSync } from "node:child_process";
 import { SKILL_ROOT, fileExists, parseArg, fail } from "./state.mjs";
+import { ensureAndroidProxy } from "./android-network.mjs";
 
 function findAdb() {
   try {
@@ -94,8 +95,9 @@ export function cmdLogin(args) {
   let targetUrl = parseArg(args, "--url");
   let targetUrlSource = targetUrl ? "explicit_url" : null;
   const verbose = args.includes("--verbose");
+  const probeOnly = args.includes("--probe-only");
   const clearCookies = !args.includes("--keep-cookies");
-  if (!targetUrl && runDir) {
+  if (!probeOnly && !targetUrl && runDir) {
     try {
       const statePath = path.join(runDir, "run-state.json");
       const factsPath = path.join(runDir, "site-facts.json");
@@ -127,6 +129,19 @@ export function cmdLogin(args) {
   const serial = getDeviceSerial(adb);
   if (!serial) {
     return fail("未检测到 Android 设备。请连接真机（开启 USB 调试）或启动模拟器。");
+  }
+
+  const proxy = ensureAndroidProxy({
+    adbPath: adb,
+    devices: [{ serial, state: "device" }],
+  });
+  if (!proxy.ok) {
+    return {
+      ...fail(`Android 与电脑的网络代理环境不一致，Probe 登录页可能得到错误的网络结果。${proxy.error ? ` ${proxy.error}` : ""}`),
+      blockedBy: "android_network_environment",
+      requiredUserAction: proxy.requiredUserAction,
+      proxy,
+    };
   }
 
   const apkPath = path.join(SKILL_ROOT, "validator", "android-probe.apk");
@@ -211,6 +226,22 @@ export function cmdLogin(args) {
     `Android Probe 已就绪 (设备: ${serial}, 端口 18888)`,
     cookieClearMessage,
   ];
+  if (probeOnly) {
+    lines.push("Probe 已准备好进行匿名 Android 验证，无需登录或确认用户动作。");
+    return {
+      ok: true,
+      nextAction: "probe_ready",
+      message: lines.join("\n"),
+      openedUrl: null,
+      openedUrlSource: null,
+      cookiesCleared: clearCookies,
+      ...(verbose ? {
+        probeRequests: [
+          ...(clearCookies ? [{ method: "POST", path: "/cookie-clear" }] : []),
+        ],
+      } : {}),
+    };
+  }
   if (targetUrl) {
     if (targetUrlSource === "state_site_url_fallback") {
       lines.push(`未找到明确 loginUrl，已打开站点首页/登录入口页: ${targetUrl}`);

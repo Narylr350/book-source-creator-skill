@@ -23,10 +23,12 @@ import { createHash } from 'crypto';
 import { readFileSync, writeFileSync, mkdirSync } from 'fs';
 import { join } from 'path';
 import { pathToFileURL } from 'url';
+import { resolveValidatorUrl } from './lib/validator-runtime.mjs';
 
-const VALIDATOR_URL = process.env.VALIDATOR_URL || 'http://localhost:1111';
+const VALIDATOR_URL = resolveValidatorUrl();
 
 async function checkValidator() {
+  if (!VALIDATOR_URL) return false;
   try {
     const res = await fetch(`${VALIDATOR_URL}/api/sources`, { method: 'GET', signal: AbortSignal.timeout(3000) });
     return res.ok;
