@@ -39,7 +39,12 @@ object RenderService {
             }
             val request = gson.toJson(params)
 
-            val process = ProcessBuilder("python", scriptPath)
+            val scriptFile = File(scriptPath)
+            if (!scriptFile.isFile || !scriptPath.endsWith(".py")) {
+                return@withContext RenderResult(ok = false, error = "Invalid render script path")
+            }
+
+            val process = ProcessBuilder("python", scriptFile.canonicalPath)
                 .redirectErrorStream(false)
                 .redirectError(File.createTempFile("render_err", ".log").apply { deleteOnExit() })
                 .apply {
