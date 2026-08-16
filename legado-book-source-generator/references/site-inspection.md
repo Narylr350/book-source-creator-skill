@@ -45,7 +45,9 @@ Android 真机或模拟器在线时，按 `references/android-probe-guide.md` �
 
 ## 入口反爬处理
 
-搜索、详情、目录任一入口出现验证码、Cloudflare、极验或人机验证时，记录到 `site-facts.json` 的 `blocker`。不得自行改用排行榜、书库或已知 ID 绕过入口继续生成。后续由 `record-assessment` 和 Android 流程收敛。
+搜索、详情、目录任一必需入口出现验证码、Cloudflare、极验或人机验证时，立即运行 `observe` 把该链路写为 `status: blocked`、`blocker: captcha|cloudflare`。命令会关闭未观察链路并返回 `record-assessment`；不得继续使用公开直达样本、排行榜、书库或已知 ID 探查或生成。
+
+发现动态请求签名、字体映射/PUA 混淆、加密正文或必须复现站点前端算法时，只记录请求、渲染和内容边界：正文使用 `render: csr_encrypted`，对应阻塞写 `blocker: encrypt`。不要下载或解析字体、逆向签名算法、实现解码器，下一步同样是填写 facts 并运行 `record-assessment`。
 
 ## site-facts.json
 

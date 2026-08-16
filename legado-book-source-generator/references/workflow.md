@@ -1,12 +1,12 @@
 # 完整工作流
 
-`outputs/<site-slug>/book-source.json` 是唯一默认用户交付物。过程文档写入 `runs/<site-slug>/`。最终交付由 `bsg.mjs deliver` 审计。
+默认 `legacy-json` 目标交付 `outputs/<site-slug>/book-source.json`；显式 `community-js` 目标交付 `outputs/<site-slug>/book-source.js`。过程文档写入 `runs/<site-slug>/`，最终交付统一由 `bsg.mjs deliver` 审计。
 
 ## 工具箱模式
 
 1. 确认 Browser MCP 可用；未配置时先由执行者安装或配置。
 2. 运行 `init` 创建 run 目录。
-3. 用 Browser MCP 打开目标站点并完成四链路取证。
+3. 用 Browser MCP 打开目标站点并完成四链路取证。必需入口遇到验证码，或正文依赖动态签名、字体混淆/加密时，按 `site-inspection.md` 的探查上限立即收敛，不进入逆向实现。
 4. 运行 `toolbox` 或 `status --run <run-dir>` 查看当前状态和可用工具。
 5. 按当前问题选择工具；`run --run <run-dir>` 只是可选助手，不是唯一主流程。
 6. 交付前必须运行 `deliver --run <run-dir>`。
@@ -19,6 +19,7 @@
 | 生成规则 | `references/legado-json-structure.md`, `references/official-rule-pack.json`, `references/legado-source-behavior.md` | `source inspect`, `run`（生成 `rule-check.json`） |
 | 验证失败回修 | `references/failure-diagnosis.md`, `references/validation-policy.md`, `references/validator-integration.md` | `record-validation`, `status`, `source inspect` |
 | Android / WebView / 登录态 | `references/android-probe-guide.md`, `references/policies.md`, `references/validator-integration.md`, `references/webview-behavior-matrix.md` | `android --run <run-dir>` |
+| 社区维护版 JavaScript 单文件书源 | `references/community-app-mcp.md`、目标 App MCP 的 `legado://help/jsHelp` | `app-mcp status`, `app-mcp help-js`, `app-mcp validate-js` |
 
 Android、模拟器、登录态、WebView/WebJs、入口反爬复核不要靠命令名自己拼；先读 `references/android-probe-guide.md` 和 `references/policies.md`，再运行 `android --run <run-dir>`。
 
@@ -29,7 +30,8 @@ Android、模拟器、登录态、WebView/WebJs、入口反爬复核不要靠命
 - 通过浏览器可见入口观察 search/detail/toc/content 四条链路，记录站点结构、接口路径、反爬、渲染和 WebView 风险。
 - 检查登录入口、会员限制和登录后能力变化。
 - 如果站点需要登录态且 Android 真机或模拟器在线，先读 `references/android-probe-guide.md`，再使用 Probe 原生登录；Android 不可用时使用 Browser MCP Cookie 路径。
-- 如果搜索/详情/目录入口链路出现验证码、Cloudflare、极验或人机验证，必须写入 `site-facts.json` blocker。脚本会要求用户确认 Android/App 复核或接受入口不完整；不要自行用排行榜/书库替代搜索继续。
+- 如果搜索/详情/目录入口链路出现验证码、Cloudflare、极验或人机验证，立即用 `observe` 写入 blocker。命令会关闭未观察链路并返回 `record-assessment`；不要继续使用公开直达样本、排行榜或书库。
+- 如果正文依赖动态请求签名、字体映射/PUA 混淆或加密算法，写入 `render: csr_encrypted` 与 `blocker: encrypt`，随后运行 `record-assessment`。不要逆向签名、解析字体或实现站点解码器。
 
 ## 2. 可生成性评估
 
@@ -87,7 +89,9 @@ Android、模拟器、登录态、WebView/WebJs、入口反爬复核不要靠命
 
 ## 5. Validator 验证
 
-生成 `book-source.json` 后，必须用 `bsg.mjs validate --run runs/<slug>` 跑真实链路验证，自动写入 `validator-report.json`。重试次数和状态判定由 `bsg.mjs record-validation` 强制管理；`record-validation` 不接受手写 report 或外部 report 路径，也不是摘要工具。它是从真实 report 到最终状态、能力矩阵、修复上下文的唯一收敛门。
+生成默认 `book-source.json` 后，必须用 `bsg.mjs validate --run runs/<slug>` 跑真实链路验证，自动写入 `validator-report.json`。重试次数和状态判定由 `bsg.mjs record-validation` 强制管理；`record-validation` 不接受手写 report 或外部 report 路径，也不是摘要工具。它是从真实 report 到最终状态、能力矩阵、修复上下文的唯一收敛门。
+
+JavaScript 单文件书源只面向明确选择社区维护版 App 的任务。先用 `app-mcp status` 确认 App 版本和能力，再运行 `app-mcp help-js` 动态读取 `legado://help/jsHelp`，最后用 `app-mcp validate-js` 执行保存、读回、四链路调试和 App 校验。可信维护进程通过本机 relay 注入令牌，执行模型只连接无凭据 loopback URL。缺少 App MCP 时停止配置，不把 Browser MCP、Android Probe 或本地 validator 当成该格式的替代验证后端。
 
 PC HTTP / Browser 验证是开发辅助，不是最终交付事实。`record-validation` 看到非 Android `passed` 时，会先要求确认 Android 真机或模拟器：有设备就运行 `android --run <run-dir>`，没有设备必须让用户明确确认后才降级记录，不能宣称 full pass。
 

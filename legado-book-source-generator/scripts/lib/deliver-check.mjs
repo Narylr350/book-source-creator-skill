@@ -2,10 +2,11 @@ import fs from "node:fs";
 import path from "node:path";
 import {
   SKILL_ROOT, fail, fileExists, readJsonFile, saveRunState,
-  getPendingUserAction, printHint,
+  getPendingUserAction, printHint, fileSha256,
 } from "./state.mjs";
 import { resetPhasesFrom } from "./phase-order.mjs";
 import { readValidatorRuntime } from "./validator-runtime.mjs";
+import { sourceArtifactPath, sourceReportPath, sourceTarget } from "./source-artifact.mjs";
 import {
   loadBookSource, validateBookSourceStructure, ensureAssessmentFactsFresh,
   ensureRuleCheckSourceFresh,
@@ -21,11 +22,76 @@ function deliverFail(message) {
 
 // ── deliver check ──────────────────────────────────────────────────────────
 
+function deliverCommunityJs(state, runDir) {
+  const artifactPath = sourceArtifactPath(state);
+  const reportPath = sourceReportPath(runDir, state);
+  const required = ["assessment.md", "analysis.md", "validation-checklist.md", "site-facts.json", "capability-matrix.json", "rule-check.json", "lesson-check.json", "app-mcp-report.json", "validator-summary.md"];
+  const missing = required.filter((name) => !fileExists(path.join(runDir, name)));
+  if (!fileExists(artifactPath)) missing.push(path.basename(artifactPath));
+  if (missing.length > 0) return deliverFail(`community_js 交付文件不完整。缺少: ${missing.join(", ")}`);
+
+  const currentHash = fileSha256(artifactPath);
+  const report = readJsonFile(reportPath, null);
+  if (!report || report._generatedBy !== "bsg app-mcp validate-js" || report._schemaVersion !== "1.0") {
+    return deliverFail("app-mcp-report.json 来源无效，必须由 app-mcp validate-js 生成。" );
+  }
+  if (!report._runDir || path.resolve(report._runDir) !== path.resolve(runDir)) {
+    return deliverFail("app-mcp-report.json 不属于当前 run，必须在当前 run 重新验证。" );
+  }
+  if (report.backend !== "legado_app_mcp" || report.sourceFormat !== "community_js" || report.targetRuntime !== "community_app") {
+    return deliverFail("app-mcp-report.json 的后端或目标运行时不匹配 community_js。" );
+  }
+  if (report.sourceHash !== currentHash || report.status !== "passed") {
+    return deliverFail("app-mcp-report.json 未通过或不对应当前 book-source.js。重新运行 App MCP 验证。" );
+  }
+  const allLinks = ["search", "detail", "toc", "content"].every((phase) => report.links?.[phase] === true);
+  if (!allLinks || report.readBack?.matchesSourceExceptManagedTimestamp !== true || report.appCheck?.passed !== true) {
+    return deliverFail("App MCP 报告缺少读回、四链路或 App check 通过证据。" );
+  }
+  if (report.sourceRetainedInApp !== true && report.cleanup?.confirmed !== true) {
+    return deliverFail("App MCP 报告未确认测试源已清理，也未声明保留到 App。" );
+  }
+  const ruleCheck = readJsonFile(path.join(runDir, "rule-check.json"), null);
+  if (!ruleCheck || ruleCheck.status !== "passed" || ruleCheck.sourceHash !== currentHash || ruleCheck.sourceFormat !== "community_js") {
+    return deliverFail("rule-check.json 未通过或不对应当前 book-source.js。" );
+  }
+  const matrix = readJsonFile(path.join(runDir, "capability-matrix.json"), null);
+  if (!matrix?.overall?.fullPass || matrix.backend !== "legado_app_mcp" || matrix.sourceFormat !== "community_js") {
+    return deliverFail("capability-matrix.json 不是 App MCP 生成的 community_js full pass。" );
+  }
+  const summary = fs.readFileSync(path.join(runDir, "validator-summary.md"), "utf8");
+  if (!summary.includes("此文件由 record-validation 生成")) {
+    return deliverFail("validator-summary.md 不是 record-validation 生成的摘要。" );
+  }
+  if (state.phases.validate?.status !== "completed" || state.phases.validate?.lastStatus !== "passed") {
+    return deliverFail("community_js 验证尚未通过 record-validation 收敛。" );
+  }
+  if (state.phases.generate?.status !== "completed" || state.repairContext || state.phases.generate?.repairContext) {
+    return deliverFail("community_js 仍有生成修复状态，不能交付。" );
+  }
+
+  state.phases.deliver.status = "completed";
+  state.phases.deliver.completedAt = new Date().toISOString();
+  saveRunState(runDir, state);
+  return {
+    ok: true,
+    finalStatus: "passed",
+    sourceFormat: "community_js",
+    targetRuntime: "community_app",
+    validationBackend: "legado_app_mcp",
+    nextAction: null,
+    message: "已生成 book-source.js，并由社区维护版阅读 App MCP 完成保存、读回、四链路调试和 App 校验。",
+    deliverable: artifactPath,
+    capability: matrix.overall,
+  };
+}
+
 export function cmdDeliverCheck(state, runDir) {
   const pending = getPendingUserAction(state);
   if (pending) {
     return deliverFail(`仍有待用户确认动作: ${pending.type}。请先运行 resolve-user-action。`);
   }
+  if (sourceTarget(state) === "community-js") return deliverCommunityJs(state, runDir);
 
   const requiredFiles = [
     "assessment.md",

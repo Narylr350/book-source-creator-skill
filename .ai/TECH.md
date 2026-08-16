@@ -7,6 +7,7 @@
 | Skill CLI | `legado-book-source-generator/scripts/` | Node.js 18+ ESM | `npm test` |
 | Validator | `validator/src/` | Kotlin/Gradle | `./gradlew.bat jar` |
 | Android Probe | `android-probe/` | Kotlin/Android Gradle | `./gradlew.bat assembleDebug` |
+| Community App MCP | 社区维护版阅读 App | MCP 2025-03-26 / JavaScript | App 内运行时验证 |
 | 阅读源码参考 | `external/legado-2024/` | Kotlin/Android Gradle | `./gradlew.bat assembleDebug` |
 
 ## 关键环境
@@ -15,6 +16,7 @@
 - Java 17+
 - adb（用于 Probe 连接）
 - curl（Windows 10+ 自带，validator HTTP 请求用）
+- 社区维护版阅读 App MCP（仅显式 community JS 目标）
 
 ## 目录约定
 

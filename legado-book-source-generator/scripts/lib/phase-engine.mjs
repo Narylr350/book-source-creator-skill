@@ -12,6 +12,7 @@ import {
 } from "./environment.mjs";
 import { cmdDeliverCheck } from "./deliver-check.mjs";
 import { PHASE_ORDER, currentPhaseIndex, resetPhasesFrom } from "./phase-order.mjs";
+import { sourceTarget, sourceArtifactPath, writeCommunityRuleCheck } from "./source-artifact.mjs";
 
 export {
   checkEnvironment, parseAdbDevicesOutput, diagnoseAndroid, checkAdb,
@@ -39,21 +40,28 @@ export const PHASE_READ_NEXT = {
   deliver: ["references/outputs.md"],
 };
 
-export function phaseNextCommand(runDir, phase) {
+export function phaseNextCommand(runDir, phase, state = null) {
+  const communityJs = state && sourceTarget(state) === "community-js";
+  const sourcePath = state ? sourceArtifactPath(state) : "<book-source.js>";
   const commands = {
-    assess: `node "<skill-dir>/scripts/bsg.mjs" record-assessment --run ${runDir}`,
+    assess: `node "<skill-dir>/scripts/bsg.mjs" observe --run ${runDir} --phase <search|detail|toc|content> --status <success|partial|blocked|failed> [--blocker <type>] [--render <type>] --note "<Browser MCP 证据>"`,
     analyze: `node "<skill-dir>/scripts/bsg.mjs" run --run ${runDir}`,
     generate: `node "<skill-dir>/scripts/bsg.mjs" run --run ${runDir}`,
-    validate: `node "<skill-dir>/scripts/bsg.mjs" validate --run ${runDir}`,
+    validate: communityJs
+      ? `node "<skill-dir>/scripts/bsg.mjs" app-mcp validate-js --source "${sourcePath}" --keyword <关键词> --report "${path.join(runDir, "app-mcp-report.json")}"`
+      : `node "<skill-dir>/scripts/bsg.mjs" validate --run ${runDir}`,
     deliver: `node "<skill-dir>/scripts/bsg.mjs" deliver --run ${runDir}`,
   };
   return commands[phase] || "";
 }
 
-function phaseHints(runDir, phase) {
+function phaseHints(runDir, phase, state = null) {
+  const readNext = state && sourceTarget(state) === "community-js" && ["generate", "validate"].includes(phase)
+    ? ["references/community-app-mcp.md"]
+    : PHASE_READ_NEXT[phase] || [];
   return {
-    readNext: PHASE_READ_NEXT[phase] || [],
-    nextCommand: phaseNextCommand(runDir, phase),
+    readNext,
+    nextCommand: phaseNextCommand(runDir, phase, state),
   };
 }
 
@@ -64,7 +72,7 @@ export function startPhase(phase, state, runDir) {
   const actions = {
     assess:  {
       nextAction: "open_site_with_browser_mcp",
-      message: "先按 site-inspection.md 用 Browser MCP 打开目标站点并完成四链路取证，再填写 site-facts.json 与 assessment.md。",
+      message: "先按 site-inspection.md 用 Browser MCP 打开目标站点；每确认一条链路就调用 observe 写入事实，全部记录后再补 assessment.md。",
       requiredCapability: { name: "browser_mcp", required: true, missingAction: "install_or_configure_browser_mcp" },
     },
     analyze: { nextAction: "write_analysis",   message: "按 search→detail→toc→content 顺序分析，写 analysis.md。完成后运行 run。" },
@@ -74,7 +82,16 @@ export function startPhase(phase, state, runDir) {
   };
 
   const a = actions[phase] || { nextAction: phase, message: `阶段: ${phase}` };
-  return { ok: true, ...a, requiredUserAction: null, ...phaseHints(runDir, phase) };
+  if (sourceTarget(state) === "community-js") {
+    if (phase === "generate") {
+      a.nextAction = "generate_community_js";
+      a.message = "生成 book-source.js 到 outputs/<slug>/。完成后运行 run 做 JavaScript 合同检查。";
+    } else if (phase === "validate") {
+      a.nextAction = "run_app_mcp_validation";
+      a.message = "使用 app-mcp validate-js 在社区维护版阅读 App 中验证并写入 app-mcp-report.json。";
+    }
+  }
+  return { ok: true, ...a, requiredUserAction: null, ...phaseHints(runDir, phase, state) };
 }
 
 export function completePhase(phase, state, runDir) {
@@ -311,6 +328,17 @@ export function completePhase(phase, state, runDir) {
   }
 
   if (phase === "generate") {
+    if (sourceTarget(state) === "community-js") {
+      const checked = writeCommunityRuleCheck(runDir, state);
+      if (!checked.ok) return fail(`JavaScript 单文件书源检查失败: ${checked.error}`);
+      state.phases.generate.status = "completed";
+      state.phases.generate.completedAt = new Date().toISOString();
+      delete state.phases.generate.repairContext;
+      delete state.repairContext;
+      saveRunState(runDir, state);
+      return moveToNext(phase, state, runDir);
+    }
+
     const bookSourcePath = path.join(state.workingDir, "outputs", state.siteSlug, "book-source.json");
     if (!fileExists(bookSourcePath)) {
       return fail(`book-source.json 不存在: ${bookSourcePath}。请先生成书源。`);
@@ -449,7 +477,7 @@ export function moveToNext(fromPhase, state, runDir) {
       ok: true,
       message: "所有阶段已完成。运行 deliver。",
       nextAction: "deliver",
-      ...phaseHints(runDir, "deliver"),
+      ...phaseHints(runDir, "deliver", state),
     };
   }
   const next = PHASE_ORDER[nextIdx];
@@ -535,6 +563,17 @@ export function moveToNext(fromPhase, state, runDir) {
     deliver: { nextAction: "deliver", message: "最终交付检查。运行 deliver 命令。" },
   };
 
+  if (sourceTarget(state) === "community-js") {
+    actions.generate = {
+      nextAction: "generate_community_js",
+      message: "生成 book-source.js 到 outputs/<slug>/。完成后运行 run 做 JavaScript 合同检查。",
+    };
+    actions.validate = {
+      nextAction: "run_app_mcp_validation",
+      message: "使用 app-mcp validate-js 在社区维护版阅读 App 中验证并写入 app-mcp-report.json。",
+    };
+  }
+
   const a = actions[next] || { nextAction: next, message: `进入阶段: ${next}` };
 
   return {
@@ -544,6 +583,6 @@ export function moveToNext(fromPhase, state, runDir) {
     message: a.message,
     ...(authReminder ? { authReminder } : {}),
     requiredUserAction: null,
-    ...phaseHints(runDir, next),
+    ...phaseHints(runDir, next, state),
   };
 }

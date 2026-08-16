@@ -10,3 +10,5 @@ export { cmdAndroid } from "./android-command.mjs";
 export { cmdLogin } from "./login.mjs";
 export { cmdValidate } from "./validate-runner.mjs";
 export { cmdSource } from "./source-commands.mjs";
+export { cmdAppMcp } from "./app-mcp-command.mjs";
+export { cmdObserve } from "./observation-command.mjs";

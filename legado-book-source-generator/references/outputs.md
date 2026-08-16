@@ -4,29 +4,35 @@
 
 ```
 outputs/<site-slug>/
-  book-source.json          # 唯一默认用户交付物
+  book-source.json          # 默认 legacy-json 交付物
+  book-source.js            # 显式 community-js 交付物（二者只存在其一）
 
 runs/<site-slug>/
   assessment.md             # 可生成性评估（AUTO 结论 + AI 证据说明）
   site-facts.json           # Browser MCP 站点观察与 assessment 机器事实
   analysis.md               # 网站分析（过程记录）
   validation-checklist.md   # 验收清单（过程记录）
-  validator-report.json     # validator 验证报告
+  validator-report.json     # legacy-json validator 验证报告
+  app-mcp-report.json       # community-js App MCP 验证报告（二者只存在其一）
   capability-matrix.json    # record-validation 归一化链路能力矩阵
   rule-check.json           # official-rule-pack 静态规则审计结果
   lesson-check.json         # examples lesson 检查问题与回答
   validator-summary.md      # validator 验证摘要
 ```
 
-- `outputs/` 只放可交付内容，即 `book-source.json`。
+- `outputs/` 只放当前目标的可交付书源；默认是 `book-source.json`，显式 community JS 目标是 `book-source.js`。
 - `runs/` 放 AI 生成过程、自检、机器事实、分析记录，用于 AI 接力、故障回溯。
 - 输出目录和文件完整性由 `bsg.mjs init` 创建、`bsg.mjs check` 验证。
 
-## book-source.json 要求
+## 目标格式要求
+
+默认 `legacy-json` 的 `book-source.json`：
 
 - 顶层使用 JSON 数组
 - 单个书源也要用数组包裹：`[ { ... } ]`
 - 可选字段要么填有效值，要么删除，不得保留 `""`
+
+显式 `community-js` 的 `book-source.js` 必须满足 `references/community-app-mcp.md` 和目标 App 当前 `legado://help/jsHelp` 契约。
 
 ## 当前工具箱入口
 
@@ -46,7 +52,8 @@ node "<skill-dir>/scripts/bsg.mjs" validate --run .\runs\example-com --mode http
 # 将 validator-report.json 收敛为最终状态、能力矩阵和修复上下文
 node "<skill-dir>/scripts/bsg.mjs" record-validation --run .\runs\example-com --status <validator-report.status>
 
-# 最终交付审计
+# community-js 目标需在 init 加 --target community-js，随后按 status/run 返回的 app-mcp 命令验证
+# 两种目标都使用同一最终交付审计
 node "<skill-dir>/scripts/bsg.mjs" deliver --run .\runs\example-com
 ```
 

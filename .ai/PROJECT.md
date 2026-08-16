@@ -4,7 +4,7 @@
 
 本项目当前目标是在已有 Legado/阅读书源生成 skill 仓库中接入 Lightweight AI Project Workflow，建立可长期使用的维护基线。后续维护应能基于本文件、Git 历史和真实验证结果推进，而不是依赖对话记忆。
 
-本仓库本身维护一个面向 AI 的 Legado/阅读书源生成 skill，用于辅助分析用户有权访问的网站结构、生成 `book-source.json`，并通过 validator、Android Probe 和 `deliver` 门禁验证规则可用性。
+本仓库维护一个面向 AI 的 Legado/阅读书源生成 skill，用于分析用户有权访问的网站结构。默认生成兼容原版最后版本的 `book-source.json`；用户明确选择社区维护版时可生成 `book-source.js`。两种目标都必须经过各自验证后端和 `deliver` 门禁。
 
 ## Users and Scenarios
 
@@ -29,7 +29,7 @@
 主要输出：
 
 - 本轮 workflow 接入输出：`.ai/PROJECT.md`。
-- 书源生成任务默认输出：`outputs/<site-slug>/book-source.json`。
+- 书源生成任务默认输出：`outputs/<site-slug>/book-source.json`；显式 community JS 目标输出 `outputs/<site-slug>/book-source.js`。
 - 书源生成过程记录：`runs/<site-slug>/` 下的评估、分析、验证报告、能力矩阵和交付审计结果。
 
 ## Non-goals
@@ -42,7 +42,7 @@
 
 ## Tech Direction
 
-详见 `.ai/TECH.md`。三层架构（Node.js CLI + Kotlin/JVM validator + Android Probe）。
+详见 `.ai/TECH.md`。执行层包括 Node.js CLI、传统 JSON 的 Kotlin/JVM validator 与 Android Probe，以及 community JS 的社区版 App MCP 后端。
 
 ## Constraints and Working Rules
 

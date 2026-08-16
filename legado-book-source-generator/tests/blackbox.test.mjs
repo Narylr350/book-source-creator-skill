@@ -57,17 +57,25 @@ describe("文档契约: 必须明确新结构", async () => {
   for (const file of keyFiles) {
     const content = await fs.readFile(file.path, "utf8");
 
-    it(`${file.name}: 必须明确 book-source.json 是唯一默认交付物`, () => {
+    it(`${file.name}: 必须明确 book-source.json 是默认交付物`, () => {
       assert.ok(
         content.includes("book-source.json") && (
-          content.includes("唯一") ||
-          content.includes("sole") ||
-          content.includes("only") ||
-          content.includes("默认交付物") ||
+          content.includes("默认") ||
           content.includes("default") ||
           content.includes("user deliverable")
         ),
-        `${file.name} 应明确 book-source.json 是唯一默认交付物`,
+        `${file.name} 应明确 book-source.json 是默认交付物`,
+      );
+    });
+
+    it(`${file.name}: community-js 必须是显式可选目标`, () => {
+      assert.ok(
+        content.includes("book-source.js") && (
+          content.includes("显式") ||
+          content.includes("community-js") ||
+          content.includes("社区维护版")
+        ),
+        `${file.name} 应明确 book-source.js 只属于显式 community-js 目标`,
       );
     });
 

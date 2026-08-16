@@ -4,12 +4,14 @@ import crypto from "node:crypto";
 import {
   fail, parseArg, fileExists, saveRunState, loadAndVerify,
   blockForPendingUserAction, printHint, setPendingUserAction, fileSha256,
+  readJsonFile, writeJsonFile,
 } from "./state.mjs";
 import {
   resetPhasesFrom, checkAdb,
   cmdDeliverCheck,
 } from "./phase-engine.mjs";
 import { diagnoseAndroid } from "./environment.mjs";
+import { sourceArtifactPath, sourceReportPath, sourceTarget } from "./source-artifact.mjs";
 import {
   loadBookSource, validateBookSourceStructure, validateCookieFileShape,
   ensureAssessmentFactsFresh, ensureRuleCheckSourceFresh,
@@ -44,6 +46,119 @@ function validateReportProvenance(reportPath, runDir, bookSourcePath) {
     return { ok: false, error: "validator-report.json 的 _sourceHash 与当前 book-source.json 不匹配。请重新运行 validate-with-validator.mjs，不能复用旧报告。" };
   }
   return { ok: true, report };
+}
+
+function recordCommunityJsValidation(state, runDir, requestedStatus) {
+  const artifactPath = sourceArtifactPath(state);
+  const reportPath = sourceReportPath(runDir, state);
+  if (!fileExists(artifactPath)) return fail(`book-source.js 不存在: ${artifactPath}`);
+  if (!fileExists(reportPath)) return fail("app-mcp-report.json 不存在。必须运行 app-mcp validate-js 并把报告写入当前 run 目录。");
+  let report;
+  try {
+    report = JSON.parse(fs.readFileSync(reportPath, "utf8"));
+  } catch (error) {
+    return fail(`app-mcp-report.json 不是合法 JSON: ${error.message}`);
+  }
+  if (report._generatedBy !== "bsg app-mcp validate-js" || report._schemaVersion !== "1.0") {
+    return fail("app-mcp-report.json 来源无效，必须由当前 bsg app-mcp validate-js 生成。" );
+  }
+  if (!report._runDir || path.resolve(report._runDir) !== path.resolve(runDir)) {
+    return fail("app-mcp-report.json 的 _runDir 与当前 run 目录不匹配，必须在当前 run 重新验证。" );
+  }
+  if (report.backend !== "legado_app_mcp" || report.sourceFormat !== "community_js" || report.targetRuntime !== "community_app") {
+    return fail("app-mcp-report.json 后端或目标格式不匹配 community_js。" );
+  }
+  const currentHash = fileSha256(artifactPath);
+  if (!report.sourceHash || report.sourceHash !== currentHash) {
+    return fail("app-mcp-report.json 的 sourceHash 与当前 book-source.js 不匹配，不能复用旧报告。" );
+  }
+  if (report.status !== requestedStatus) {
+    return fail(`--status ${requestedStatus} 与 app-mcp-report.json status ${report.status} 不一致。`);
+  }
+  if (!["passed", "failed"].includes(requestedStatus)) {
+    return fail("community_js 只接受 passed 或 failed，不使用 needs_app_review/validator_limitation 兜底。" );
+  }
+  const allLinks = ["search", "detail", "toc", "content"].every((phase) => report.links?.[phase] === true);
+  const readBackPassed = report.readBack?.present === true && report.readBack?.matchesSourceExceptManagedTimestamp === true;
+  const appPassed = report.appCheck?.passed === true;
+  const cleanupPassed = report.sourceRetainedInApp === true || report.cleanup?.confirmed === true;
+  const evidencePassed = allLinks && readBackPassed && appPassed && cleanupPassed;
+  if (requestedStatus === "passed" && !evidencePassed) {
+    return fail("App MCP 报告没有同时满足读回、四链路、App check 和清理/保留证据，不能记录 passed。" );
+  }
+
+  const ruleCheck = readJsonFile(path.join(runDir, "rule-check.json"), null);
+  if (!ruleCheck || ruleCheck.status !== "passed" || ruleCheck.sourceHash !== currentHash) {
+    return fail("rule-check.json 未通过或不对应当前 book-source.js。先运行 bsg run 完成 JavaScript 合同检查。" );
+  }
+
+  const finalStatus = evidencePassed && requestedStatus === "passed" ? "passed" : "failed";
+  const matrix = {
+    version: "1.0",
+    status: finalStatus,
+    backend: "legado_app_mcp",
+    sourceFormat: "community_js",
+    links: Object.fromEntries(["search", "detail", "toc", "content"].map((phase) => [phase, {
+      status: report.links?.[phase] ? "success" : "blocked",
+      blocker: report.links?.[phase] ? null : "app_mcp_debug_incomplete",
+      render: "legado_app",
+      mode: "community_js",
+      evidenceIds: [`app-mcp:${phase}`],
+    }])),
+    overall: {
+      status: finalStatus === "passed" ? "full_pass" : "blocked:app_mcp_validation_failed",
+      fullPass: finalStatus === "passed",
+      blockers: finalStatus === "passed" ? [] : ["app_mcp_validation_failed"],
+    },
+  };
+  writeJsonFile(path.join(runDir, "capability-matrix.json"), matrix);
+  fs.writeFileSync(path.join(runDir, "validator-summary.md"), [
+    "# 社区版 App MCP 验证摘要",
+    "",
+    `- 状态: ${finalStatus}`,
+    `- App: ${report.serverInfo?.name || "legado"} ${report.serverInfo?.version || "unknown"}`,
+    `- 源格式: community_js`,
+    `- 书源: ${report.bookSourceUrl || "unknown"}`,
+    `- 四链路: ${allLinks ? "通过" : "未完整通过"}`,
+    `- 读回一致性: ${readBackPassed ? "通过" : "失败"}`,
+    `- App check: ${appPassed ? "通过" : "失败"}`,
+    "",
+    "此文件由 record-validation 生成，不手写。",
+  ].join("\n") + "\n", "utf8");
+
+  const v = state.phases.validate || (state.phases.validate = { attempts: 0 });
+  v.attempts = Number(v.attempts || 0) + 1;
+  v.lastStatus = finalStatus;
+  v.status = finalStatus === "passed" ? "completed" : "in_progress";
+  v.recordedAt = new Date().toISOString();
+  if (finalStatus === "passed") {
+    state.phases.generate.status = "completed";
+    delete state.phases.generate.repairContext;
+    delete state.repairContext;
+  } else {
+    state.phases.generate.status = "in_progress";
+    state.repairContext = {
+      reason: "app_mcp_validation_failed",
+      sourceHash: currentHash,
+      message: report.error || report.appCheck?.summary || "社区版 App MCP 验证失败。",
+      recordedAt: new Date().toISOString(),
+    };
+  }
+  saveRunState(runDir, state);
+  return {
+    ok: true,
+    status: finalStatus,
+    backend: "legado_app_mcp",
+    sourceFormat: "community_js",
+    shouldRetry: finalStatus !== "passed",
+    nextAction: finalStatus === "passed" ? "deliver" : "repair_in_generate",
+    nextCommand: finalStatus === "passed"
+      ? `node "<skill-dir>/scripts/bsg.mjs" deliver --run ${runDir}`
+      : `node "<skill-dir>/scripts/bsg.mjs" run --run ${runDir}`,
+    message: finalStatus === "passed"
+      ? "社区版 App MCP 验证已收敛为 passed，可运行 deliver。"
+      : "社区版 App MCP 验证失败，已回到 generate；修复 book-source.js 后重新验证。",
+  };
 }
 
 function firstFailedStep(report) {
@@ -211,6 +326,10 @@ export function cmdRecordValidation(args) {
   const pendingBlock = blockForPendingUserAction(state);
   if (pendingBlock) {
     return fail(`仍有待用户确认动作: ${pendingBlock.requiredUserAction}。请先运行 resolve-user-action。`);
+  }
+
+  if (sourceTarget(state) === "community-js") {
+    return recordCommunityJsValidation(state, runDir, status);
   }
 
   const reportPathForMode = path.join(runDir, "validator-report.json");

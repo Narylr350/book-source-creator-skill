@@ -271,7 +271,7 @@ describe("bsg workflow user-action gates", () => {
     const result = await runBsg(["run", "--run", runDir]);
     assert.equal(result.currentPhase, "assess");
     assert.equal(result.nextAction, "open_site_with_browser_mcp");
-    assert.match(result.nextCommand, /bsg\.mjs" run/);
+    assert.match(result.nextCommand, /bsg\.mjs" observe --run/);
   });
 
   it("record-assessment generates AUTO summary from site facts", async () => {
@@ -2686,7 +2686,10 @@ describe("run response fields", () => {
     const tmpDir = await makeTmpDir();
     const init = await runBsg(["init", "https://example.com", "--cwd", tmpDir]);
     await runBsg(["set-login-features", "--run", init.runDir, "--flags", JSON.stringify({ hasLoginUrl: true, hasEnabledCookieJar: true })]);
-    const setupEnv = await fakeAndroidToolEnv(tmpDir);
+    await writeValidSource(tmpDir, { enabledCookieJar: true, loginUrl: "https://example.com/login" });
+    const setupEnv = await fakeAndroidToolEnv(tmpDir, {
+      BSG_TEST_PROBE_COOKIE_CHECK: JSON.stringify({ hasCookies: false, cookies: "", url: "https://example.com" }),
+    });
 
     const setup = await runBsg(["android", "--run", init.runDir, "--setup"], { env: setupEnv });
     const stateAfterSetup = JSON.parse(await fs.readFile(path.join(init.runDir, "run-state.json"), "utf8"));
@@ -2720,8 +2723,13 @@ describe("run response fields", () => {
     const tmpDir = await makeTmpDir();
     const init = await runBsg(["init", "https://example.com", "--cwd", tmpDir]);
     await runBsg(["set-login-features", "--run", init.runDir, "--flags", JSON.stringify({ hasLoginUrl: true, hasEnabledCookieJar: true })]);
+    await writeValidSource(tmpDir, { enabledCookieJar: true, loginUrl: "https://example.com/login" });
 
-    await runBsg(["android", "--run", init.runDir, "--setup"], { env: await fakeAndroidToolEnv(tmpDir) });
+    await runBsg(["android", "--run", init.runDir, "--setup"], {
+      env: await fakeAndroidToolEnv(tmpDir, {
+        BSG_TEST_PROBE_COOKIE_CHECK: JSON.stringify({ hasCookies: false, cookies: "", url: "https://example.com" }),
+      }),
+    });
     const stateAfterSetup = JSON.parse(await fs.readFile(path.join(init.runDir, "run-state.json"), "utf8"));
     assert.equal(stateAfterSetup.pendingUserAction?.details?.probeCookieBaseline?.hasCookies, false);
 
@@ -2845,6 +2853,7 @@ describe("run response fields", () => {
         BSG_TEST_ADB_DEVICES_OUTPUT: "List of devices attached\nemulator-5554\tdevice\n",
       },
     });
+    await writeValidSource(tmpDir, { enabledCookieJar: true, loginUrl: "https://example.com/login" });
     await runBsg(["android", "--run", runDir, "--login-completed"], {
       env: await fakeAndroidToolEnv(tmpDir, {
         BSG_TEST_PROBE_COOKIE_CHECK: JSON.stringify({
@@ -2857,7 +2866,14 @@ describe("run response fields", () => {
     });
 
     const setup = await runBsg(["android", "--run", runDir, "--setup"], {
-      env: await fakeAndroidToolEnv(tmpDir),
+      env: await fakeAndroidToolEnv(tmpDir, {
+        BSG_TEST_PROBE_COOKIE_CHECK: JSON.stringify({
+          hasCookies: true,
+          authenticated: true,
+          cookies: "auth_token=abc",
+          url: "https://example.com",
+        }),
+      }),
     });
     const stateAfterSetup = JSON.parse(await fs.readFile(path.join(runDir, "run-state.json"), "utf8"));
 

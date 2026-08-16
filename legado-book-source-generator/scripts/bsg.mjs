@@ -5,7 +5,7 @@
  * bsg.mjs ― Legado 书源生成工具箱 CLI
  *
  * 用法:
- *   node "<skill-dir>/scripts/bsg.mjs" init <url> [--cwd <dir>]
+ *   node "<skill-dir>/scripts/bsg.mjs" init <url> [--cwd <dir>] [--target legacy-json|community-js]
  *   node "<skill-dir>/scripts/bsg.mjs" toolbox
  *   node "<skill-dir>/scripts/bsg.mjs" run --run <dir>
  *   node "<skill-dir>/scripts/bsg.mjs" status --run <dir>
@@ -42,6 +42,8 @@ import {
   cmdValidate,
   cmdValidatorStart,
   cmdValidatorStop,
+  cmdAppMcp,
+  cmdObserve,
 } from "./lib/commands.mjs";
 import { fail } from "./lib/state.mjs";
 
@@ -49,11 +51,12 @@ function printUsage() {
   console.error(
     [
       "用法:",
-      "  node \"<skill-dir>/scripts/bsg.mjs\" init <site-url> [--cwd <dir>]",
+      "  node \"<skill-dir>/scripts/bsg.mjs\" init <site-url> [--cwd <dir>] [--target legacy-json|community-js]",
       "  node \"<skill-dir>/scripts/bsg.mjs\" toolbox",
       "  node \"<skill-dir>/scripts/bsg.mjs\" run --run {dir}",
       "  node \"<skill-dir>/scripts/bsg.mjs\" status --run {dir}",
       "  node \"<skill-dir>/scripts/bsg.mjs\" check --run {dir}",
+      "  node \"<skill-dir>/scripts/bsg.mjs\" observe --run {dir} --phase <phase> --status <status> [--blocker <type>] [--render <type>] --note <evidence>",
       "  node \"<skill-dir>/scripts/bsg.mjs\" record-assessment --run {dir}",
       "  node \"<skill-dir>/scripts/bsg.mjs\" set-login-features --run {dir} [--flags <json>]",
       "  node \"<skill-dir>/scripts/bsg.mjs\" resolve-user-action --run {dir} --action <action>",
@@ -67,6 +70,9 @@ function printUsage() {
       "  node \"<skill-dir>/scripts/bsg.mjs\" validate --run {dir} [--keyword <kw>] [--mode http|browser|android] [--book-url <url>]",
       "  node \"<skill-dir>/scripts/bsg.mjs\" validator-start [--background]",
       "  node \"<skill-dir>/scripts/bsg.mjs\" validator-stop",
+      "  node \"<skill-dir>/scripts/bsg.mjs\" app-mcp status [--url <mcp-url>]",
+      "  node \"<skill-dir>/scripts/bsg.mjs\" app-mcp help-js [--url <mcp-url>]",
+      "  node \"<skill-dir>/scripts/bsg.mjs\" app-mcp validate-js --source <book-source.js> --keyword <关键词> [--report <file>] [--keep-source]",
     ].join("\n")
   );
 }
@@ -99,6 +105,9 @@ async function main(argv) {
       break;
     case "check":
       result = cmdCheck(args);
+      break;
+    case "observe":
+      result = cmdObserve(args);
       break;
     case "record-assessment":
       result = cmdRecordAssessment(args);
@@ -139,9 +148,12 @@ async function main(argv) {
     case "validator-stop":
       result = await cmdValidatorStop();
       break;
+    case "app-mcp":
+      result = await cmdAppMcp(args);
+      break;
     default:
       result = fail(
-        `未知命令: ${command}。可用: init, toolbox, run, status, check, record-assessment, set-login-features, resolve-user-action, android, android-status, record-validation, deliver, debug-bundle, source, login, validate, validator-start, validator-stop`
+        `未知命令: ${command}。可用: init, toolbox, run, status, check, observe, record-assessment, set-login-features, resolve-user-action, android, android-status, record-validation, deliver, debug-bundle, source, login, validate, validator-start, validator-stop, app-mcp`
       );
   }
 

@@ -3,7 +3,7 @@
 ## 代码改动规则
 
 - 每次改动只动必要范围，匹配既有风格；不顺手重构无关代码。
-- 修改 `book-source.json` 后必须重新通过 rule-check 和 validator，不能复用旧报告。
+- 修改当前书源产物后必须重新通过对应 rule-check 和验证后端，不能复用旧报告：`book-source.json` 使用 validator，`book-source.js` 使用社区版 App MCP。
 - `run-state.json` 由命令写入，禁止手动编辑（有 SHA256 签名）。
 
 ## 开发规则

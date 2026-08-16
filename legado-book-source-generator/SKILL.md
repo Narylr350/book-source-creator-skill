@@ -8,7 +8,7 @@ description: Use when 用户要求为任意网站生成书源、生成阅读书�
 这是工具箱模式。先初始化，再按当前问题选择工具；不要把流程当成必须机械执行的长状态机。
 
 ```powershell
-node "<skill-dir>/scripts/bsg.mjs" init <url> [--cwd <输出目录>]
+node "<skill-dir>/scripts/bsg.mjs" init <url> [--cwd <输出目录>] [--target legacy-json|community-js]
 node "<skill-dir>/scripts/bsg.mjs" toolbox
 node "<skill-dir>/scripts/bsg.mjs" status --run <run-dir>
 ```
@@ -20,19 +20,24 @@ node "<skill-dir>/scripts/bsg.mjs" status --run <run-dir>
 - 生成规则：读 `references/legado-json-structure.md`、`references/official-rule-pack.json`、`references/legado-source-behavior.md`。
 - 验证失败回修：读 `references/failure-diagnosis.md`、`references/validation-policy.md`、`references/validator-integration.md`。
 - Android、模拟器、登录态、WebView/WebJs、入口反爬复核：必须先读 `references/android-probe-guide.md` 和 `references/policies.md`；需要判断 Probe 与阅读 App 差异时再读 `references/webview-behavior-matrix.md`。
+- 社区维护版 JavaScript 单文件书源：读 `references/community-app-mcp.md`，并从目标 App MCP 读取当前版本的 `legado://help/jsHelp`。
 
 ## 常用工具
 
 - `status --run <run-dir>`：看当前阶段、`pendingUserAction`、`repairContext` 和下一步建议。
 - `check --run <run-dir>`：检查评估、登录、Android 决策是否缺证据。
-- `source inspect --run <run-dir>`：审计当前 `book-source.json` 的风险字段。
+- `observe --run <run-dir> --phase <phase> --status <status> [--blocker <type>] [--render <type>] --note <evidence>`：Browser MCP 每确认一条链路就立即写入事实；入口验证码或正文签名/字体加密会关闭探查并返回 `record-assessment`。
+- `source inspect --run <run-dir>`：审计传统 JSON 目标的 `book-source.json` 风险字段。
 - `android --run <run-dir>`：Android 单入口；检查真机/模拟器和 Probe，必要时启动 Probe，运行 `mode=android` 验证并收敛报告。
 - `android --run <run-dir> --dump-cookie <file>`：显式导出 Probe 原始 Cookie 到本地文件，供人工核对或 validator 调试；默认输出不显示 Cookie 值。
 - `android-status`：只读诊断；检查 adb、真机/模拟器和 Android Probe。
 - `validate --run <run-dir> [--mode http|browser|android] [--keyword <中文关键词>] [--book-url <url>]`：运行 validator，写入 `validator-report.json`。`--book-url` 跳过搜索直接从详情页开始验证（对齐阅读 debug 模式的 URL 直接入口），用于搜索被反爬阻塞但需验证后续链路的场景。
 - `record-validation --run <run-dir> --status <status>`：把真实验证报告收敛成状态、能力矩阵和修复上下文。
 - `debug-bundle [--run <run-dir>]`：打包状态、报告、书源和会话导出，方便复盘。
-- `run --run <run-dir>`：可选的温和助手；它会启动下一阶段，或在已有 `validator-report.json` 时自动记录验证结果。
+- `run --run <run-dir>`：可选的阶段助手；它会启动下一阶段，或自动记录当前目标的验证报告。
+- `app-mcp status [--url <mcp-url>]`：连接社区维护版阅读 App 的原生 MCP，检查协议、版本、工具和帮助资源。
+- `app-mcp help-js [--url <mcp-url>]`：读取目标 App 当前版本的 `legado://help/jsHelp`；动态读取，不保存副本到 run。
+- `app-mcp validate-js --source <book-source.js> --keyword <关键词> [--report <file>] [--keep-source]`：通过目标 App 原生 MCP 保存、读回、调试并校验 JavaScript 单文件书源；默认验证后删除 App 内临时书源。
 
 ## Windows / PowerShell 命令风险
 
@@ -77,7 +82,7 @@ PC HTTP / Browser 只用于观察站点和辅助写规则。交付前如果 vali
 node "<skill-dir>/scripts/bsg.mjs" deliver --run <run-dir>
 ```
 
-前提是 `validator-report.json` 已通过 `record-validation` 或 `run` 收敛，并且 `rule-check.json`、`capability-matrix.json` 等产物仍对应当前 `book-source.json`。缺什么让 `deliver` 返回 `nextCommand` / `correctiveAction`，不要自己补结论。
+传统 JSON 目标要求 `validator-report.json` 已收敛且过程产物对应当前 `book-source.json`；community JS 目标要求当前 run 的 `app-mcp-report.json` 已收敛且过程产物对应当前 `book-source.js`。缺什么让 `deliver` 返回 `nextCommand` / `correctiveAction`，不要自己补结论。
 
 `deliver` 是唯一最终审计。它通过之前，不要宣称书源“可用”、“正常阅读”、“full pass”。
 
@@ -85,9 +90,11 @@ node "<skill-dir>/scripts/bsg.mjs" deliver --run <run-dir>
 
 **0. `bsg.mjs deliver` 返回 ok 是任务完成的唯一标志。没有第三种状态。**
 
-本 skill 的 validator 是基于阅读书源规则语义的 JVM/Kotlin 兼容验证器，实现了书源规则解析、JS/Rhino 执行、CSS/JSONPath/XPath/Regex 提取，以及 search → detail → toc → content 的主要验证链路。**书源通过 validator + record-validation + deliver 代表规则层具有较强参考价值；纯 HTTP/SSR 站点通常可直接导入使用。** 涉及 Android WebView、登录态、CookieJar 持久化、付费/VIP、验证码、Cloudflare 的站点，必须以 `record-validation` 归一化后的状态和 `capability-matrix.json` 为准，不能由 AI 摘要自行改结论。
+本 skill 的 validator 是基于阅读书源规则语义的 JVM/Kotlin 兼容验证器，实现了传统 JSON 书源规则解析、JS/Rhino 执行、CSS/JSONPath/XPath/Regex 提取，以及 search → detail → toc → content 的主要验证链路。**传统 JSON 书源通过 validator + record-validation + deliver 代表规则层具有较强参考价值；纯 HTTP/SSR 站点通常可直接导入使用。** 涉及 Android WebView、登录态、CookieJar 持久化、付费/VIP、验证码、Cloudflare 的站点，必须以 `record-validation` 归一化后的状态和 `capability-matrix.json` 为准，不能由 AI 摘要自行改结论。
 
-反过来：**绕过 deliver 交一个 `book-source.json` 文件，无论你已经验证了多少链路、写了多完整的总结表格，都视为未完成。** 用户拿到此书源大概率用不了，必然回来要求返工——你只是把返工成本转嫁给了用户，不是完成了任务。validator 复现了阅读书源规则引擎的核心语义，不存在"validator 过不了但阅读能用"的中间地带让你提前交差；过不了就是过不了，去修到过，或按 `record-validation` 返回的状态诚实停下。`needs_app_review` 只用于 validator 无法自动确认、且脚本已收敛为需 App 实测的硬边界；验证码、Cloudflare、登录失败、付费/VIP、规则错误、选择器为空、URL 错误都不是 `needs_app_review`。VIP/付费由脚本按证据收敛为 `degraded` 或失败，不能写成 full pass。
+JavaScript 单文件书源是另一种输出格式，不属于本地 validator 的验证范围。只有目标社区维护版阅读 App 的原生 MCP 能连接，并由 `app-mcp validate-js` 完成保存、读回、四链路调试和 App 校验时，才可记录为社区 App 验证通过；不能用 Browser MCP、HTTP 观察或本地 validator 结果替代。缺少 App MCP 时停止在配置用户动作，不降级为另一种验证结论。
+
+反过来：**绕过 deliver 直接交付书源文件，无论已经验证了多少链路、写了多完整的总结表格，都视为未完成。** 用户拿到此书源大概率用不了，必然回来要求返工——你只是把返工成本转嫁给了用户，不是完成了任务。传统 JSON 目标的 validator 复现了阅读书源规则引擎的核心语义，不存在"validator 过不了但阅读能用"的中间地带让你提前交差；过不了就是过不了，去修到过，或按 `record-validation` 返回的状态诚实停下。`needs_app_review` 只用于 validator 无法自动确认、且脚本已收敛为需 App 实测的硬边界；验证码、Cloudflare、登录失败、付费/VIP、规则错误、选择器为空、URL 错误都不是 `needs_app_review`。VIP/付费由脚本按证据收敛为 `degraded` 或失败，不能写成 full pass。
 
 交付前自检：如果当前准备"写个总结交付"而不是"运行 deliver"，停下来——这会制造返工。
 
@@ -114,7 +121,8 @@ node "<skill-dir>/scripts/bsg.mjs" deliver --run <run-dir>
 
 ## 输出
 
-- `outputs/<site-slug>/book-source.json` — 唯一默认交付物
+- `outputs/<site-slug>/book-source.json` — 默认 `legacy-json` 交付物
+- `outputs/<site-slug>/book-source.js` — 显式 `community-js` 交付物
 - `runs/<site-slug>/` — 过程记录
 
 deliver 完成后必须运行 `validator-stop` 关闭 validator。
