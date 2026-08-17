@@ -1,7 +1,7 @@
 {
   "name": "legado-book-source-generator",
-  "version": "2.2.0",
-  "description": "Legado book source generation skill - assesses novel sites and generates Legado book source JSON",
+  "version": "2.3.0",
+  "description": "Legado book source generation skill for traditional JSON and community JavaScript sources",
   "type": "module",
   "scripts": {
     "test": "node --test tests/*.test.mjs"

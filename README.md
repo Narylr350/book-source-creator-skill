@@ -2,7 +2,7 @@
 
 用于让 AI 生成 Legado（阅读 App）书源。
 
-给 AI 一个小说网站地址，它会尝试分析网站结构，生成阅读可导入的 `book-source.json`，并在本地自动检查搜索、目录、正文等链路是否能跑通。
+给 AI 一个小说网站地址，它会尝试分析网站结构，生成阅读可导入的书源，并检查搜索、详情、目录、正文等链路是否能跑通。默认生成兼容原版最后版本和社区维护版的 `book-source.json`；明确选择社区维护版时，也可以生成 JavaScript 单文件书源 `book-source.js`。
 
 **这是一个给 Claude Code / Codex 等 AI 使用的“阅读书源生成 Skill”。**
 
@@ -48,6 +48,12 @@ legado-book-source-generator-*.zip
 给 https://example.com 生成书源。
 ```
 
+默认目标是传统 JSON。需要使用社区维护版的 JavaScript 书源能力时，明确写出目标：
+
+```text
+给 https://example.com 生成社区版 JavaScript 书源，并导入社区版阅读验证。
+```
+
 通常不需要手动运行脚本。
 AI 应该自己调用工具、分析网站、生成书源、检查结果，并在遇到缺失环境时优先尝试完成配置，而不是只返回配置步骤。
 
@@ -60,15 +66,24 @@ AI 应该自己调用工具、分析网站、生成书源、检查结果，并�
 * 处理验证码、付费、权限或站点访问限制
 * 确认是否接受降级结果
 
+## 选择输出格式
+
+| 目标 | 产物 | 验证后端 | 适用范围 |
+| --- | --- | --- | --- |
+| 默认传统书源 | `outputs/<网站名>/book-source.json` | 本地 validator，必要时配合 Android Probe | 原版最后版本和社区维护版 |
+| 社区版 JavaScript 书源 | `outputs/<网站名>/book-source.js` | 社区维护版阅读 App MCP | 明确使用支持 JavaScript 单文件书源的社区版 |
+
+未指定目标时使用传统 JSON。JavaScript 单文件书源不是兼容性升级，不应假定可以导入原版最后版本。
+
+社区版目标需要已安装并启动社区维护版阅读 App、开启 `MCP service`，并通过 adb 或显式 MCP 地址连接。AI 会读取目标 App 当前提供的 JavaScript 契约，生成脚本后在 App 内完成保存、读回、四链路调试和校验。
+
+完整使用方法见 [社区版 JavaScript 书源指南](docs/COMMUNITY_JS.md)。
+
 ## 产物
 
-如果成功，会生成：
+成功后，最终文件位于 `outputs/<网站名>/`。过程报告位于 `runs/<网站名>/`，包括站点观察、验证报告和最终交付审计。
 
-```text
-outputs/<网站名>/book-source.json
-```
-
-这个文件可以导入阅读 App。
+只有 `deliver` 返回 `passed` 才表示当前验证流程完成。局部 HTTP、Browser、Android Probe 或 App 调试成功都不能单独写成完整通过。
 
 如果失败，Skill 内置工具会尽量告诉 AI 卡在哪一步，例如：
 
@@ -170,8 +185,9 @@ validator/run.bat
 日常使用入口：
 
 * [docs/SETUP.md](docs/SETUP.md)
+* [docs/COMMUNITY_JS.md](docs/COMMUNITY_JS.md)
 
-这里记录了运行环境、Java、validator、adb、Android 真机/模拟器、Android Probe 等配置说明。
+`SETUP.md` 记录 Browser MCP、Java、validator、adb、Android 真机/模拟器和 Android Probe；`COMMUNITY_JS.md` 记录社区版 JavaScript 单文件书源的连接、生成、验证、回修和保留方法。
 
 如果想了解底层行为边界，可以看：
 

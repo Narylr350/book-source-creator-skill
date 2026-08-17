@@ -61,6 +61,8 @@ Probe 运行在真实 Android WebView 上，比桌面 Browser 模式更接近阅
 
 ## 社区维护版阅读 App MCP（JavaScript 单文件书源，可选）
 
+这一环境只用于显式选择 `community-js` 的任务。完整使用流程、命令和回修方法见 [COMMUNITY_JS.md](COMMUNITY_JS.md)。
+
 目标 App 需要启用 `MCP service`，默认端口为 `1236`。连接了唯一一台 adb 设备时，`app-mcp` 会自动建立临时端口转发并在命令结束后移除；无需查设备 IP 或启动额外服务。多设备环境可传 `--serial <adb-serial>`，不使用 adb 时可传 `--url http://<设备IP>:1236/mcp`。
 
 App 配置了 Web/MCP 访问令牌时，在当前进程设置 `LEGADO_MCP_TOKEN`。令牌不写入 run 目录、issue、日志或调试包。AI 先自动运行 `app-mcp status`；只有 App 服务未开启、设备未授权、需要选择设备或需要本人提供令牌时才暂停。
