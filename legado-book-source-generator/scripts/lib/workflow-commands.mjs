@@ -5,7 +5,7 @@ import { initializeRunBundle } from "./output-bundle.mjs";
 import {
   fail, parseArg, freshRunState, saveRunState, loadAndVerify,
   isInSkillInstallDir, blockForPendingUserAction, getPendingUserAction,
-  ensureRunArtifacts, fileExists, readJsonFile,
+  ensureRunArtifacts, fileExists, fileSha256, readJsonFile,
 } from "./state.mjs";
 import {
   PHASE_ORDER, currentPhaseIndex, startPhase, completePhase,
@@ -14,7 +14,7 @@ import {
 import { cmdRecordValidation } from "./validation-commands.mjs";
 import {
   SOURCE_TARGETS, initializeSourceArtifact, initializeTargetRunArtifacts,
-  sourceArtifactPath, sourceReportPath, sourceTarget,
+  sourceArtifactPath, sourceReportPath, sourceTarget, writeCommunityRuleCheck,
 } from "./source-artifact.mjs";
 
 function pendingUserActionCommand(runDir, pendingType) {
@@ -339,9 +339,28 @@ function instructionForPhase(current, state, runDir) {
   }
 
   if (current === "validate") {
+    const communityJs = sourceTarget(state) === "community-js";
+    const sourcePath = sourceArtifactPath(state);
+    const sourceHash = fileExists(sourcePath) ? fileSha256(sourcePath) : null;
+    if (communityJs) {
+      const ruleCheck = readJsonFile(path.join(runDir, "rule-check.json"), null);
+      if (!sourceHash || ruleCheck?.status !== "passed" || ruleCheck.sourceHash !== sourceHash) {
+        const checked = writeCommunityRuleCheck(runDir, state);
+        if (!checked.ok) return fail(`JavaScript 单文件书源检查失败: ${checked.error}`);
+        return {
+          ok: true,
+          currentPhase: "validate",
+          nextAction: "run_command",
+          readNext: ["references/community-app-mcp.md"],
+          message: "book-source.js 已变化，JavaScript 合同检查已按当前文件重新通过。重新运行社区版 App MCP 验证。",
+          nextCommand: phaseNextCommand(runDir, "validate", state),
+        };
+      }
+    }
+
     const report = readJsonFile(sourceReportPath(runDir, state), null);
-    const validReport = sourceTarget(state) === "community-js"
-      ? report?._generatedBy === "bsg app-mcp validate-js"
+    const validReport = communityJs
+      ? report?._generatedBy === "bsg app-mcp validate-js" && report.sourceHash === sourceHash
       : report?._generatedBy === "validate-with-validator.mjs" && report.status !== "skipped";
     if (validReport) {
       const recorded = cmdRecordValidation(["--run", runDir, "--status", report.status]);

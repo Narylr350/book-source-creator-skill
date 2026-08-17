@@ -163,6 +163,32 @@ describe("community-js workflow", () => {
     assert.equal(ruleCheck.sourceFormat, "community_js");
   });
 
+  it("rechecks a repaired JavaScript source and ignores the stale App report", async () => {
+    const workDirectory = await makeTemporaryDirectory();
+    const initialized = await initCommunityRun(workDirectory);
+    await moveToGenerate(initialized.runDir);
+    await fs.writeFile(initialized.outputs.sourceArtifact, VALID_JS, "utf8");
+    await runBsg(["run", "--run", initialized.runDir]);
+    await writePassedAppReport(initialized.runDir, initialized.outputs.sourceArtifact);
+
+    await fs.appendFile(initialized.outputs.sourceArtifact, "\n// repaired\n", "utf8");
+    const rechecked = await runBsg(["run", "--run", initialized.runDir]);
+    assert.equal(rechecked.currentPhase, "validate");
+    assert.equal(rechecked.nextAction, "run_command");
+    assert.match(rechecked.message, /合同检查已按当前文件重新通过/);
+    assert.match(rechecked.nextCommand, /app-mcp validate-js/);
+
+    const ruleCheck = JSON.parse(await fs.readFile(path.join(initialized.runDir, "rule-check.json"), "utf8"));
+    const currentSource = await fs.readFile(initialized.outputs.sourceArtifact);
+    assert.equal(ruleCheck.sourceHash, createHash("sha256").update(currentSource).digest("hex"));
+
+    const staleReportIgnored = await runBsg(["run", "--run", initialized.runDir]);
+    assert.equal(staleReportIgnored.currentPhase, "validate");
+    assert.equal(staleReportIgnored.nextAction, "run_command");
+    assert.match(staleReportIgnored.message, /运行社区版 App MCP 验证/);
+    assert.match(staleReportIgnored.nextCommand, /app-mcp validate-js/);
+  });
+
   it("requires a current App MCP report before delivery", async () => {
     const workDirectory = await makeTemporaryDirectory();
     const initialized = await initCommunityRun(workDirectory);
