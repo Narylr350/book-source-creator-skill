@@ -20,11 +20,11 @@ JavaScript 单文件书源是面向支持该能力的社区维护版阅读 App �
 
 - 支持 JavaScript 单文件书源和原生 MCP 的社区维护版阅读 App
 - 在 App 设置中开启 `MCP service`
-- 一台已通过 adb 连接的 Android 设备或模拟器，或可直连的 App MCP 地址
+- 电脑可通过局域网访问 App MCP 地址，或设备可通过 adb 转发连接
 - App 启用访问令牌时，由当前进程提供 `LEGADO_MCP_TOKEN`
 - AI 客户端已配置 Browser MCP，用于站点观察
 
-只有设备授权、开启 App 服务、提供令牌或选择多台设备中的目标设备需要本人参与。环境检查、临时 adb 端口转发、生成和验证由 AI 执行。
+只有开启 App 服务、提供令牌，以及使用 adb 时的设备授权或多设备选择需要本人参与。环境检查、连接、生成和验证由 AI 执行。
 
 ## 生成流程
 
@@ -51,23 +51,30 @@ App MCP 是 JavaScript 单文件书源的验证后端。本地 validator、Brows
 node "<skill-dir>/scripts/bsg.mjs" init "https://example.com" --cwd "<工作目录>" --target community-js
 ```
 
-确认 App 能力：
-
-```powershell
-node "<skill-dir>/scripts/bsg.mjs" app-mcp status
-node "<skill-dir>/scripts/bsg.mjs" app-mcp help-js
-```
-
-唯一在线 adb 设备会自动建立临时端口转发。多设备环境指定设备：
-
-```powershell
-node "<skill-dir>/scripts/bsg.mjs" app-mcp status --serial "<adb-serial>"
-```
-
-不使用 adb 时可显式传入地址：
+局域网直连并确认 App 能力：
 
 ```powershell
 node "<skill-dir>/scripts/bsg.mjs" app-mcp status --url "http://<设备IP>:1236/mcp"
+node "<skill-dir>/scripts/bsg.mjs" app-mcp help-js --url "http://<设备IP>:1236/mcp"
+```
+
+也可以设置环境变量，后续命令会复用该地址：
+
+```powershell
+$env:LEGADO_MCP_URL = "http://<设备IP>:1236/mcp"
+node "<skill-dir>/scripts/bsg.mjs" app-mcp status
+```
+
+局域网不可达或只通过 USB 连接时，直接运行命令会使用唯一在线 adb 设备建立临时转发：
+
+```powershell
+node "<skill-dir>/scripts/bsg.mjs" app-mcp status
+```
+
+多设备环境指定设备：
+
+```powershell
+node "<skill-dir>/scripts/bsg.mjs" app-mcp status --serial "<adb-serial>"
 ```
 
 生成脚本后运行 App 验证：
@@ -119,7 +126,7 @@ node "<skill-dir>/scripts/bsg.mjs" run --run "<run-dir>"
 
 ### App MCP 无法连接
 
-确认 App 已启动并开启 `MCP service`，设备已通过 adb 授权。多设备时指定 `--serial`；网络直连时指定 `--url`。App 要求令牌时，在当前进程设置 `LEGADO_MCP_TOKEN`。
+确认 App 已启动并开启 `MCP service`。局域网直连时检查电脑能否访问设备 IP，并通过 `--url` 或 `LEGADO_MCP_URL` 指定地址；该方式不需要 adb。使用 adb 转发时再检查设备授权，多设备时指定 `--serial`。App 要求令牌时，在当前进程设置 `LEGADO_MCP_TOKEN`。
 
 ### 验证超时
 

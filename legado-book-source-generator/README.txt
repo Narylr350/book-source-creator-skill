@@ -40,7 +40,7 @@ node scripts\bsg.mjs status --run "<run-dir>"
 
 可选：
 
-- adb / Android SDK Platform Tools：使用 Android WebView Probe 或社区版 App MCP 的 adb 连接时需要
+- adb / Android SDK Platform Tools：使用 Android WebView Probe，或在局域网不可达时通过 adb 连接社区版 App MCP 才需要
 
 Windows 常见 adb 路径：
 
@@ -134,7 +134,7 @@ node scripts\bsg.mjs app-mcp help-js
 node scripts\bsg.mjs app-mcp validate-js --source "<book-source.js>" --keyword "<测试关键词>" --report "<run-dir>\app-mcp-report.json"
 ```
 
-唯一在线 adb 设备会自动建立临时端口转发。多设备使用 `--serial`，网络直连使用 `--url`。需要在 App 中保留验证源时增加 `--keep-source`。
+电脑与设备处于可互访的局域网时，使用 `--url http://<设备IP>:1236/mcp` 或 `LEGADO_MCP_URL` 直接连接，不需要 adb。局域网不可达或只通过 USB 连接时，唯一在线 adb 设备会自动建立临时端口转发；多设备使用 `--serial`。需要在 App 中保留验证源时增加 `--keep-source`。
 
 JavaScript 书源修改后先重新运行 `run --run "<run-dir>"` 更新合同检查，再重新执行 App 验证。旧报告不能复用。
 

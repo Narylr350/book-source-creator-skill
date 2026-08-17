@@ -63,9 +63,11 @@ Probe 运行在真实 Android WebView 上，比桌面 Browser 模式更接近阅
 
 这一环境只用于显式选择 `community-js` 的任务。完整使用流程、命令和回修方法见 [COMMUNITY_JS.md](COMMUNITY_JS.md)。
 
-目标 App 需要启用 `MCP service`，默认端口为 `1236`。连接了唯一一台 adb 设备时，`app-mcp` 会自动建立临时端口转发并在命令结束后移除；无需查设备 IP 或启动额外服务。多设备环境可传 `--serial <adb-serial>`，不使用 adb 时可传 `--url http://<设备IP>:1236/mcp`。
+目标 App 需要启用 `MCP service`，默认端口为 `1236`。电脑与设备处于可互访的局域网时，传入 `--url http://<设备IP>:1236/mcp` 或设置 `LEGADO_MCP_URL` 即可直接连接，不需要安装或授权 adb。
 
-App 配置了 Web/MCP 访问令牌时，在当前进程设置 `LEGADO_MCP_TOKEN`。令牌不写入 run 目录、issue、日志或调试包。AI 先自动运行 `app-mcp status`；只有 App 服务未开启、设备未授权、需要选择设备或需要本人提供令牌时才暂停。
+局域网不可达、不方便使用设备 IP，或设备只通过 USB 连接时，可以使用 adb 转发。检测到唯一一台在线设备后，`app-mcp` 会自动建立临时端口转发并在命令结束后移除；多设备环境传 `--serial <adb-serial>`。
+
+App 配置了 Web/MCP 访问令牌时，在当前进程设置 `LEGADO_MCP_TOKEN`。令牌不写入 run 目录、issue、日志或调试包。AI 先选择可用连接并运行 `app-mcp status`；只有 App 服务未开启、需要本人提供令牌，或已选择 adb 路径但设备未授权、需要选择设备时才暂停。
 
 `validate-js` 会调用目标 App 的 `save_source`、`get_source`、`debug_source` 和 `check_source`，默认验证后删除 App 内临时书源。缺少 App MCP 时不使用本地 validator 替代 JavaScript 单文件书源验证。
 
