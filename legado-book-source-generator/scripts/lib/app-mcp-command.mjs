@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { createHash } from "node:crypto";
 import { LegadoAppMcpClient, REQUIRED_JS_SOURCE_TOOLS } from "./app-mcp-client.mjs";
+import { classifyAppMcpConnectionError, resolveAppMcpConnection } from "./app-mcp-connection.mjs";
 import { fail, parseArg, writeJsonFile } from "./state.mjs";
 
 function hasFlag(args, flag) {
@@ -57,20 +58,7 @@ function checkPassed(text, sourceUrl) {
   return text.includes("通过 1/1") && text.includes(sourceUrl) && !text.includes("失败 1/1");
 }
 
-function connectionOptions(args) {
-  const url = parseArg(args, "--url") || process.env.LEGADO_MCP_URL;
-  const token = process.env.LEGADO_MCP_TOKEN || "";
-  if (!url) return { error: "缺少 Legado App MCP 地址。设置 LEGADO_MCP_URL，或传 --url http://<设备IP>:1236/mcp。" };
-  const host = new URL(url).hostname;
-  if (!token && !["127.0.0.1", "localhost", "::1"].includes(host)) {
-    return { error: "直连 Legado App MCP 时缺少 LEGADO_MCP_TOKEN；无凭据连接只允许本机 relay。" };
-  }
-  return { url, token };
-}
-
-async function connect(args) {
-  const options = connectionOptions(args);
-  if (options.error) throw new Error(options.error);
+async function connect(options) {
   const client = new LegadoAppMcpClient(options);
   const initialized = await client.initialize();
   const tools = await client.listTools();
@@ -85,17 +73,22 @@ async function connect(args) {
 export async function cmdAppMcp(args) {
   const subcommand = args[0];
   if (!subcommand || !["status", "help-js", "validate-js"].includes(subcommand)) {
-    return fail("用法: bsg app-mcp status|help-js|validate-js [--url <mcp-url>] [--source <book-source.js>] [--keyword <关键词>] [--report <file>] [--keep-source]");
+    return fail("用法: bsg app-mcp status|help-js|validate-js [--url <mcp-url>] [--serial <adb-serial>] [--source <book-source.js>] [--keyword <关键词>] [--report <file>] [--keep-source]");
   }
 
-  let connected;
+  const connection = resolveAppMcpConnection(args.slice(1));
+  if (connection.error) {
+    return {
+      ...fail(`Legado App MCP 连接失败: ${connection.error}`),
+      nextAction: "stop",
+      requiredUserAction: connection.requiredUserAction || "check_app_mcp_service",
+      details: connection.details || null,
+    };
+  }
+
   try {
-    connected = await connect(args.slice(1));
-  } catch (error) {
-    return fail(`Legado App MCP 连接失败: ${error.message}`);
-  }
-
-  const { client, initialized, toolNames, resources, missingTools, missingResources } = connected;
+    const connected = await connect(connection);
+    const { client, initialized, toolNames, resources, missingTools, missingResources } = connected;
   if (subcommand === "status") {
     return {
       ok: missingTools.length === 0 && missingResources.length === 0,
@@ -253,5 +246,15 @@ export async function cmdAppMcp(args) {
     }
     writeJsonFile(reportPath, report);
     return fail(`社区版 Legado App 验证失败: ${error.message}。报告: ${reportPath}`);
+  }
+  } catch (error) {
+    const classified = classifyAppMcpConnectionError(error);
+    return {
+      ...fail(`Legado App MCP 连接失败: ${classified.message}`),
+      nextAction: "stop",
+      requiredUserAction: classified.requiredUserAction,
+    };
+  } finally {
+    connection.cleanup();
   }
 }

@@ -39,7 +39,7 @@ export function initializeRunBundle(rootDir, siteUrl) {
       "",
       "## 证据说明",
       "",
-      "<!-- AI 可写；每条事实说明必须引用 site-facts 或 validator-report 的 evidence id，例如 evidence:search-1。 -->",
+      "<!-- AI 可写；使用完整合法格式，例如：- evidence:search-1 Browser MCP 搜索结果页证据。evidence id 后接空格，不加冒号。 -->",
       "",
       "## 分析备注",
       "",

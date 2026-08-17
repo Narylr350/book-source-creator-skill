@@ -61,15 +61,9 @@ Probe 运行在真实 Android WebView 上，比桌面 Browser 模式更接近阅
 
 ## 社区维护版阅读 App MCP（JavaScript 单文件书源，可选）
 
-目标 App 需要启用 `MCP service`，默认端口为 `1236`，并在“其他设置”中配置 Web/MCP 访问令牌。令牌属于敏感凭据，不写入命令、run 目录、issue 或调试包。可信维护进程先启动仅监听 `127.0.0.1` 的 relay；执行模型只继承 relay URL，不继承 token。
+目标 App 需要启用 `MCP service`，默认端口为 `1236`。连接了唯一一台 adb 设备时，`app-mcp` 会自动建立临时端口转发并在命令结束后移除；无需查设备 IP 或启动额外服务。多设备环境可传 `--serial <adb-serial>`，不使用 adb 时可传 `--url http://<设备IP>:1236/mcp`。
 
-```powershell
-$env:LEGADO_MCP_UPSTREAM_URL = "http://<设备IP>:1236/mcp"
-$env:LEGADO_MCP_TOKEN = "<访问令牌>"
-node ".\legado-book-source-generator\scripts\app-mcp-relay.mjs"
-```
-
-relay 输出 `relayUrl` 后，在不含 `LEGADO_MCP_TOKEN` 的执行进程中设置 `LEGADO_MCP_URL=<relayUrl>`，依次运行 `app-mcp status`、`app-mcp help-js` 和当前 run 返回的 `app-mcp validate-js` 命令。任务结束后关闭 relay。
+App 配置了 Web/MCP 访问令牌时，在当前进程设置 `LEGADO_MCP_TOKEN`。令牌不写入 run 目录、issue、日志或调试包。AI 先自动运行 `app-mcp status`；只有 App 服务未开启、设备未授权、需要选择设备或需要本人提供令牌时才暂停。
 
 `validate-js` 会调用目标 App 的 `save_source`、`get_source`、`debug_source` 和 `check_source`，默认验证后删除 App 内临时书源。缺少 App MCP 时不使用本地 validator 替代 JavaScript 单文件书源验证。
 

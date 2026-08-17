@@ -36,7 +36,7 @@ adb install -r app\build\outputs\apk\app\debug\legado_app_*.apk
 
 ## Community JS App MCP
 
-显式 `community-js` 目标必须通过 `app-mcp validate-js` 在目标社区维护版 App 中完成保存、读回、搜索、详情、目录、正文和 App check，再由 `record-validation` 与 `deliver` 收敛。执行模型只连接本机 relay，不继承 `LEGADO_MCP_TOKEN`。
+显式 `community-js` 目标必须通过 `app-mcp validate-js` 在目标社区维护版 App 中完成保存、读回、搜索、详情、目录、正文和 App check，再由 `record-validation` 与 `deliver` 收敛。唯一在线 adb 设备由命令自动建立临时端口转发；令牌只存在于当前进程环境，不写入报告或调试包。
 
 ## Release
 

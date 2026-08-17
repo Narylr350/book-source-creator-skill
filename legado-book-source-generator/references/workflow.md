@@ -91,7 +91,7 @@ Android、模拟器、登录态、WebView/WebJs、入口反爬复核不要靠命
 
 生成默认 `book-source.json` 后，必须用 `bsg.mjs validate --run runs/<slug>` 跑真实链路验证，自动写入 `validator-report.json`。重试次数和状态判定由 `bsg.mjs record-validation` 强制管理；`record-validation` 不接受手写 report 或外部 report 路径，也不是摘要工具。它是从真实 report 到最终状态、能力矩阵、修复上下文的唯一收敛门。
 
-JavaScript 单文件书源只面向明确选择社区维护版 App 的任务。先用 `app-mcp status` 确认 App 版本和能力，再运行 `app-mcp help-js` 动态读取 `legado://help/jsHelp`，最后用 `app-mcp validate-js` 执行保存、读回、四链路调试和 App 校验。可信维护进程通过本机 relay 注入令牌，执行模型只连接无凭据 loopback URL。缺少 App MCP 时停止配置，不把 Browser MCP、Android Probe 或本地 validator 当成该格式的替代验证后端。
+JavaScript 单文件书源只面向明确选择社区维护版 App 的任务。先用 `app-mcp status` 确认 App 版本和能力，再运行 `app-mcp help-js` 动态读取 `legado://help/jsHelp`，最后用 `app-mcp validate-js` 执行保存、读回、四链路调试和 App 校验。唯一在线 adb 设备由命令自动建立临时端口转发；显式 URL 直连和 App Token 也由 `app-mcp` 直接处理。缺少 App MCP 时停止验证，不把 Browser MCP、Android Probe 或本地 validator 当成该格式的替代验证后端。
 
 PC HTTP / Browser 验证是开发辅助，不是最终交付事实。`record-validation` 看到非 Android `passed` 时，会先要求确认 Android 真机或模拟器：有设备就运行 `android --run <run-dir>`，没有设备必须让用户明确确认后才降级记录，不能宣称 full pass。
 

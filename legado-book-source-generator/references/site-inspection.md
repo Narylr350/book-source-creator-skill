@@ -60,7 +60,11 @@ Android 真机或模拟器在线时，按 `references/android-probe-guide.md` �
 | `blocker` | 付费、登录、验证码、加密情况，或 `null` |
 | `evidenceIds` | 证据 ID 列表，如 `["search-1"]` |
 
-`features` 可记录 `hasLogin`、`hasVip`、`hasCaptcha`、`hasCloudflare`、`isAppRequired`。验证码、VIP、加密必须进入结构化字段，不能只写在备注里。
+`features` 可记录 `hasLogin`、`hasVip`、`hasCaptcha`、`hasCloudflare`、`isAppRequired`。验证码、VIP、加密必须进入结构化字段，不能只写在备注里。免费章节可读但目录含 VIP 章节时，记录成功链路的同时保留边界：
+
+```powershell
+node "<skill-dir>/scripts/bsg.mjs" observe --run <run-dir> --phase toc --status success --blocker vip --render ssr_or_http --note "Browser MCP 目录含 VIP 章节标识"
+```
 
 ## assessment.md
 
@@ -69,8 +73,8 @@ AUTO 区块由 `record-assessment` 生成，不要手动编辑。执行者只在
 ```md
 ## 证据说明
 
-- evidence:search-1: Browser MCP 搜索结果页 snapshot 显示结果列表。
-- evidence:detail-1: Browser MCP 详情页 snapshot 显示书名和目录入口。
+- evidence:search-1 Browser MCP 搜索结果页 snapshot 显示结果列表。
+- evidence:detail-1 Browser MCP 详情页 snapshot 显示书名和目录入口。
 ```
 
 每个 evidence ID 必须在 `site-facts.json` 中存在，并被对应链路引用。完成四链路事实后运行：

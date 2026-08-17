@@ -92,25 +92,10 @@ describe("community JS MCP validation contract", () => {
     }
   });
 
-  it("requires a token for non-loopback App connections", async () => {
+  it("allows a direct App connection without forcing a token", async () => {
     const oldUrl = process.env.LEGADO_MCP_URL;
     const oldToken = process.env.LEGADO_MCP_TOKEN;
-    process.env.LEGADO_MCP_URL = "http://test/mcp";
-    delete process.env.LEGADO_MCP_TOKEN;
-    try {
-      const result = await cmdAppMcp(["status"]);
-      assert.equal(result.ok, false);
-      assert.match(result.error, /LEGADO_MCP_TOKEN/);
-    } finally {
-      if (oldUrl == null) delete process.env.LEGADO_MCP_URL; else process.env.LEGADO_MCP_URL = oldUrl;
-      if (oldToken == null) delete process.env.LEGADO_MCP_TOKEN; else process.env.LEGADO_MCP_TOKEN = oldToken;
-    }
-  });
-
-  it("allows a credential-free loopback relay", async () => {
-    const oldUrl = process.env.LEGADO_MCP_URL;
-    const oldToken = process.env.LEGADO_MCP_TOKEN;
-    process.env.LEGADO_MCP_URL = "http://127.0.0.1:12345/mcp";
+    process.env.LEGADO_MCP_URL = "http://192.168.1.20:1236/mcp";
     delete process.env.LEGADO_MCP_TOKEN;
     const originalFetch = globalThis.fetch;
     globalThis.fetch = async (_url, options) => {

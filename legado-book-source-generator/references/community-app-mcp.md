@@ -14,15 +14,9 @@ JavaScript 单文件书源是面向社区维护版阅读 App 的可选输出格�
 
 ## 连接
 
-访问令牌属于敏感凭据，不写入命令、run 目录、issue、日志或调试包。执行模型不继承令牌环境变量；由可信维护进程先启动本机 relay，再把无凭据的 loopback URL 提供给生成流程。
+先直接运行 `app-mcp status`。检测到唯一一台在线 adb 设备时，命令会自动将电脑本地临时端口转发到设备 `1236`，并在命令结束后移除转发。多设备环境传 `--serial <adb-serial>`；不使用 adb 时传 `--url http://<设备IP>:1236/mcp` 或设置 `LEGADO_MCP_URL`。
 
-```powershell
-$env:LEGADO_MCP_UPSTREAM_URL = "http://<设备IP>:1236/mcp"
-$env:LEGADO_MCP_TOKEN = "<访问令牌>"
-node "<skill-dir>/scripts/app-mcp-relay.mjs"
-```
-
-relay 启动后输出 `relayUrl`。在不继承 `LEGADO_MCP_TOKEN` 的执行进程中设置 `LEGADO_MCP_URL=<relayUrl>`，再运行 `app-mcp status`。relay 仅监听 `127.0.0.1`，结束任务后关闭。直连设备 MCP 时仍要求 `LEGADO_MCP_TOKEN`；无令牌连接只接受 loopback relay。
+App 配置了访问令牌时，在当前进程设置 `LEGADO_MCP_TOKEN`。令牌不写入 run 目录、issue、日志或调试包。AI 先完成设备发现、端口转发和连接；只有 App 服务未开启、设备未授权、需要选择设备或需要本人提供令牌时才暂停。
 
 连接成功必须返回：
 

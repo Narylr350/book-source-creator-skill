@@ -70,8 +70,8 @@ function printUsage() {
       "  node \"<skill-dir>/scripts/bsg.mjs\" validate --run {dir} [--keyword <kw>] [--mode http|browser|android] [--book-url <url>]",
       "  node \"<skill-dir>/scripts/bsg.mjs\" validator-start [--background]",
       "  node \"<skill-dir>/scripts/bsg.mjs\" validator-stop",
-      "  node \"<skill-dir>/scripts/bsg.mjs\" app-mcp status [--url <mcp-url>]",
-      "  node \"<skill-dir>/scripts/bsg.mjs\" app-mcp help-js [--url <mcp-url>]",
+      "  node \"<skill-dir>/scripts/bsg.mjs\" app-mcp status [--url <mcp-url>] [--serial <adb-serial>]",
+      "  node \"<skill-dir>/scripts/bsg.mjs\" app-mcp help-js [--url <mcp-url>] [--serial <adb-serial>]",
       "  node \"<skill-dir>/scripts/bsg.mjs\" app-mcp validate-js --source <book-source.js> --keyword <关键词> [--report <file>] [--keep-source]",
     ].join("\n")
   );

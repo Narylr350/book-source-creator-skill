@@ -35,8 +35,8 @@ node "<skill-dir>/scripts/bsg.mjs" status --run <run-dir>
 - `record-validation --run <run-dir> --status <status>`：把真实验证报告收敛成状态、能力矩阵和修复上下文。
 - `debug-bundle [--run <run-dir>]`：打包状态、报告、书源和会话导出，方便复盘。
 - `run --run <run-dir>`：可选的阶段助手；它会启动下一阶段，或自动记录当前目标的验证报告。
-- `app-mcp status [--url <mcp-url>]`：连接社区维护版阅读 App 的原生 MCP，检查协议、版本、工具和帮助资源。
-- `app-mcp help-js [--url <mcp-url>]`：读取目标 App 当前版本的 `legado://help/jsHelp`；动态读取，不保存副本到 run。
+- `app-mcp status [--url <mcp-url>] [--serial <adb-serial>]`：连接社区维护版阅读 App 的原生 MCP，检查协议、版本、工具和帮助资源；唯一在线 adb 设备会自动建立临时端口转发。
+- `app-mcp help-js [--url <mcp-url>] [--serial <adb-serial>]`：读取目标 App 当前版本的 `legado://help/jsHelp`；动态读取，不保存副本到 run。
 - `app-mcp validate-js --source <book-source.js> --keyword <关键词> [--report <file>] [--keep-source]`：通过目标 App 原生 MCP 保存、读回、调试并校验 JavaScript 单文件书源；默认验证后删除 App 内临时书源。
 
 ## Windows / PowerShell 命令风险
